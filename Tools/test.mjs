@@ -7,7 +7,7 @@
 
 import {
   begin, step, click, take, offer, spawn, xpFor,
-  Spells, Passives, MostLevel, MostSpells, Length, spellKeys,
+  Spells, Passives, MostLevel, MostSpells, StageWaves, Kinds, spellKeys,
   damageOf, everyOf, haste, reach,
 } from '../src/rules.js';
 
@@ -144,10 +144,52 @@ check('her seviye bir öncekinden pahalı', [1, 2, 3, 5, 9].every((n) => xpFor(n
 }
 
 {
+  // Bölümün sonunda patron gelmeli, yoksa bölümün bitişi diye bir şey yok
   const s = begin(14);
-  s.t = Length - 0.005;
+  s.spells = {}; s.cools = {};
+  s.stageT = StageWaves - 0.005;
   step(s, 1 / 60);
-  check('süre dolunca bölüm kazanılıyor', s.phase === 'won');
+  check('bölümün sonunda patron geliyor', !!s.boss && s.boss.boss === true);
+  check('patron diğerlerinden çok daha dayanıklı',
+    s.boss.maxHp > Kinds.brute.hp * 5, `${s.boss.maxHp.toFixed(0)}`);
+}
+
+{
+  // Patron ölünce bölüm geçilmeli: duvar onarılsın, bedava kart gelsin, sıradaki bölüm başlasın
+  const s = begin(15);
+  s.spells = {}; s.cools = {};
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  s.wall = 100;
+  s.boss.hp = 0;
+  step(s, 1 / 60);
+  check('patron ölünce bölüm geçiliyor', s.stage === 2 && s.boss === null);
+  check('bölüm geçince duvar onarılıyor', s.wall > 100, `${s.wall.toFixed(0)}`);
+  check('bölüm geçince bedava kart geliyor', s.phase === 'picking' && s.cleared === true);
+  take(s, 0);
+  check('bedava karttan sonra bayrak iniyor', s.cleared === false && s.phase === 'playing');
+}
+
+{
+  const s = begin(16);
+  s.spells = {}; s.cools = {};
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  const hard = s.boss.maxHp;
+  const t = begin(16);
+  t.spells = {}; t.cools = {};
+  t.stage = 4;
+  t.stageT = StageWaves;
+  step(t, 1 / 60);
+  check('sonraki bölümlerin patronu daha güçlü', t.boss.maxHp > hard * 2, `${hard.toFixed(0)} -> ${t.boss.maxHp.toFixed(0)}`);
+}
+
+{
+  const s = begin(17);
+  check('patron normal dalgadan çıkmıyor', (() => {
+    for (let i = 0; i < 400; i++) { s.t = i; spawn(s); }
+    return !s.foes.some((f) => f.boss);
+  })());
 }
 
 {
@@ -194,29 +236,34 @@ function botRun(seed, clicksPerSecond = 6) {
     step(s, dt);
     s.events.length = 0;
   }
-  return { won: s.phase === 'won', t: s.t, level: s.level, kills: s.kills, wall: s.wall };
+  return { t: s.t, stage: s.stage, level: s.level, kills: s.kills, wall: s.wall };
 }
 
 const runs = [];
 for (let i = 1; i <= 60; i++) runs.push(botRun(i * 7919));
-const won = runs.filter((r) => r.won);
 const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
 const lived = runs.map((r) => r.t).sort((a, b) => a - b);
 const levels = runs.map((r) => r.level).sort((a, b) => a - b);
+const stages = runs.map((r) => r.stage).sort((a, b) => a - b);
+const reached = (n) => runs.filter((r) => r.stage > n).length / runs.length;
 
-console.log(`saniyede 6 tıklayan bir oyuncu, 60 koşu (bölüm ${fmt(Length)}):`);
-console.log(`  bitirme oranı  %${(won.length / runs.length * 100).toFixed(0)}`);
-console.log(`  dayanma        en kısa ${fmt(lived[0])}   ortanca ${fmt(lived[30])}   en uzun ${fmt(lived[59])}`);
-console.log(`  seviye         en düşük ${levels[0]}   ortanca ${levels[30]}   en yüksek ${levels[59]}`);
-console.log(`  bitirenin kalan duvarı  ortalama ${won.length ? (won.reduce((a, r) => a + r.wall, 0) / won.length).toFixed(0) : '-'}`);
+console.log('saniyede 6 tıklayan bir oyuncu, 60 koşu:');
+console.log(`  dayanma   en kısa ${fmt(lived[0])}   ortanca ${fmt(lived[30])}   en uzun ${fmt(lived[59])}`);
+console.log(`  bölüm     en düşük ${stages[0]}   ortanca ${stages[30]}   en yüksek ${stages[59]}`);
+console.log(`  seviye    en düşük ${levels[0]}   ortanca ${levels[30]}   en yüksek ${levels[59]}`);
+console.log(`  1. bölümü geçen %${(reached(1) * 100).toFixed(0)}   2'yi %${(reached(2) * 100).toFixed(0)}   3'ü %${(reached(3) * 100).toFixed(0)}   4'ü %${(reached(4) * 100).toFixed(0)}`);
 
 const slow = [];
 for (let i = 1; i <= 40; i++) slow.push(botRun(i * 104729, 1).t);
 slow.sort((a, b) => a - b);
 console.log(`  neredeyse hiç tıklamayan (1/sn): ortanca ${fmt(slow[20])}`);
 
-check('bölüm bitirilebiliyor', won.length > 0, `%${(won.length / runs.length * 100).toFixed(0)}`);
-check('bölüm garanti değil', won.length < runs.length, `%${(won.length / runs.length * 100).toFixed(0)}`);
+// Birinci bölümü neredeyse herkes geçmeli - ilk oturuşta hiçbir şey başaramayan oyuncu geri
+// gelmez. Ama hiç kimsenin düşmediği bir oyun da oyun değil.
+check('ilk bölümü çoğu oyuncu geçiyor', reached(1) > 0.7, `%${(reached(1) * 100).toFixed(0)}`);
+check('koşu bir yerde bitiyor', stages[59] < 20, `en yüksek bölüm ${stages[59]}`);
+check('bölümler gerçekten zorlaşıyor', reached(3) < reached(1) * 0.9,
+  `1: %${(reached(1) * 100).toFixed(0)}  3: %${(reached(3) * 100).toFixed(0)}`);
 check('oyuncu bir sürü seçim yapıyor', levels[30] >= 12, `ortanca seviye ${levels[30]}`);
 check('tıklamak işe yarıyor', lived[30] > slow[20] * 1.08, `6/sn ${fmt(lived[30])} vs 1/sn ${fmt(slow[20])}`);
 

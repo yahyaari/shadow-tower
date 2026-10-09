@@ -2,9 +2,14 @@
 
 import { begin, step, click, take } from './rules.js';
 import { frame, hitCard, cards } from './draw.js';
+import * as sound from './sound.js';
+import * as store from './store.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
+
+const saved = store.load();
+sound.setMuted(!!saved.muted);
 
 let state = begin(Date.now());
 let show = fresh();
@@ -12,7 +17,7 @@ let last = performance.now();
 let pointer = { x: -1, y: -1 };
 
 function fresh() {
-  return { bits: [], floats: [], overCard: null, hint: true, shake: 0 };
+  return { bits: [], floats: [], overCard: null, hint: true, shake: 0, best: null, booked: false };
 }
 
 let dpr = 1;
@@ -38,6 +43,7 @@ size();
 function readEvents() {
   for (const e of state.events) {
     if (e.kind === 'killed') {
+      sound.died(e.size > 2);
       for (let i = 0; i < 11 + e.size * 7; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = 30 + Math.random() * 130;
@@ -60,6 +66,16 @@ function readEvents() {
       }
     } else if (e.kind === 'bitten') {
       show.shake = 1;
+      sound.bitten();
+    } else if (e.kind === 'cast') {
+      sound.cast(e.key);
+    } else if (e.kind === 'levelled') {
+      sound.levelled();
+    } else if (e.kind === 'boss') {
+      sound.bossIn();
+      show.shake = 1;
+    } else if (e.kind === 'cleared') {
+      sound.cleared();
     }
   }
   state.events.length = 0;
@@ -71,6 +87,13 @@ function tick(now) {
 
   step(state, dt);
   readEvents();
+
+  // Booked once: `step` is called every frame and a run that ended ten frames ago is still ended.
+  if (state.phase === 'lost' && !show.booked) {
+    show.booked = true;
+    show.best = store.record(saved, state.stage, state.kills);
+    sound.over();
+  }
 
   show.shake = Math.max(0, show.shake - dt * 4);
   for (let i = show.bits.length - 1; i >= 0; i--) {
@@ -115,7 +138,7 @@ addEventListener('pointerdown', (e) => {
   e.preventDefault();
   pointer = spot(e);
   if (state.phase === 'picking') show.overCard = hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr);
-  if (state.phase === 'won' || state.phase === 'lost') {
+  if (state.phase === 'lost') {
     state = begin(Date.now());
     show = fresh();
     show.hint = false;
@@ -132,6 +155,12 @@ addEventListener('pointerdown', (e) => {
 }, { passive: false });
 
 addEventListener('keydown', (e) => {
+  if (e.key === 'm' || e.key === 'M') {
+    sound.setMuted(!sound.isMuted());
+    saved.muted = sound.isMuted();
+    store.save(saved);
+    return;
+  }
   if (state.phase === 'picking') {
     const n = Number(e.key);
     if (n >= 1 && n <= 3) take(state, n - 1);
@@ -141,6 +170,6 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 
-window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, take };
+window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, take, sound };
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

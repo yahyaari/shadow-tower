@@ -8,7 +8,15 @@
 export const Arena = 560;        // how far out they walk in from
 export const Wall = 76;          // the ring they have to break through
 export const Reach = 96;         // how close one gets before it starts hitting the wall
-export const Length = 180;       // how long the level is, in seconds
+/**
+ * A stage: a stretch of waves, then the thing at the end of it.
+ *
+ * The run does not stop at a clock. Each stage runs for `StageWaves` seconds and then its boss
+ * walks in; killing it clears the stage, hands you a free card and mends the wall, and the next
+ * one begins harder. A timer that simply expires is a level that ends on its own whatever you
+ * did - a boss is an ending you have to cause.
+ */
+export const StageWaves = 72;
 
 export const Base = {
   wall: 300,
@@ -124,6 +132,9 @@ export const Kinds = {
   walker: { hp: 12, speed: 44, bite: 3, xp: 1, size: 1 },
   runner: { hp: 8, speed: 86, bite: 2, xp: 1, size: 0.84, sprint: 1.9 },
   brute:  { hp: 40, speed: 25, bite: 8, xp: 3, size: 1.12 },
+  // Slow, enormous, and worth a level on its own. It does not have to be clever; it has to take
+  // long enough to kill that the crowd arriving behind it becomes the problem.
+  warden: { hp: 420, speed: 17, bite: 22, xp: 14, size: 2.5, boss: true },
 };
 
 export const SprintAt = 210;
@@ -150,7 +161,11 @@ export function begin(seed = Date.now()) {
   return {
     roll: seeded(seed),
     t: 0,
-    phase: 'playing',         // 'playing' | 'picking' | 'won' | 'lost'
+    stage: 1,
+    stageT: 0,
+    boss: null,
+    cleared: false,           // the pick being offered is a stage reward
+    phase: 'playing',         // 'playing' | 'picking' | 'lost'
     wall: Base.wall, maxWall: Base.wall,
     level: 1, xp: 0, need: xpFor(1),
     kills: 0,
@@ -194,11 +209,13 @@ export function spawn(s, kindKey = null, angle = null) {
   const r = s.roll();
   const p = pressure(s);
   const key = kindKey || (p > 1.5 && r < 0.12 ? 'brute' : r < 0.2 + Math.min(0.25, p * 0.1) ? 'runner' : 'walker');
+  // A boss arrives on its own schedule and is never rolled into the wave.
   const k = Kinds[key];
   const tough = Math.pow(p, 0.9);
   const foe = {
     id: s.id++,
     key,
+    boss: !!k.boss,
     a: angle == null ? s.roll() * Math.PI * 2 : angle,
     r: Arena,
     hp: k.hp * tough, maxHp: k.hp * tough,
@@ -404,6 +421,7 @@ export function take(s, index) {
     s.events.push({ kind: 'took', pick });
   }
   s.choices = [];
+  s.cleared = false;
   s.phase = 'playing';
   return true;
 }
@@ -422,11 +440,20 @@ export function step(s, dt) {
   s.heat = Math.max(0, s.heat - Heat.fade * dt);
   s.cast = Math.max(0, s.cast - dt * 5);
 
-  if (s.t >= Length) { s.phase = 'won'; return s; }
+  s.stageT += dt;
+
+  // --- the boss walks in at the end of the stage, and the crowd thins while it does
+  if (!s.boss && s.stageT >= StageWaves) {
+    s.boss = spawn(s, 'warden');
+    s.boss.hp *= 1 + (s.stage - 1) * 0.42;
+    s.boss.maxHp = s.boss.hp;
+    s.events.push({ kind: 'boss', stage: s.stage });
+  }
 
   // --- they keep coming
   s.nextIn -= dt;
-  while (s.nextIn <= 0) { spawn(s); s.nextIn += spawnEvery(s); }
+  const thin = s.boss ? 2.4 : 1;      // during a boss it should be a duel, not a scramble
+  while (s.nextIn <= 0) { spawn(s); s.nextIn += spawnEvery(s) * thin; }
 
   // --- the walk in
   for (const f of s.foes) {
@@ -439,7 +466,7 @@ export function step(s, dt) {
       f.r = Math.max(Reach, f.r - f.speed * dash * slow * dt);
       f.step += dt * f.speed * dash * slow * 0.055;
     } else if (f.biteCool <= 0) {
-      f.biteCool = 0.9;
+      f.biteCool = f.boss ? 1.4 : 0.9;
       s.wall -= f.bite;
       s.events.push({ kind: 'bitten', amount: f.bite, a: f.a });
       if (s.wall <= 0) { s.wall = 0; s.phase = 'lost'; return s; }
@@ -534,6 +561,19 @@ export function step(s, dt) {
 
   s.foes = s.foes.filter((f) => f.hp > 0);
   for (const id of Object.keys(s.bladeHits)) if (s.bladeHits[id] < s.t - 2) delete s.bladeHits[id];
+
+  // --- the boss is down: a mended wall, a free card, and a harder stage
+  if (s.boss && s.boss.hp <= 0) {
+    s.boss = null;
+    s.stage += 1;
+    s.stageT = 0;
+    s.wall = Math.min(s.maxWall, s.wall + s.maxWall * 0.4);
+    s.choices = offer(s);
+    s.cleared = true;
+    if (s.choices.length) s.phase = 'picking';
+    s.events.push({ kind: 'cleared', stage: s.stage - 1 });
+    return s;
+  }
 
   // --- levelling, last, so a kill made this tick counts
   if (s.xp >= s.need) {

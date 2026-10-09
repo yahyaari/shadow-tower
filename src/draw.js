@@ -15,7 +15,7 @@
 // the first version did with a tower. A waist-high wall with a figure inside it reads as a place
 // worth defending without standing in front of anything.
 
-import { Arena, Wall, Reach, Length, placeOf, Spells, Passives, MostLevel } from './rules.js';
+import { Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives, MostLevel } from './rules.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
@@ -266,7 +266,30 @@ function figure(ctx, S, f) {
   ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
 
-  if (f.key === 'brute') {
+  if (f.boss) {
+    // Bigger than everything, and built so you can tell at a glance it is not one of the crowd:
+    // horns, a stoop, and arms that reach the floor.
+    ctx.lineWidth = 11;
+    ctx.beginPath();
+    ctx.moveTo(-9, -30); ctx.lineTo(-13 + swing * 8, 0);
+    ctx.moveTo(9, -30); ctx.lineTo(13 - swing * 8, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-20, -28); ctx.lineTo(-34, -58); ctx.lineTo(-22, -70);
+    ctx.lineTo(22, -70); ctx.lineTo(34, -58); ctx.lineTo(20, -28);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -70, 11, 0, Math.PI * 2); ctx.fill();
+    for (const hx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(hx * 8, -78); ctx.lineTo(hx * 30, -104); ctx.lineTo(hx * 13, -82);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(-30, -58); ctx.lineTo(-36 - swing * 5, -14);
+    ctx.moveTo(30, -58); ctx.lineTo(36 + swing * 5, -14);
+    ctx.stroke();
+  } else if (f.key === 'brute') {
     ctx.lineWidth = 9;
     ctx.beginPath();
     ctx.moveTo(-7, -26); ctx.lineTo(-9 + swing * 7, 0);
@@ -549,9 +572,26 @@ function panel(ctx, state, w, h, U) {
   ctx.fillRect(0, 0, w * part, 11 * U);
   write(ctx, `LV ${state.level}`, 22 * U, 34 * U, 20 * U, 800);
 
-  const left = Math.max(0, Length - state.t);
-  write(ctx, `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(Math.floor(left % 60)).padStart(2, '0')}`,
-    w / 2, 36 * U, 27 * U, 800, 'center');
+  // The stage, and how far through its waves you are. The boss replaces both when it arrives,
+  // because at that point there is only one thing worth knowing.
+  if (state.boss) {
+    write(ctx, 'THE WARDEN', w / 2, 30 * U, 15 * U, 800, 'center');
+    const bossW = Math.min(460 * U, w * 0.46);
+    ctx.fillStyle = 'rgba(13,12,11,0.15)';
+    ctx.fillRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
+    ctx.fillStyle = Black;
+    ctx.fillRect(w / 2 - bossW / 2, 44 * U, bossW * Math.max(0, state.boss.hp) / state.boss.maxHp, 14 * U);
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 2 * U;
+    ctx.strokeRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
+  } else {
+    write(ctx, `STAGE ${state.stage}`, w / 2, 32 * U, 24 * U, 800, 'center');
+    const onW = Math.min(300 * U, w * 0.3);
+    ctx.fillStyle = 'rgba(13,12,11,0.15)';
+    ctx.fillRect(w / 2 - onW / 2, 50 * U, onW, 5 * U);
+    ctx.fillStyle = Black;
+    ctx.fillRect(w / 2 - onW / 2, 50 * U, onW * Math.min(1, state.stageT / StageWaves), 5 * U);
+  }
   write(ctx, `${state.kills} DOWN`, w - 22 * U, 34 * U, 13 * U, 700, 'right');
 
   const bw = Math.min(240 * U, w * 0.22);
@@ -562,12 +602,14 @@ function panel(ctx, state, w, h, U) {
   ctx.fillStyle = Black;
   ctx.fillRect(22 * U, 72 * U, bw * Math.max(0, state.wall) / state.maxWall, 13 * U);
 
-  if (state.heat > 0.02) {
-    ctx.fillStyle = 'rgba(13,12,11,0.16)';
-    ctx.fillRect(w / 2 - 110 * U, 56 * U, 220 * U, 6 * U);
-    ctx.fillStyle = Black;
-    ctx.fillRect(w / 2 - 110 * U, 56 * U, 220 * U * state.heat, 6 * U);
-  }
+  // Heat lives under the wall, not under the clock. Stacked in the middle it was a second
+  // nameless bar directly below the stage bar, and two anonymous bars one above the other are
+  // two bars nobody reads.
+  write(ctx, 'SPEED', 22 * U, 100 * U, 11 * U, 700);
+  ctx.fillStyle = 'rgba(13,12,11,0.16)';
+  ctx.fillRect(22 * U, 110 * U, bw, 7 * U);
+  ctx.fillStyle = Black;
+  ctx.fillRect(22 * U, 110 * U, bw * state.heat, 7 * U);
 
   // --- what you are carrying
   const owned = Object.keys(state.spells);
@@ -599,8 +641,10 @@ function picking(ctx, state, w, h, show, U) {
 
   const list = cards(w, h, U);
   const header = list[0].y - (list[0].flat ? 56 * U : 46 * U);
-  write(ctx, `LEVEL ${state.level}`, w / 2, header - 24 * U, 36 * U, 800, 'center');
-  write(ctx, 'TAKE ONE', w / 2, header + 8 * U, 14 * U, 600, 'center');
+  write(ctx, state.cleared ? `STAGE ${state.stage - 1} CLEARED` : `LEVEL ${state.level}`,
+    w / 2, header - 24 * U, 36 * U, 800, 'center');
+  write(ctx, state.cleared ? 'the wall is mended — take one' : 'TAKE ONE',
+    w / 2, header + 8 * U, 14 * U, 600, 'center');
 
   for (const r of list) {
     const pick = state.choices[r.i];
@@ -719,15 +763,20 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
 
-  if (state.phase === 'won' || state.phase === 'lost') {
+  if (state.phase === 'lost') {
     ctx.fillStyle = 'rgba(236,231,220,0.9)';
     ctx.fillRect(0, 0, w, h);
-    const won = state.phase === 'won';
-    write(ctx, won ? 'YOU HELD' : 'THE WALL FELL', w / 2, h / 2 - 54 * U, 46 * U, 800, 'center');
+    write(ctx, 'THE WALL FELL', w / 2, h / 2 - 76 * U, 44 * U, 800, 'center');
+    write(ctx, `STAGE ${state.stage}`, w / 2, h / 2 - 24 * U, 30 * U, 800, 'center');
     const secs = Math.floor(state.t);
     write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
-      w / 2, h / 2 + 2 * U, 19 * U, 600, 'center');
-    write(ctx, 'TAP TO BEGIN AGAIN', w / 2, h / 2 + 52 * U, 15 * U, 700, 'center');
+      w / 2, h / 2 + 14 * U, 17 * U, 600, 'center');
+    if (show.best) {
+      write(ctx, show.best.beat ? `a new best — you had never passed stage ${show.best.was}`
+        : `your best is stage ${show.best.value}`,
+        w / 2, h / 2 + 44 * U, 14 * U, 500, 'center');
+    }
+    write(ctx, 'TAP TO BEGIN AGAIN', w / 2, h / 2 + 86 * U, 15 * U, 700, 'center');
   }
 }
 

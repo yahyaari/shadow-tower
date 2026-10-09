@@ -112,6 +112,7 @@ await evaluate(`
 console.log(`${W}x${H} — bot oynuyor`);
 const began = Date.now();
 let shotCards = false;
+let shotBoss = false;
 for (const mark of marks) {
   while ((Date.now() - began) / 1000 < mark) {
     const phase = await evaluate('window.ShadowTower.state.phase');
@@ -126,6 +127,10 @@ for (const mark of marks) {
       }
       await evaluate('window.ShadowTower.take(window.ShadowTower.state, 0); true');
       continue;
+    }
+    if (!shotBoss && (await evaluate('!!window.ShadowTower.state.boss'))) {
+      shotBoss = true;
+      await screenshot('patron');
     }
     await sleep(150);
   }
