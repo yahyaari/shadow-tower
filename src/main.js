@@ -1,7 +1,7 @@
 // The loop, the mouse, and the things that are presentation rather than rules.
 
-import { begin, step, click, buy, placeOf } from './rules.js';
-import { frame, hitButton, stage } from './draw.js';
+import { begin, step, click, take } from './rules.js';
+import { frame, hitCard, cards } from './draw.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -12,7 +12,7 @@ let last = performance.now();
 let pointer = { x: -1, y: -1 };
 
 function fresh() {
-  return { bits: [], floats: [], over: null, hint: true, shake: 0, flash: 0 };
+  return { bits: [], floats: [], overCard: null, hint: true, shake: 0 };
 }
 
 function size() {
@@ -28,14 +28,14 @@ size();
 /**
  * Turns what the rules reported into something to look at.
  *
- * The rules push plain events and never touch the screen. Without this a kill is silent: the
- * figure is simply gone on the next frame, and the thing the whole game is about - putting them
- * down - would be the one thing with no feedback at all.
+ * The rules push plain events and never touch the screen. Without this a kill is silent - the
+ * figure is simply gone on the next frame, and the thing the whole game is about would be the
+ * one thing with no feedback at all.
  */
 function readEvents() {
   for (const e of state.events) {
     if (e.kind === 'killed') {
-      for (let i = 0; i < 12 + e.size * 7; i++) {
+      for (let i = 0; i < 11 + e.size * 7; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = 30 + Math.random() * 130;
         show.bits.push({
@@ -45,19 +45,16 @@ function readEvents() {
           life: 0.5 + Math.random() * 0.5, max: 1,
         });
       }
-      show.floats.push({ x: e.x, y: e.y, text: `+${e.got}`, rise: 40, life: 0.85 });
     } else if (e.kind === 'struck') {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         const a = Math.random() * Math.PI * 2;
         show.bits.push({
           x: e.x, y: e.y, z: 24 + Math.random() * 28,
           vx: Math.cos(a) * 60, vy: Math.sin(a) * 30, vz: 40 + Math.random() * 60,
           size: 1.2 + Math.random() * 1.6,
-          life: 0.22 + Math.random() * 0.18, max: 0.4,
+          life: 0.2 + Math.random() * 0.18, max: 0.4,
         });
       }
-    } else if (e.kind === 'fire') {
-      show.flash = 1;
     } else if (e.kind === 'bitten') {
       show.shake = 1;
     }
@@ -73,7 +70,6 @@ function tick(now) {
   readEvents();
 
   show.shake = Math.max(0, show.shake - dt * 4);
-  show.flash = Math.max(0, show.flash - dt * 11);
   for (let i = show.bits.length - 1; i >= 0; i--) {
     const p = show.bits[i];
     p.life -= dt;
@@ -106,29 +102,41 @@ function spot(e) {
 
 addEventListener('pointermove', (e) => {
   pointer = spot(e);
-  show.over = hitButton(state, canvas.width, canvas.height, pointer.x, pointer.y);
-  canvas.style.cursor = show.over ? 'pointer' : 'crosshair';
+  show.overCard = state.phase === 'picking'
+    ? hitCard(canvas.width, canvas.height, pointer.x, pointer.y)
+    : null;
+  canvas.style.cursor = show.overCard !== null ? 'pointer' : 'crosshair';
 });
 
 addEventListener('pointerdown', (e) => {
   e.preventDefault();
   pointer = spot(e);
-  if (!state.alive) { state = begin(Date.now()); show = fresh(); show.hint = false; return; }
-  const kind = hitButton(state, canvas.width, canvas.height, pointer.x, pointer.y);
-  // A click on a button buys; a click anywhere else is the gun. Buying must never also fire,
-  // or every purchase reads as a misclick.
-  if (kind) { buy(state, kind); return; }
+  if (state.phase === 'won' || state.phase === 'lost') {
+    state = begin(Date.now());
+    show = fresh();
+    show.hint = false;
+    return;
+  }
+  if (state.phase === 'picking') {
+    // Only a card does anything while choosing. A stray click must not take one for you.
+    const i = hitCard(canvas.width, canvas.height, pointer.x, pointer.y);
+    if (i !== null) { take(state, i); show.overCard = null; }
+    return;
+  }
   click(state);
   show.hint = false;
 }, { passive: false });
 
 addEventListener('keydown', (e) => {
+  if (state.phase === 'picking') {
+    const n = Number(e.key);
+    if (n >= 1 && n <= 3) take(state, n - 1);
+    return;
+  }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
-  if (e.key === '1') buy(state, 'damage');
-  if (e.key === '2') buy(state, 'rate');
-  if (e.key === '3') buy(state, 'gain');
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 
-window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, buy };
+window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, take };
+window.__cards = cards;
 console.log('[ShadowTower] ready');

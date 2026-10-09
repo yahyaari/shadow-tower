@@ -103,10 +103,7 @@ await evaluate(`
   (function auto() {
     if (!window.__auto) return;
     const g = window.ShadowTower, s = g.state;
-    if (s.alive) {
-      g.click(s);
-      for (const k of ['damage', 'rate', 'gain']) g.buy(s, k);
-    }
+    if (s.phase === 'playing') g.click(s);
     setTimeout(auto, 160);
   })();
   true
@@ -114,15 +111,28 @@ await evaluate(`
 
 console.log(`${W}x${H} — bot oynuyor`);
 const began = Date.now();
+let shotCards = false;
 for (const mark of marks) {
   while ((Date.now() - began) / 1000 < mark) {
-    if (!(await evaluate('window.ShadowTower.state.alive'))) break;
-    await sleep(200);
+    const phase = await evaluate('window.ShadowTower.state.phase');
+    if (phase === 'won' || phase === 'lost') break;
+    if (phase === 'picking') {
+      // Seçim ekranı oyunu durduruyor: bir kere fotoğrafla, sonra geç.
+      if (!shotCards) {
+        shotCards = true;
+        const p = await evaluate(`(() => { const c = window.__cards(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio)[1], d = devicePixelRatio; return { x: (c.x + c.w / 2) / d, y: (c.y + c.h / 2) / d }; })()`);
+        if (p) { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y }); await sleep(150); }
+        await screenshot('secim');
+      }
+      await evaluate('window.ShadowTower.take(window.ShadowTower.state, 0); true');
+      continue;
+    }
+    await sleep(150);
   }
-  const s = await evaluate(`(() => { const s = window.ShadowTower.state; return { t: Math.floor(s.t), hp: Math.ceil(s.hp), kills: s.kills, coins: s.coins, lv: s.levels, foes: s.foes.length, alive: s.alive }; })()`);
+  const s = await evaluate(`(() => { const s = window.ShadowTower.state; return { t: Math.floor(s.t), wall: Math.ceil(s.wall), kills: s.kills, level: s.level, phase: s.phase, spells: Object.keys(s.spells).join('+'), foes: s.foes.length }; })()`);
   await screenshot(`${String(mark).padStart(3, '0')}sn`);
-  console.log(`      ${s.t}sn  can ${s.hp}  ${s.kills} ölü  ${s.coins} para  dmg${s.lv.damage}/rate${s.lv.rate}/gain${s.lv.gain}  sahada ${s.foes}`);
-  if (!s.alive) { await screenshot('dustu'); break; }
+  console.log(`      ${s.t}sn  duvar ${s.wall}  ${s.kills} olu  LV${s.level}  sahada ${s.foes}  ${s.spells}`);
+  if (s.phase === 'won' || s.phase === 'lost') { await screenshot('bitti'); break; }
 }
 
 await evaluate('window.__auto = false; true');

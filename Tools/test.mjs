@@ -1,172 +1,224 @@
 // Kurallar + bir bot. Tarayıcı yok.
 //
-// Bu türde tek bir soru var ve gözle cevaplanamaz: eğri doğru mu? Oyun gerçek zamanlı olduğu
-// için tarayıcıda bir koşuyu izlemek dakikalar sürüyor; burada aynı koşu milisaniyelerde bitiyor,
-// yüzlercesi birden koşuyor.
+// Bu oyun birbiriyle etkileşen on büyüden ibaret ve o yığının dengeli olup olmadığı gözle
+// görülmez. Burada bir koşu milisaniyelerde bitiyor, yüzlercesi birden koşuyor.
 //
 //   node Tools/test.mjs
 
 import {
-  begin, step, click, buy, canBuy, costOf, spawn, spawnEvery, pressure,
-  damageOf, rateOf, gainOf, Costs, Kinds, Base, Heat, Arena, Reach,
+  begin, step, click, take, offer, spawn, xpFor,
+  Spells, Passives, MostLevel, MostSpells, Length, spellKeys,
+  damageOf, everyOf, haste, reach,
 } from '../src/rules.js';
 
 let passed = 0;
 const failures = [];
 const check = (what, ok, detail = '') => {
   if (ok) { passed++; return; }
-  failures.push(`${what}${detail ? ' — ' + detail : ''}`);
+  failures.push(what + (detail ? ' — ' + detail : ''));
 };
 
-// --- the numbers ----------------------------------------------------------------------------
+// --- the spell book ---------------------------------------------------------------------------
 
-check('her yükseltmenin bedeli, adı ve açıklaması var',
-  Object.values(Costs).every((c) => c.first > 0 && c.step > 1 && c.says && c.tells));
+check('on büyü var', spellKeys.length === 10, `${spellKeys.length} tane`);
 
-check('yükseltme bedelleri hep artıyor',
-  ['damage', 'rate', 'gain'].every((k) => costOf(k, 5) > costOf(k, 4) && costOf(k, 1) > costOf(k, 0)));
+check('her büyünün adı, açıklaması, hasarı ve bekleme süresi var',
+  Object.values(Spells).every((s) => s.name && s.tells && s.damage > 0 && s.every > 0));
 
-check('ilk yükseltme ilk saniyelerde alınabilir',
-  Math.min(...Object.values(Costs).map((c) => c.first)) <= 10,
-  `en ucuzu ${Math.min(...Object.values(Costs).map((c) => c.first))}`);
+check('her büyü seviye atladıkça güçleniyor', Object.values(Spells).every((s) => s.per > 0));
 
-check('üç düşman türü de birbirinden farklı',
-  new Set(Object.values(Kinds).map((k) => `${k.speed}/${k.hp}`)).size === 3);
+check('her pasifin adı ve açıklaması var',
+  Object.values(Passives).every((p) => p.name && p.tells));
 
-// --- clicking -------------------------------------------------------------------------------
-
+// İki büyü aynı işi yapıyorsa biri fazlalık. "İş" = neye nişan aldığı + nasıl vurduğu.
 {
-  const s = begin(1);
-  spawn(s, 'walker', 0);
-  const before = s.shots.length;
-  click(s);
-  check('tıklamak ateş ediyor', s.shots.length === before + 1);
-  check('tıklamak ısıtıyor', s.heat > 0);
+  const job = (s) => `${s.seeks || '-'}|${s.instant || (s.falls ? 'falls' : s.orbit ? 'orbit' : s.blast ? 'blast' : s.count ? 'fan' : 'single')}`;
+  const seen = new Map();
+  const same = [];
+  for (const [k, s] of Object.entries(Spells)) {
+    const j = job(s);
+    if (seen.has(j)) same.push(`${seen.get(j)} = ${k}`);
+    else seen.set(j, k);
+  }
+  check('iki büyü aynı işi yapmıyor', same.length === 0, same.join(', '));
 }
 
-{
-  const s = begin(2);
-  spawn(s, 'walker', 0);
-  for (let i = 0; i < 50; i++) click(s);
-  check('ısı tavanı aşmıyor', s.heat <= Heat.most + 1e-9, String(s.heat));
-  check('arka arkaya tıklamak sınırsız mermi vermiyor', s.shots.length < 50, `${s.shots.length} mermi`);
+// --- her büyü gerçekten bir şey yapıyor mu --------------------------------------------------
+
+for (const key of spellKeys) {
+  const s = begin(42);
+  s.spells = { [key]: 1 };
+  s.cools = { [key]: 0 };
+  for (let i = 0; i < 6; i++) spawn(s, 'walker', (i / 6) * Math.PI * 2);
+  // Nova'nın yarıçapının içinde dursunlar, yoksa test büyüyü değil mesafeyi ölçer.
+  for (const f of s.foes) f.r = 140;
+  const mine = new Set(s.foes.map((f) => f.id));
+  const before = s.foes.reduce((a, f) => a + f.hp, 0);
+  // SADECE başta koyduklarım sayılır: ilk yazdığımda sahadaki toplam canı ölçüyordum ve o sekiz
+  // saniye boyunca yenileri doğduğu için toplam ARTIYORDU - test, hiç hasar verilmedi diyordu.
+  for (let i = 0; i < 60 * 8; i++) step(s, 1 / 60);
+  const after = s.foes.filter((f) => mine.has(f.id)).reduce((a, f) => a + f.hp, 0);
+  check(`${Spells[key].name} bir şeye hasar veriyor`, after < before * 0.9,
+    `${before.toFixed(0)} -> ${after.toFixed(0)}`);
 }
 
-{
-  const s = begin(3);
-  const cold = rateOf(s);
-  s.heat = Heat.most;
-  check('ısı atış hızını artırıyor', rateOf(s) > cold * 1.5, `${cold.toFixed(2)} -> ${rateOf(s).toFixed(2)}`);
-  for (let i = 0; i < 200; i++) step(s, 1 / 60);
-  check('ısı kendiliğinden soğuyor', s.heat === 0);
-}
+// --- seviye atlama ------------------------------------------------------------------------------
 
-{
-  const s = begin(4);
-  s.coins = 999;
-  const before = damageOf(s);
-  buy(s, 'damage');
-  check('yükseltme para harcıyor ve işe yarıyor', s.coins < 999 && damageOf(s) > before);
-  s.coins = 0;
-  check('parası yetmeyen yükseltme alınmıyor', buy(s, 'damage') === false && canBuy(s, 'damage') === false);
-}
-
-// --- the fight ------------------------------------------------------------------------------
-
-{
-  const s = begin(5);
-  const f = spawn(s, 'walker', 0);
-  for (let i = 0; i < 60 * 20; i++) step(s, 1 / 60);
-  check('bir düşman öldürülebiliyor', s.kills > 0);
-  check('öldürmek para veriyor', s.coins > 0);
-}
-
-{
-  // Hiç ateş etmeyen bir kule yenmeli: yoksa kaybetmek diye bir şey yok
-  const s = begin(6);
-  s.levels.damage = -2;        // silahı etkisiz kıl
-  for (let i = 0; i < 60 * 120 && s.alive; i++) step(s, 1 / 60);
-  check('savunmasız kule düşüyor', !s.alive, `${s.t.toFixed(0)} saniye dayandı`);
-}
+check('ilk seviye iki öldürmeye geliyor', xpFor(1) === 2, String(xpFor(1)));
+check('her seviye bir öncekinden pahalı', [1, 2, 3, 5, 9].every((n) => xpFor(n + 1) > xpFor(n)));
 
 {
   const s = begin(7);
-  const early = spawnEvery(s);
-  s.t = 180;
-  check('zamanla daha sık geliyorlar', spawnEvery(s) < early * 0.5, `${early.toFixed(2)} -> ${spawnEvery(s).toFixed(2)}`);
-  check('geliş aralığının bir tabanı var', spawnEvery({ ...s, t: 100000 }) > 0.05);
+  s.xp = 99;
+  step(s, 1 / 60);
+  check('yeterli deneyim seçim ekranını açıyor', s.phase === 'picking' && s.choices.length === 3);
+  check('seçenekler birbirinden farklı',
+    new Set(s.choices.map((c) => c.what + c.key)).size === s.choices.length);
+  const had = Object.keys(s.spells).length + Object.keys(s.passives).length;
+  take(s, 0);
+  check('seçim oyunu devam ettiriyor', s.phase === 'playing');
+  check('seçilen şey gerçekten alınıyor',
+    Object.keys(s.spells).length + Object.keys(s.passives).length >= had);
 }
 
 {
   const s = begin(8);
-  const f = spawn(s, 'walker', 0);
-  const start = f.r;
-  for (let i = 0; i < 60; i++) step(s, 1 / 60);
-  check('düşmanlar kuleye doğru yürüyor', s.foes[0] && s.foes[0].r < start);
+  s.spells = { bolt: MostLevel, fireball: MostLevel };
+  check('tavana vuran büyü tekrar sunulmuyor',
+    !offer(s).some((p) => p.what === 'spell' && s.spells[p.key] >= MostLevel));
 }
 
-// --- the bot --------------------------------------------------------------------------------
+{
+  const s = begin(9);
+  s.spells = {};
+  for (const k of spellKeys.slice(0, MostSpells)) s.spells[k] = 1;
+  check('altı büyüden sonra yeni büyü sunulmuyor',
+    !offer(s).some((p) => p.what === 'spell' && !s.spells[p.key]));
+}
 
-/**
- * Makul bir oyuncu: saniyede altı kere tıklar ve parası yettiğinde en ucuz yükseltmeyi alır.
- *
- * Altı, sürdürülebilir bir tempo. Saniyede yirmi tıklayan bir bot, oyunun fare hızı testi olup
- * olmadığını söylemez - sadece botun fare olmadığını söyler.
- */
-function botRun(seed, clicksPerSecond = 6, cap = 900) {
+// --- pasifler ------------------------------------------------------------------------------
+
+{
+  const s = begin(10);
+  const plain = damageOf(s, 'bolt');
+  s.passives.might = 2;
+  check('güç her şeyin hasarını artırıyor', damageOf(s, 'bolt') > plain * 1.25);
+  const slow = everyOf(s, 'bolt');
+  s.passives.haste = 3;
+  check('çeviklik bekleme süresini kısaltıyor', everyOf(s, 'bolt') < slow);
+  check('erim patlama yarıçapını büyütüyor', reach({ passives: { reach: 2 } }) > 1.3);
+}
+
+{
+  const s = begin(11);
+  s.wall = 40;
+  s.passives.mend = 2;
+  step(s, 1);
+  check('tamir duvarı onarıyor', s.wall > 40);
+  s.wall = s.maxWall;
+  step(s, 1);
+  check('tamir duvarı tavanın üstüne çıkarmıyor', s.wall <= s.maxWall);
+}
+
+// --- tıklamak ---------------------------------------------------------------------------------
+
+{
+  const s = begin(12);
+  const cold = haste(s);
+  for (let i = 0; i < 20; i++) click(s);
+  check('tıklamak büyüleri hızlandırıyor', haste(s) > cold * 1.4);
+  check('ısı tavanı aşmıyor', s.heat <= 1 + 1e-9);
+  for (let i = 0; i < 200; i++) step(s, 1 / 60);
+  check('ısı kendiliğinden soğuyor', s.heat === 0);
+}
+
+// --- bölüm --------------------------------------------------------------------------------------
+
+{
+  // Hiç büyüsü olmayan bir büyücü düşmeli, yoksa kaybetmek diye bir şey yok
+  const s = begin(13);
+  s.spells = {};
+  s.cools = {};
+  for (let i = 0; i < 60 * 300 && s.phase === 'playing'; i++) step(s, 1 / 60);
+  check('savunmasız duvar yıkılıyor', s.phase === 'lost', `${s.t.toFixed(0)} saniye`);
+}
+
+{
+  const s = begin(14);
+  s.t = Length - 0.005;
+  step(s, 1 / 60);
+  check('süre dolunca bölüm kazanılıyor', s.phase === 'won');
+}
+
+{
+  const s = begin(15);
+  spawn(s, 'walker', 0);
+  const start = s.foes[0].r;
+  for (let i = 0; i < 60; i++) step(s, 1 / 60);
+  check('düşmanlar duvara doğru yürüyor', s.foes[0] && s.foes[0].r < start);
+}
+
+{
+  const warm = begin(16);
+  warm.spells = {}; warm.cools = {};
+  const a = spawn(warm, 'walker', 0);
+  const from = a.r;
+  for (let i = 0; i < 60; i++) step(warm, 1 / 60);
+  const plain = from - warm.foes[0].r;
+
+  const cold = begin(16);
+  cold.spells = {}; cold.cools = {};
+  const b = spawn(cold, 'walker', 0);
+  b.chill = 5;
+  for (let i = 0; i < 60; i++) step(cold, 1 / 60);
+  const slowed = from - cold.foes[0].r;
+  check('soğuyan düşman yavaşlıyor', slowed < plain * 0.7, `${slowed.toFixed(0)} vs ${plain.toFixed(0)}`);
+}
+
+// --- the bot -----------------------------------------------------------------------------------
+
+/** Makul bir oyuncu: saniyede altı tıklar, seçimde yeni büyüyü tercih eder. */
+function botRun(seed, clicksPerSecond = 6) {
   const s = begin(seed);
   const dt = 1 / 60;
-  let sinceClick = 0;
-  const marks = {};
-  while (s.alive && s.t < cap) {
-    sinceClick += dt;
-    if (sinceClick >= 1 / clicksPerSecond) { sinceClick = 0; click(s); }
-    // en ucuzunu al, hangisi olursa
-    for (;;) {
-      const best = ['damage', 'rate', 'gain']
-        .map((k) => ({ k, c: costOf(k, s.levels[k]) }))
-        .sort((a, b) => a.c - b.c)
-        .find((x) => s.coins >= x.c);
-      if (!best) break;
-      buy(s, best.k);
+  let since = 0;
+  let guard = 0;
+  while ((s.phase === 'playing' || s.phase === 'picking') && guard++ < 60 * 400) {
+    if (s.phase === 'picking') {
+      const i = s.choices.findIndex((c) => c.what === 'spell' && !c.up);
+      take(s, i >= 0 ? i : 0);
+      continue;
     }
+    since += dt;
+    if (since >= 1 / clicksPerSecond) { since = 0; click(s); }
     step(s, dt);
     s.events.length = 0;
-    for (const m of [30, 60, 120, 180]) if (!marks[m] && s.t >= m) marks[m] = { hp: s.hp, kills: s.kills, upgrades: s.levels.damage + s.levels.rate + s.levels.gain };
   }
-  return { lived: s.t, kills: s.kills, levels: s.levels, marks, survived: s.alive };
+  return { won: s.phase === 'won', t: s.t, level: s.level, kills: s.kills, wall: s.wall };
 }
 
 const runs = [];
 for (let i = 1; i <= 60; i++) runs.push(botRun(i * 7919));
-const lived = runs.map((r) => r.lived).sort((a, b) => a - b);
-const mid = lived[Math.floor(lived.length / 2)];
+const won = runs.filter((r) => r.won);
 const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+const lived = runs.map((r) => r.t).sort((a, b) => a - b);
+const levels = runs.map((r) => r.level).sort((a, b) => a - b);
 
-console.log('saniyede 6 tıklayan bir oyuncu, 60 koşu:');
-console.log(`  bir koşu   en kısa ${fmt(lived[0])}   ortanca ${fmt(mid)}   en uzun ${fmt(lived[lived.length - 1])}`);
-for (const m of [30, 60, 120, 180]) {
-  const got = runs.map((r) => r.marks[m]).filter(Boolean);
-  if (!got.length) { console.log(`  ${m}. saniye  kimse göremedi`); continue; }
-  const avg = (f) => (got.reduce((a, g) => a + f(g), 0) / got.length).toFixed(0);
-  console.log(`  ${String(m).padStart(3)}. saniye  can ${avg((g) => g.hp)}   ${avg((g) => g.kills)} ölü   ${avg((g) => g.upgrades)} yükseltme`);
-}
+console.log(`saniyede 6 tıklayan bir oyuncu, 60 koşu (bölüm ${fmt(Length)}):`);
+console.log(`  bitirme oranı  %${(won.length / runs.length * 100).toFixed(0)}`);
+console.log(`  dayanma        en kısa ${fmt(lived[0])}   ortanca ${fmt(lived[30])}   en uzun ${fmt(lived[59])}`);
+console.log(`  seviye         en düşük ${levels[0]}   ortanca ${levels[30]}   en yüksek ${levels[59]}`);
+console.log(`  bitirenin kalan duvarı  ortalama ${won.length ? (won.reduce((a, r) => a + r.wall, 0) / won.length).toFixed(0) : '-'}`);
 
 const slow = [];
-for (let i = 1; i <= 40; i++) slow.push(botRun(i * 104729, 2).lived);
+for (let i = 1; i <= 40; i++) slow.push(botRun(i * 104729, 1).t);
 slow.sort((a, b) => a - b);
-console.log(`  yavaş tıklayan (2/sn): ortanca ${fmt(slow[Math.floor(slow.length / 2)])}`);
+console.log(`  neredeyse hiç tıklamayan (1/sn): ortanca ${fmt(slow[20])}`);
 
-// Bir koşu bitmeli: sonsuza kadar ayakta kalan bir kule, yükseltmelerin hiçbirinin önemi
-// olmadığını söyler - alsan da almasan da aynı yere varıyorsun.
-check('koşu bir yerde bitiyor', runs.every((r) => !r.survived), `${runs.filter((r) => r.survived).length} koşu 15 dakikayı geçti`);
-check('bir koşu en az iki dakika sürüyor', mid > 120, `ortanca ${fmt(mid)}`);
-check('bir koşu on dakikayı geçmiyor', mid < 600, `ortanca ${fmt(mid)}`);
-
-// Ve tıklamak işe yaramalı. Hızlı tıklayanla yavaş tıklayan aynı yere varıyorsa, oyunun
-// adı clicker ama kendisi değil.
-check('tıklamak koşuyu uzatıyor', mid > slow[Math.floor(slow.length / 2)] * 1.15,
-  `6/sn ${fmt(mid)} vs 2/sn ${fmt(slow[Math.floor(slow.length / 2)])}`);
+check('bölüm bitirilebiliyor', won.length > 0, `%${(won.length / runs.length * 100).toFixed(0)}`);
+check('bölüm garanti değil', won.length < runs.length, `%${(won.length / runs.length * 100).toFixed(0)}`);
+check('oyuncu bir sürü seçim yapıyor', levels[30] >= 12, `ortanca seviye ${levels[30]}`);
+check('tıklamak işe yarıyor', lived[30] > slow[20] * 1.08, `6/sn ${fmt(lived[30])} vs 1/sn ${fmt(slow[20])}`);
 
 console.log('');
 if (failures.length) {

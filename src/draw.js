@@ -3,62 +3,71 @@
 // One rule holds the whole look together: there are exactly two inks. A pale sky and pure black.
 // Nothing is shaded, nothing is textured, nothing is coloured - a thing is either light or it is
 // a shape cut out of the light. That is a style rather than a shortage, which matters, because
-// across four games the absence of artwork has been something to hide. A silhouette has nothing
-// to hide: it is a shape, and a shape drawn with care is finished.
+// across four games the absence of artwork was something to hide. A silhouette has nothing to
+// hide: it is a shape, and a shape drawn with care is finished.
 //
-// What carries it is the outline and the staging. Figures are drawn standing up even though they
-// walk in from every side, because a shape seen from above is a blob and a shape seen from the
-// side is a creature. Far ones are small and high, near ones are large and low, and everything is
-// drawn back to front so the arena has depth without a single pixel of perspective maths.
+// Figures are drawn standing even though they walk in from every side, because a shape seen from
+// above is a blob and a shape seen from the side is a creature. Far ones small and high, near
+// ones large and low, everything drawn back to front.
+//
+// The middle is kept deliberately low. A tall thing in the centre of a ring hides whatever walks
+// up behind it, and when they come from all sides that is half the board - which is exactly what
+// the first version did with a tower. A waist-high wall with a figure inside it reads as a place
+// worth defending without standing in front of anything.
 
-import { Arena, Reach, TowerRadius, placeOf, Costs, costOf, canBuy, damageOf, rateOf, gainOf } from './rules.js';
+import { Arena, Wall, Reach, Length, placeOf, Spells, Passives, MostLevel } from './rules.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
+const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-/** Where the arena sits and how big it is drawn. */
 export function stage(w, h) {
   const scale = Math.min(w / (Arena * 2.35), h / (Arena * 1.62));
   return { cx: w / 2, cy: h * 0.545, scale, squash: 0.5 };
 }
 
-/** World point to screen point. */
-function place(S, x, y) {
-  return [S.cx + x * S.scale, S.cy + y * S.scale * S.squash];
+const place = (S, x, y) => [S.cx + x * S.scale, S.cy + y * S.scale * S.squash];
+const depth = (y) => 0.66 + ((y + Arena) / (Arena * 2)) * 0.62;
+
+function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
+  ctx.fillStyle = colour;
+  ctx.font = `${weight} ${size}px ${Face}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
 }
 
-/** How big a figure standing at this depth is drawn. Near the bottom of the screen is near you. */
-function depth(y) {
-  return 0.66 + ((y + Arena) / (Arena * 2)) * 0.62;
+function wrap(ctx, text, x, y, width, size, lead, colour) {
+  ctx.fillStyle = colour;
+  ctx.font = `500 ${size}px ${Face}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    const next = line ? line + ' ' + word : word;
+    if (ctx.measureText(next).width > width && line) { lines.push(line); line = word; }
+    else line = next;
+  }
+  if (line) lines.push(line);
+  const top = y - ((lines.length - 1) * lead) / 2;
+  lines.forEach((l, i) => ctx.fillText(l, x, top + i * lead));
 }
 
 // --- the scenery ------------------------------------------------------------------------------
 
-/**
- * The ring of dead trees at the edge.
- *
- * Fixed, worked out once from a seed so they do not crawl about between frames. They do nothing
- * and they are most of why the arena looks like a place rather than a circle - a silhouette needs
- * something at the horizon to be a silhouette against.
- */
 const Trees = (() => {
   let s = 20260413;
   const roll = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const out = [];
   for (let i = 0; i < 52; i++) {
     const a = (i / 52) * Math.PI * 2 + (roll() - 0.5) * 0.07;
-    // Nothing in the near arc. A tree at the front of the ring is drawn biggest, lands across the
-    // upgrade buttons and stands exactly where the creatures walk in. Leaving the front open
-    // reads as the near edge of a clearing, which is what it is.
-    // `front` is 0 straight towards the camera and PI straight away from it. Written the other
-    // way round the first time, which opened the gap at the back where nothing needed clearing.
+    // Nothing in the near arc: a tree at the front of the ring is drawn biggest, lands across the
+    // writing and stands where the creatures walk in. An open near edge reads as a clearing.
     const front = Math.abs(((a - Math.PI / 2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     if (front < 0.72) continue;
     out.push({
       a,
-      // Pushed out past the arena and kept low. At the old radius the near ones stood right where
-      // the creatures walk and across the buttons, and a frame you have to look past is not a
-      // frame.
       r: Arena * (1.17 + roll() * 0.12),
       h: 40 + roll() * 74,
       lean: (roll() - 0.5) * 0.5,
@@ -92,7 +101,6 @@ function tree(ctx, S, t) {
     ctx.rotate(t.lean * 0.2);
     ctx.lineWidth = 5;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(t.lean * t.h * 0.3, -t.h); ctx.stroke();
-    // a few bare limbs, which is all a dead tree is
     ctx.lineWidth = 3;
     t.limbs.forEach((v, i) => {
       const at = -t.h * (0.45 + i * 0.2);
@@ -106,92 +114,119 @@ function tree(ctx, S, t) {
   ctx.restore();
 }
 
-// --- the tower --------------------------------------------------------------------------------
+// --- the keep ---------------------------------------------------------------------------------
 
-function tower(ctx, S, state, flash) {
+const Stones = 34;
+
+/**
+ * Half the wall: the far half drawn before the wizard, the near half after.
+ *
+ * Stones fall off it as it is broken. The bar at the top says the same thing as a number, but the
+ * wall is where you are already looking - a gap in the ring is the only reading of "this is going
+ * badly" that arrives without being looked for.
+ */
+function wallHalf(ctx, S, state, near) {
+  const standing = state.wall / state.maxWall;
+  ctx.fillStyle = Black;
+  for (let i = 0; i < Stones; i++) {
+    const a = (i / Stones) * Math.PI * 2;
+    if ((Math.sin(a) > 0) !== near) continue;
+    // a scattered but repeatable order of collapse, rather than a tidy arc vanishing
+    if (((i * 7919) % Stones) / Stones > standing) continue;
+
+    const x = Math.cos(a) * Wall, y = Math.sin(a) * Wall;
+    const [px, py] = place(S, x, y);
+    const k = depth(y) * S.scale;
+    // Low. It is a thing to stand behind, not a thing to hide behind - the point of this middle
+    // is that nothing in it blocks the view of what is walking up.
+    const tall = (i % 2 ? 19 : 13) * k;
+    const wide = 15 * k;
+    ctx.beginPath();
+    ctx.roundRect(px - wide / 2, py - tall, wide, tall + 3 * k, 2 * k);
+    ctx.fill();
+  }
+}
+
+function platform(ctx, S) {
   const [px, py] = place(S, 0, 0);
-  const k = S.scale * 1.52;
+  const shade = ctx.createRadialGradient(px, py, 0, px, py, Wall * 1.9 * S.scale);
+  shade.addColorStop(0, 'rgba(13,12,11,0.2)');
+  shade.addColorStop(1, 'rgba(13,12,11,0)');
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(1, S.squash);
+  ctx.fillStyle = shade;
+  ctx.beginPath(); ctx.arc(0, 0, Wall * 1.9 * S.scale, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(13,12,11,0.4)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, Wall * S.scale, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * The wizard.
+ *
+ * A robe, a hat and a staff, and no face - which is the whole trick of a silhouette: leave out
+ * what cannot be read and nobody looks for it. The staff comes up when something is cast, so the
+ * figure is visibly the cause of what happens rather than something standing next to it.
+ */
+function wizard(ctx, S, state) {
+  const [px, py] = place(S, 0, 0);
+  // He is the hero of the picture and he was smaller than the things attacking him, which read
+  // as a figurine someone had left on the platform.
+  const k = S.scale * 1.55;
+  const sway = Math.sin(state.t * 1.6) * 1.2;
+  const lift = state.cast;
 
   ctx.save();
   ctx.translate(px, py);
-
-  // the shadow it throws on the ground
-  const shade = ctx.createRadialGradient(0, 0, 0, 0, 0, TowerRadius * 2.4 * S.scale);
-  shade.addColorStop(0, 'rgba(13,12,11,0.22)');
-  shade.addColorStop(1, 'rgba(13,12,11,0)');
-  ctx.save();
-  ctx.scale(1, S.squash);
-  ctx.fillStyle = shade;
-  ctx.beginPath();
-  ctx.arc(0, 0, TowerRadius * 2.4 * S.scale, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
   ctx.scale(k, k);
   ctx.fillStyle = Black;
+  ctx.strokeStyle = Black;
+  ctx.lineCap = 'round';
 
-  // a tapering keep, widest at the foot
+  // the robe, wide at the hem
   ctx.beginPath();
-  ctx.moveTo(-46, 6);
-  ctx.lineTo(-33, -124);
-  ctx.lineTo(33, -124);
-  ctx.lineTo(46, 6);
+  ctx.moveTo(-24, 0);
+  ctx.quadraticCurveTo(-15, -40, -10, -62);
+  ctx.lineTo(10, -62);
+  ctx.quadraticCurveTo(15, -40, 24, 0);
   ctx.closePath();
   ctx.fill();
 
-  // battlements
-  for (let i = -2; i <= 2; i++) {
-    ctx.fillRect(i * 17 - 7, -148, 14, 26);
-  }
-  ctx.fillRect(-38, -132, 76, 12);
-
-  // a slit of a window, cut back out of the black
-  ctx.fillStyle = Pale;
+  // head, then the hat: a long leaning cone with a kink in it
+  ctx.beginPath(); ctx.arc(0, -70, 9, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath();
-  ctx.roundRect(-6, -96, 12, 30, 6);
+  ctx.moveTo(-17, -76);
+  ctx.quadraticCurveTo(-6, -104, 10 + sway, -124);
+  ctx.quadraticCurveTo(2, -98, 17, -76);
+  ctx.closePath();
   ctx.fill();
 
-  // the gun on top, which turns to face whatever it is shooting
-  ctx.save();
-  ctx.translate(0, -158);
-  ctx.fillStyle = Black;
-  ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.fill();
-  // the barrel is drawn in flat angle, squashed the same way the ground is
-  const a = state.aim;
-  ctx.rotate(Math.atan2(Math.sin(a) * S.squash, Math.cos(a)));
-  const reach = 46 - Math.abs(Math.sin(a)) * 12;
-  ctx.beginPath();
-  ctx.roundRect(0, -6, reach, 12, 6);
-  ctx.fill();
-
-  // The flash. Clicking is the whole game, so the thing a click causes has to be visible at a
-  // glance - without it the only sign the gun went off is a dot leaving somewhere.
-  if (flash > 0) {
-    ctx.globalAlpha = Math.min(1, flash * 2.2);
+  // the staff arm, which rises as a spell goes off
+  const hand = -52 - lift * 22;
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(8, -58); ctx.lineTo(26, hand); ctx.stroke();
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(26, hand + 34); ctx.lineTo(26, hand - 44); ctx.stroke();
+  ctx.beginPath(); ctx.arc(26, hand - 48, 7 + lift * 7, 0, Math.PI * 2); ctx.fill();
+  if (lift > 0.1) {
+    ctx.globalAlpha = lift;
     ctx.beginPath();
-    for (let i = 0; i < 7; i++) {
-      const t = (i / 7) * Math.PI * 2;
-      const out = (i % 2 ? 9 : 22) * (0.6 + flash * 0.7);
-      const fx = reach + 6 + Math.cos(t) * out, fy = Math.sin(t) * out;
+    for (let i = 0; i < 8; i++) {
+      const t = (i / 8) * Math.PI * 2;
+      const out = (i % 2 ? 7 : 19) * (0.5 + lift);
+      const fx = 26 + Math.cos(t) * out, fy = hand - 48 + Math.sin(t) * out;
       i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
     }
     ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 1;
   }
   ctx.restore();
-
-  ctx.restore();
 }
 
 // --- the creatures ----------------------------------------------------------------------------
 
-/**
- * One enemy, drawn standing.
- *
- * Three outlines doing three jobs: a plain walker, a runner tipped forward, and a brute that is
- * mostly shoulders. The legs are two lines swung out of phase, which is the whole animation - a
- * silhouette only has to move correctly at the joints, because there is nothing else to look at.
- */
 function figure(ctx, S, f) {
   const p = placeOf(f);
   const [px, py] = place(S, p.x, p.y);
@@ -203,12 +238,17 @@ function figure(ctx, S, f) {
   ctx.translate(px, py);
 
   ctx.fillStyle = 'rgba(13,12,11,0.2)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 16 * k, 5 * k, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 16 * k, 5 * k, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Something slowed gets a ring at its feet. In two inks there is no colour to tint it with, and
+  // a mark on the ground is read without being explained.
+  if (f.chill > 0) {
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 2 * k;
+    ctx.beginPath(); ctx.ellipse(0, 0, 21 * k, 7 * k, 0, 0, Math.PI * 2); ctx.stroke();
+  }
 
   ctx.scale(k, k);
-  // a struck one flinches away from the tower
   if (f.hurt > 0) ctx.translate(Math.cos(f.a) * f.hurt * 4, Math.sin(f.a) * f.hurt * 2);
   ctx.translate(0, -bob);
 
@@ -218,24 +258,20 @@ function figure(ctx, S, f) {
 
   if (f.key === 'brute') {
     ctx.lineWidth = 9;
-    // legs
     ctx.beginPath();
     ctx.moveTo(-7, -26); ctx.lineTo(-9 + swing * 7, 0);
     ctx.moveTo(7, -26); ctx.lineTo(9 - swing * 7, 0);
     ctx.stroke();
-    // a slab of a body with shoulders above the head
     ctx.beginPath();
     ctx.moveTo(-15, -26); ctx.lineTo(-24, -52); ctx.lineTo(-17, -62);
     ctx.lineTo(17, -62); ctx.lineTo(24, -52); ctx.lineTo(15, -26);
     ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.arc(0, -58, 9, 0, Math.PI * 2); ctx.fill();
-    // arms hanging long
     ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.moveTo(-21, -54); ctx.lineTo(-26 - swing * 4, -24);
     ctx.moveTo(21, -54); ctx.lineTo(26 + swing * 4, -24);
     ctx.stroke();
-
   } else if (f.key === 'runner') {
     ctx.rotate(-0.16);
     ctx.lineWidth = 4.5;
@@ -252,7 +288,6 @@ function figure(ctx, S, f) {
     ctx.moveTo(0, -40); ctx.lineTo(-swing * 12, -28);
     ctx.moveTo(0, -40); ctx.lineTo(swing * 12, -28);
     ctx.stroke();
-
   } else {
     ctx.lineWidth = 5;
     ctx.beginPath();
@@ -273,94 +308,296 @@ function figure(ctx, S, f) {
   ctx.restore();
 }
 
-// --- the writing ------------------------------------------------------------------------------
+// --- the spells -------------------------------------------------------------------------------
 
-const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+/** How high above the ground a spell flies, so a bolt is never mistaken for something on it. */
+const Flight = 58;
 
-function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
-  ctx.fillStyle = colour;
-  ctx.font = `${weight} ${size}px ${Face}`;
-  ctx.textAlign = align;
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, x, y);
+function spellFx(ctx, S, state) {
+  ctx.fillStyle = Black;
+  ctx.strokeStyle = Black;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const up = Flight * S.scale * S.squash;
+
+  for (const e of state.fx) {
+    const k = Math.max(0, e.life / e.max);
+
+    if (e.kind === 'nova' || e.kind === 'burst' || e.kind === 'frost') {
+      const grow = e.kind === 'nova' ? 1 - k : 1;
+      const [ex, ey] = place(S, e.x, e.y);
+      ctx.globalAlpha = k;
+      ctx.lineWidth = (e.kind === 'frost' ? 3 : 6) * S.scale * k;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - up, e.r * grow * S.scale, e.r * grow * S.scale * S.squash, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // frost throws spikes instead of a clean ring, so the two bursts read apart at a glance
+      if (e.kind === 'frost') {
+        ctx.lineWidth = 3 * S.scale;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const [ax, ay] = place(S, e.x + Math.cos(a) * e.r * 0.55, e.y + Math.sin(a) * e.r * 0.55);
+          const [bx, by] = place(S, e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r);
+          ctx.beginPath(); ctx.moveTo(ax, ay - up); ctx.lineTo(bx, by - up); ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (e.kind === 'chain') {
+      ctx.globalAlpha = k;
+      ctx.lineWidth = 4 * S.scale;
+      ctx.beginPath();
+      for (let i = 0; i < e.points.length - 1; i++) {
+        const [ax, ay] = place(S, e.points[i].x, e.points[i].y);
+        const [bx, by] = place(S, e.points[i + 1].x, e.points[i + 1].y);
+        ctx.moveTo(ax, ay - up);
+        // three kinks, so it reads as lightning and not as a ruler
+        for (let j = 1; j <= 3; j++) {
+          const t = j / 4;
+          const jitter = (j % 2 ? 1 : -1) * 13 * S.scale;
+          ctx.lineTo(ax + (bx - ax) * t + jitter, ay + (by - ay) * t - up + jitter * 0.5);
+        }
+        ctx.lineTo(bx, by - up);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+    } else if (e.kind === 'beam') {
+      ctx.globalAlpha = k;
+      const [ax, ay] = place(S, Math.cos(e.a) * Wall, Math.sin(e.a) * Wall);
+      const [bx, by] = place(S, Math.cos(e.a) * Arena * 1.25, Math.sin(e.a) * Arena * 1.25);
+      ctx.lineWidth = e.wide * S.scale * k;
+      ctx.beginPath(); ctx.moveTo(ax, ay - up); ctx.lineTo(bx, by - up); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- things still in the air
+  for (const b of state.shots) {
+    const [bx, by] = place(S, b.x, b.y);
+    const high = (Flight + (b.z || 0)) * S.scale * S.squash;
+    const size = (b.blast > 0 ? 9 : 5) * S.scale;
+    ctx.beginPath(); ctx.arc(bx, by - high, size, 0, Math.PI * 2); ctx.fill();
+    // a meteor gets a tail and a mark where it will land, or it reads as a dot hanging in the sky
+    if (b.falls) {
+      ctx.lineWidth = size;
+      ctx.beginPath();
+      ctx.moveTo(bx, by - high); ctx.lineTo(bx, by - high - 46 * S.scale);
+      ctx.stroke();
+      ctx.lineWidth = 2 * S.scale;
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.ellipse(bx, by, b.blast * S.scale, b.blast * S.scale * S.squash, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- the orbiting blade
+  if (state.spells.blade) {
+    const ring = 150 + state.spells.blade * 14;
+    const bx = Math.cos(state.bladeAt) * ring, by = Math.sin(state.bladeAt) * ring;
+    const [px, py] = place(S, bx, by);
+    const k = depth(by) * S.scale;
+    ctx.save();
+    ctx.translate(px, py - up);
+    ctx.rotate(state.bladeAt * 3);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const out = (i % 2 ? 9 : 22) * k;
+      i ? ctx.lineTo(Math.cos(a) * out, Math.sin(a) * out) : ctx.moveTo(Math.cos(a) * out, Math.sin(a) * out);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
 }
 
-/** Where the three buttons are. Shared with the mouse, so one can never be drawn out of reach. */
-export function buttons(w, h) {
-  const kinds = ['damage', 'rate', 'gain'];
-  const bw = Math.min(228, (w - 80) / 3 - 16);
-  const bh = 74;
-  const total = kinds.length * bw + (kinds.length - 1) * 16;
+/** A small mark for each spell. The same vocabulary of shapes as the field uses. */
+function sigil(ctx, key, x, y, s, colour) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = s * 0.09;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const star = (n, inner, outer) => {
+    ctx.beginPath();
+    for (let i = 0; i < n * 2; i++) {
+      const a = (i / (n * 2)) * Math.PI * 2 - Math.PI / 2;
+      const o = (i % 2 ? inner : outer) * s;
+      i ? ctx.lineTo(Math.cos(a) * o, Math.sin(a) * o) : ctx.moveTo(Math.cos(a) * o, Math.sin(a) * o);
+    }
+    ctx.closePath();
+  };
+
+  if (key === 'bolt') { star(4, 0.14, 0.5); ctx.fill(); }
+  else if (key === 'shards') {
+    for (const dx of [-0.32, 0, 0.32]) {
+      ctx.beginPath();
+      ctx.moveTo(dx * s, -0.45 * s); ctx.lineTo(dx * s + 0.1 * s, 0.1 * s);
+      ctx.lineTo(dx * s - 0.1 * s, 0.1 * s);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (key === 'wisp') {
+    ctx.beginPath(); ctx.arc(0, 0, 0.26 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 0.46 * s, 0.6, 4.2); ctx.stroke();
+  } else if (key === 'fireball') {
+    ctx.beginPath();
+    ctx.moveTo(0, 0.5 * s);
+    ctx.quadraticCurveTo(-0.5 * s, 0.1 * s, -0.12 * s, -0.5 * s);
+    ctx.quadraticCurveTo(-0.02 * s, -0.14 * s, 0.22 * s, -0.28 * s);
+    ctx.quadraticCurveTo(0.5 * s, 0.14 * s, 0, 0.5 * s);
+    ctx.closePath(); ctx.fill();
+  } else if (key === 'frost') { star(6, 0.1, 0.5); ctx.stroke(); }
+  else if (key === 'lightning') {
+    ctx.beginPath();
+    ctx.moveTo(0.14 * s, -0.5 * s); ctx.lineTo(-0.22 * s, 0.02 * s); ctx.lineTo(0.04 * s, 0.02 * s);
+    ctx.lineTo(-0.1 * s, 0.5 * s); ctx.lineTo(0.26 * s, -0.06 * s); ctx.lineTo(0, -0.06 * s);
+    ctx.closePath(); ctx.fill();
+  } else if (key === 'laser') {
+    ctx.beginPath(); ctx.moveTo(-0.5 * s, 0.22 * s); ctx.lineTo(0.5 * s, -0.22 * s); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-0.42 * s, 0.2 * s, 0.12 * s, 0, Math.PI * 2); ctx.fill();
+  } else if (key === 'nova') {
+    for (const r of [0.22, 0.36, 0.5]) { ctx.beginPath(); ctx.arc(0, 0, r * s, 0, Math.PI * 2); ctx.stroke(); }
+  } else if (key === 'meteor') {
+    ctx.beginPath(); ctx.arc(0.08 * s, 0.14 * s, 0.24 * s, 0, Math.PI * 2); ctx.fill();
+    for (const o of [0, 0.18, -0.18]) {
+      ctx.beginPath();
+      ctx.moveTo(-0.5 * s + o * s, -0.42 * s); ctx.lineTo(-0.14 * s + o * s, -0.06 * s);
+      ctx.stroke();
+    }
+  } else if (key === 'blade') { star(8, 0.2, 0.5); ctx.fill(); }
+  else {
+    ctx.beginPath(); ctx.arc(0, 0, 0.44 * s, 0, Math.PI * 2); ctx.stroke();
+    if (key === 'might') { ctx.beginPath(); ctx.moveTo(-0.16 * s, 0.16 * s); ctx.lineTo(0.16 * s, -0.16 * s); ctx.stroke(); }
+    if (key === 'haste') { star(3, 0.1, 0.3); ctx.fill(); }
+    if (key === 'reach') { ctx.beginPath(); ctx.arc(0, 0, 0.2 * s, 0, Math.PI * 2); ctx.stroke(); }
+    if (key === 'mend') {
+      ctx.beginPath();
+      ctx.moveTo(-0.2 * s, 0); ctx.lineTo(0.2 * s, 0);
+      ctx.moveTo(0, -0.2 * s); ctx.lineTo(0, 0.2 * s);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// --- the writing ------------------------------------------------------------------------------
+
+/** Where the three cards sit. Shared with the mouse, so one can never be drawn out of reach. */
+export function cards(w, h) {
+  const cw = Math.min(252, (w - 90) / 3 - 20);
+  const ch = 268;
+  const total = 3 * cw + 2 * 20;
   let x = w / 2 - total / 2;
-  return kinds.map((kind) => {
-    const r = { kind, x, y: h - bh - 22, w: bw, h: bh };
-    x += bw + 16;
+  return [0, 1, 2].map((i) => {
+    const r = { i, x, y: h / 2 - ch / 2 + 20, w: cw, h: ch };
+    x += cw + 20;
     return r;
   });
 }
 
-export function hitButton(state, w, h, px, py) {
-  for (const b of buttons(w, h)) {
-    if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) return b.kind;
+export function hitCard(w, h, px, py) {
+  for (const c of cards(w, h)) {
+    if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) return c.i;
   }
   return null;
 }
 
-function panel(ctx, state, w, h, show) {
-  // --- the tower's own health, top left
-  const bw = Math.min(300, w * 0.26);
-  write(ctx, 'TOWER', 30, 34, 13, 700);
+function panel(ctx, state, w, h) {
+  // --- experience, right across the top, where it cannot be missed
+  const part = Math.max(0, Math.min(1, state.xp / state.need));
+  ctx.fillStyle = 'rgba(13,12,11,0.14)';
+  ctx.fillRect(0, 0, w, 11);
+  ctx.fillStyle = Black;
+  ctx.fillRect(0, 0, w * part, 11);
+  write(ctx, `LV ${state.level}`, 22, 34, 20, 800);
+
+  const left = Math.max(0, Length - state.t);
+  write(ctx, `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(Math.floor(left % 60)).padStart(2, '0')}`,
+    w / 2, 36, 27, 800, 'center');
+  write(ctx, `${state.kills} DOWN`, w - 22, 34, 13, 700, 'right');
+
+  const bw = Math.min(240, w * 0.2);
+  write(ctx, 'WALL', 22, 62, 11, 700);
   ctx.lineWidth = 2;
   ctx.strokeStyle = Black;
-  ctx.strokeRect(30, 46, bw, 16);
+  ctx.strokeRect(22, 72, bw, 13);
   ctx.fillStyle = Black;
-  ctx.fillRect(30, 46, bw * Math.max(0, state.hp) / state.maxHp, 16);
-  write(ctx, `${Math.ceil(state.hp)}`, 30 + bw + 12, 54, 15, 700);
+  ctx.fillRect(22, 72, bw * Math.max(0, state.wall) / state.maxWall, 13);
 
-  // --- the count, top right
-  write(ctx, String(state.coins), w - 30, 40, 38, 800, 'right');
-  write(ctx, 'COINS', w - 30, 68, 12, 700, 'right');
-  write(ctx, `${state.kills} DOWN`, w - 30, 92, 12, 600, 'right');
-
-  // --- time and the gun, top middle
-  const secs = Math.floor(state.t);
-  write(ctx, `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
-    w / 2, 40, 26, 800, 'center');
-  write(ctx, `${damageOf(state)} DMG   ·   ${rateOf(state).toFixed(1)}/SEC   ·   +${gainOf(state)} PER KILL`,
-    w / 2, 68, 12, 600, 'center');
-
-  // --- heat: the thing the clicking is actually doing, drawn where the clicking happens
   if (state.heat > 0.02) {
-    const hw = 220;
+    ctx.fillStyle = 'rgba(13,12,11,0.16)';
+    ctx.fillRect(w / 2 - 110, 56, 220, 6);
     ctx.fillStyle = Black;
-    ctx.globalAlpha = 0.18;
-    ctx.fillRect(w / 2 - hw / 2, 86, hw, 7);
-    ctx.globalAlpha = 1;
-    ctx.fillRect(w / 2 - hw / 2, 86, hw * state.heat, 7);
+    ctx.fillRect(w / 2 - 110, 56, 220 * state.heat, 6);
   }
 
-  // --- the three upgrades
-  for (const b of buttons(w, h)) {
-    const cost = costOf(b.kind, state.levels[b.kind]);
-    const can = canBuy(state, b.kind);
-    const lit = show.over === b.kind && can;
+  // --- what you are carrying
+  const owned = Object.keys(state.spells);
+  let y = h - 22 - (owned.length - 1) * 21;
+  write(ctx, 'SPELLS', 22, y - 24, 11, 700);
+  for (const key of owned) {
+    write(ctx, Spells[key].name, 22, y, 14, 600);
+    // pips rather than a number: read without being read
+    for (let i = 0; i < MostLevel; i++) {
+      ctx.fillStyle = Black;
+      ctx.globalAlpha = i < state.spells[key] ? 1 : 0.2;
+      ctx.beginPath(); ctx.arc(150 + i * 12, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    y += 21;
+  }
 
-    ctx.lineWidth = can ? 2.5 : 1.5;
-    ctx.strokeStyle = Black;
-    ctx.globalAlpha = can ? 1 : 0.32;
+  const kept = Object.keys(state.passives);
+  let py = h - 22 - (kept.length - 1) * 19;
+  for (const key of kept) {
+    write(ctx, `${Passives[key].name} ${state.passives[key]}`, w - 22, py, 13, 600, 'right');
+    py += 19;
+  }
+}
+
+function picking(ctx, state, w, h, show) {
+  ctx.fillStyle = 'rgba(236,231,220,0.9)';
+  ctx.fillRect(0, 0, w, h);
+
+  write(ctx, `LEVEL ${state.level}`, w / 2, h / 2 - 196, 40, 800, 'center');
+  write(ctx, 'TAKE ONE', w / 2, h / 2 - 162, 15, 600, 'center');
+
+  for (const r of cards(w, h)) {
+    const pick = state.choices[r.i];
+    if (!pick) continue;
+    const lit = show.overCard === r.i;
+    const book = pick.what === 'spell' ? Spells[pick.key] : Passives[pick.key];
+    const have = pick.what === 'spell' ? (state.spells[pick.key] || 0) : (state.passives[pick.key] || 0);
+    const top = r.y - (lit ? 8 : 0);
+    const cx = r.x + r.w / 2;
+
     if (lit) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10); ctx.fill();
     }
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 8); ctx.stroke();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = lit ? 3 : 2;
+    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10); ctx.stroke();
 
     const ink = lit ? Pale : Black;
-    write(ctx, Costs[b.kind].says, b.x + b.w / 2, b.y + 20, 14, 800, 'center', ink);
-    write(ctx, Costs[b.kind].tells, b.x + b.w / 2, b.y + 39, 11, 500, 'center', ink);
-    write(ctx, `${cost}`, b.x + b.w / 2, b.y + 59, 17, 800, 'center', ink);
-    write(ctx, `LV ${state.levels[b.kind]}`, b.x + 10, b.y + 12, 10, 700, 'left', ink);
-    ctx.globalAlpha = 1;
+    write(ctx, pick.up ? 'IMPROVE' : pick.what === 'spell' ? 'NEW SPELL' : 'NEW POWER',
+      cx, top + 26, 11, 800, 'center', ink);
+    write(ctx, book.name, cx, top + 56, 22, 800, 'center', ink);
+    sigil(ctx, pick.key, cx, top + 122, 40, ink);
+    wrap(ctx, book.tells, cx, top + 194, r.w - 30, 13, 18, ink);
+
+    for (let i = 0; i < MostLevel; i++) {
+      ctx.fillStyle = ink;
+      ctx.globalAlpha = i < have + 1 ? 1 : 0.22;
+      ctx.beginPath(); ctx.arc(cx - (MostLevel - 1) * 7 + i * 14, top + 240, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
+  write(ctx, 'click a card  ·  or press 1, 2, 3', w / 2, h / 2 + 180, 13, 500, 'center');
 }
 
 // --- the frame --------------------------------------------------------------------------------
@@ -368,7 +605,6 @@ function panel(ctx, state, w, h, show) {
 export function frame(ctx, w, h, state, show) {
   const S = stage(w, h);
 
-  // --- sky
   const sky = ctx.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, '#f6f3ec');
   sky.addColorStop(0.55, Pale);
@@ -376,7 +612,6 @@ export function frame(ctx, w, h, state, show) {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
 
-  // a low sun behind the tower, which is what makes it a silhouette and not a drawing
   const [sx, sy] = place(S, 0, -Arena * 0.45);
   const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, Math.max(w, h) * 0.42);
   sun.addColorStop(0, 'rgba(255,253,246,0.95)');
@@ -385,33 +620,27 @@ export function frame(ctx, w, h, state, show) {
   ctx.fillStyle = sun;
   ctx.fillRect(0, 0, w, h);
 
-  // --- the ground: a couple of faint rings, so distance is readable
-  ctx.strokeStyle = 'rgba(13,12,11,0.09)';
+  ctx.strokeStyle = 'rgba(13,12,11,0.08)';
   ctx.lineWidth = 2;
-  for (const r of [Reach, Arena * 0.45, Arena * 0.74, Arena]) {
+  for (const r of [Reach, Arena * 0.5, Arena * 0.78, Arena]) {
     ctx.beginPath();
     ctx.ellipse(S.cx, S.cy, r * S.scale, r * S.scale * S.squash, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  // --- everything with a position, back to front
+  platform(ctx, S);
+
   const things = [];
   for (const t of Trees) things.push({ y: Math.sin(t.a) * t.r, draw: () => tree(ctx, S, t) });
   for (const f of state.foes) things.push({ y: placeOf(f).y, draw: () => figure(ctx, S, f) });
-  things.push({ y: 0, draw: () => tower(ctx, S, state, show.flash) });
+  things.push({ y: -Wall, draw: () => wallHalf(ctx, S, state, false) });
+  things.push({ y: 0, draw: () => wizard(ctx, S, state) });
+  things.push({ y: Wall, draw: () => wallHalf(ctx, S, state, true) });
   things.sort((a, b) => a.y - b.y);
   for (const t of things) t.draw();
 
-  // --- the shots, over everything: they are the fastest thing on screen and must not be lost
-  ctx.fillStyle = Black;
-  for (const b of state.shots) {
-    const [bx, by] = place(S, b.x, b.y);
-    ctx.beginPath();
-    ctx.ellipse(bx, by - 150 * S.scale, 4.5 * S.scale, 4.5 * S.scale, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  spellFx(ctx, S, state);
 
-  // --- specks thrown off a death
   for (const p of show.bits) {
     const [bx, by] = place(S, p.x, p.y);
     ctx.globalAlpha = Math.max(0, p.life / p.max);
@@ -422,32 +651,32 @@ export function frame(ctx, w, h, state, show) {
   }
   ctx.globalAlpha = 1;
 
-  // --- coins floating off a kill
   for (const f of show.floats) {
     const [fx, fy] = place(S, f.x, f.y);
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 1.6));
-    write(ctx, f.text, fx, fy - f.rise, 17 * S.scale + 7, 800, 'center');
+    write(ctx, f.text, fx, fy - f.rise, 15 * S.scale + 6, 800, 'center');
     ctx.globalAlpha = 1;
   }
 
-  panel(ctx, state, w, h, show);
+  panel(ctx, state, w, h);
 
-  // --- the only words a new player gets
-  if (show.hint && state.t < 9) {
+  if (show.hint && state.t < 9 && state.phase === 'playing') {
     ctx.globalAlpha = Math.min(1, 9 - state.t);
-    write(ctx, 'CLICK ANYWHERE — THE MORE YOU CLICK, THE FASTER IT FIRES',
-      w / 2, h - 126, 15, 700, 'center');
+    write(ctx, 'YOUR SPELLS CAST THEMSELVES  —  CLICK TO MAKE THEM CAST FASTER',
+      w / 2, h - 118, 14, 700, 'center');
     ctx.globalAlpha = 1;
   }
 
-  // --- the end
-  if (!state.alive) {
-    ctx.fillStyle = 'rgba(236,231,220,0.88)';
+  if (state.phase === 'picking') picking(ctx, state, w, h, show);
+
+  if (state.phase === 'won' || state.phase === 'lost') {
+    ctx.fillStyle = 'rgba(236,231,220,0.9)';
     ctx.fillRect(0, 0, w, h);
-    write(ctx, 'THE TOWER FELL', w / 2, h / 2 - 54, 46, 800, 'center');
+    const won = state.phase === 'won';
+    write(ctx, won ? 'YOU HELD' : 'THE WALL FELL', w / 2, h / 2 - 54, 46, 800, 'center');
     const secs = Math.floor(state.t);
-    write(ctx, `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')} · ${state.kills} down`,
-      w / 2, h / 2 + 2, 20, 600, 'center');
+    write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
+      w / 2, h / 2 + 2, 19, 600, 'center');
     write(ctx, 'CLICK TO BEGIN AGAIN', w / 2, h / 2 + 52, 15, 700, 'center');
   }
 }
