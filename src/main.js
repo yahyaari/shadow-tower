@@ -15,8 +15,11 @@ function fresh() {
   return { bits: [], floats: [], overCard: null, hint: true, shake: 0 };
 }
 
+let dpr = 1;
+
 function size() {
   const scale = Math.min(window.devicePixelRatio || 1, 2);
+  dpr = scale;
   canvas.width = Math.floor(window.innerWidth * scale);
   canvas.height = Math.floor(window.innerHeight * scale);
   canvas.style.width = window.innerWidth + 'px';
@@ -89,7 +92,7 @@ function tick(now) {
   if (show.shake > 0.01) {
     ctx.translate((Math.random() - 0.5) * show.shake * 7, (Math.random() - 0.5) * show.shake * 7);
   }
-  frame(ctx, canvas.width, canvas.height, state, show);
+  frame(ctx, canvas.width, canvas.height, state, show, dpr);
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -103,7 +106,7 @@ function spot(e) {
 addEventListener('pointermove', (e) => {
   pointer = spot(e);
   show.overCard = state.phase === 'picking'
-    ? hitCard(canvas.width, canvas.height, pointer.x, pointer.y)
+    ? hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr)
     : null;
   canvas.style.cursor = show.overCard !== null ? 'pointer' : 'crosshair';
 });
@@ -111,6 +114,7 @@ addEventListener('pointermove', (e) => {
 addEventListener('pointerdown', (e) => {
   e.preventDefault();
   pointer = spot(e);
+  if (state.phase === 'picking') show.overCard = hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr);
   if (state.phase === 'won' || state.phase === 'lost') {
     state = begin(Date.now());
     show = fresh();
@@ -119,7 +123,7 @@ addEventListener('pointerdown', (e) => {
   }
   if (state.phase === 'picking') {
     // Only a card does anything while choosing. A stray click must not take one for you.
-    const i = hitCard(canvas.width, canvas.height, pointer.x, pointer.y);
+    const i = hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr);
     if (i !== null) { take(state, i); show.overCard = null; }
     return;
   }
@@ -138,5 +142,5 @@ addEventListener('keydown', (e) => {
 addEventListener('contextmenu', (e) => e.preventDefault());
 
 window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, take };
-window.__cards = cards;
+window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

@@ -21,9 +21,19 @@ const Black = '#0d0c0b';
 const Pale = '#ece7dc';
 const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
+/**
+ * Where the arena sits and how flat it is drawn.
+ *
+ * The squash adapts. On a wide screen a half-flattened circle reads as ground seen at an angle;
+ * on a phone held upright the same circle is limited by the width and leaves two thirds of the
+ * screen empty above and below it. Rounding it out on a tall screen uses that height without
+ * moving anything in the world - the positions are unchanged, only how they are projected.
+ */
 export function stage(w, h) {
   const scale = Math.min(w / (Arena * 2.35), h / (Arena * 1.62));
-  return { cx: w / 2, cy: h * 0.545, scale, squash: 0.5 };
+  const room = h / (Arena * 2 * scale);
+  const squash = Math.max(0.5, Math.min(0.92, room * 0.62));
+  return { cx: w / 2, cy: h * (squash > 0.7 ? 0.5 : 0.545), scale, squash };
 }
 
 const place = (S, x, y) => [S.cx + x * S.scale, S.cy + y * S.scale * S.squash];
@@ -487,86 +497,112 @@ function sigil(ctx, key, x, y, s, colour) {
 // --- the writing ------------------------------------------------------------------------------
 
 /** Where the three cards sit. Shared with the mouse, so one can never be drawn out of reach. */
-export function cards(w, h) {
-  const cw = Math.min(252, (w - 90) / 3 - 20);
-  const ch = 268;
-  const total = 3 * cw + 2 * 20;
+/**
+ * Where the three cards sit. Shared with the mouse, so one can never be drawn out of reach.
+ *
+ * On a phone held upright three cards across would be the width of a thumb each, so below a
+ * certain width they stack instead. Same three rectangles either way, and the hit test reads
+ * the same list, so neither layout can disagree with where the finger lands.
+ */
+export function cards(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const tall = h > w * 1.1;
+  if (tall) {
+    const cw = Math.min(520 * U, w - 48 * U);
+    const ch = 118 * U;
+    const gap = 16 * U;
+    const top = h / 2 - (3 * ch + 2 * gap) / 2 + 30 * U;
+    return [0, 1, 2].map((i) => ({ i, x: w / 2 - cw / 2, y: top + i * (ch + gap), w: cw, h: ch, flat: true }));
+  }
+  const cw = Math.min(252 * U, (w - 90 * U) / 3 - 20 * U);
+  const ch = 268 * U;
+  const total = 3 * cw + 2 * 20 * U;
   let x = w / 2 - total / 2;
   return [0, 1, 2].map((i) => {
-    const r = { i, x, y: h / 2 - ch / 2 + 20, w: cw, h: ch };
-    x += cw + 20;
+    const r = { i, x, y: h / 2 - ch / 2 + 20 * U, w: cw, h: ch, flat: false };
+    x += cw + 20 * U;
     return r;
   });
 }
 
-export function hitCard(w, h, px, py) {
-  for (const c of cards(w, h)) {
+export function hitCard(w, h, px, py, dpr = 1) {
+  for (const c of cards(w, h, dpr)) {
     if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) return c.i;
   }
   return null;
 }
 
-function panel(ctx, state, w, h) {
+/**
+ * How much to multiply the writing by.
+ *
+ * Everything on the panel is in canvas pixels, and a phone's canvas is twice its screen, so text
+ * laid out to look right on a desktop comes out half size in the hand. The device ratio is the
+ * conversion back, and it is 1 on an ordinary monitor, which is why none of this changes the
+ * look there.
+ */
+function panel(ctx, state, w, h, U) {
   // --- experience, right across the top, where it cannot be missed
   const part = Math.max(0, Math.min(1, state.xp / state.need));
   ctx.fillStyle = 'rgba(13,12,11,0.14)';
-  ctx.fillRect(0, 0, w, 11);
+  ctx.fillRect(0, 0, w, 11 * U);
   ctx.fillStyle = Black;
-  ctx.fillRect(0, 0, w * part, 11);
-  write(ctx, `LV ${state.level}`, 22, 34, 20, 800);
+  ctx.fillRect(0, 0, w * part, 11 * U);
+  write(ctx, `LV ${state.level}`, 22 * U, 34 * U, 20 * U, 800);
 
   const left = Math.max(0, Length - state.t);
   write(ctx, `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(Math.floor(left % 60)).padStart(2, '0')}`,
-    w / 2, 36, 27, 800, 'center');
-  write(ctx, `${state.kills} DOWN`, w - 22, 34, 13, 700, 'right');
+    w / 2, 36 * U, 27 * U, 800, 'center');
+  write(ctx, `${state.kills} DOWN`, w - 22 * U, 34 * U, 13 * U, 700, 'right');
 
-  const bw = Math.min(240, w * 0.2);
-  write(ctx, 'WALL', 22, 62, 11, 700);
-  ctx.lineWidth = 2;
+  const bw = Math.min(240 * U, w * 0.22);
+  write(ctx, 'WALL', 22 * U, 62 * U, 11 * U, 700);
+  ctx.lineWidth = 2 * U;
   ctx.strokeStyle = Black;
-  ctx.strokeRect(22, 72, bw, 13);
+  ctx.strokeRect(22 * U, 72 * U, bw, 13 * U);
   ctx.fillStyle = Black;
-  ctx.fillRect(22, 72, bw * Math.max(0, state.wall) / state.maxWall, 13);
+  ctx.fillRect(22 * U, 72 * U, bw * Math.max(0, state.wall) / state.maxWall, 13 * U);
 
   if (state.heat > 0.02) {
     ctx.fillStyle = 'rgba(13,12,11,0.16)';
-    ctx.fillRect(w / 2 - 110, 56, 220, 6);
+    ctx.fillRect(w / 2 - 110 * U, 56 * U, 220 * U, 6 * U);
     ctx.fillStyle = Black;
-    ctx.fillRect(w / 2 - 110, 56, 220 * state.heat, 6);
+    ctx.fillRect(w / 2 - 110 * U, 56 * U, 220 * U * state.heat, 6 * U);
   }
 
   // --- what you are carrying
   const owned = Object.keys(state.spells);
-  let y = h - 22 - (owned.length - 1) * 21;
-  write(ctx, 'SPELLS', 22, y - 24, 11, 700);
+  let y = h - 22 * U - (owned.length - 1) * 21 * U;
+  write(ctx, 'SPELLS', 22 * U, y - 24 * U, 11 * U, 700);
   for (const key of owned) {
-    write(ctx, Spells[key].name, 22, y, 14, 600);
+    write(ctx, Spells[key].name, 22 * U, y, 14 * U, 600);
     // pips rather than a number: read without being read
     for (let i = 0; i < MostLevel; i++) {
       ctx.fillStyle = Black;
       ctx.globalAlpha = i < state.spells[key] ? 1 : 0.2;
-      ctx.beginPath(); ctx.arc(150 + i * 12, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(150 * U + i * 12 * U, y, 4 * U, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    y += 21;
+    y += 21 * U;
   }
 
   const kept = Object.keys(state.passives);
-  let py = h - 22 - (kept.length - 1) * 19;
+  let py = h - 22 * U - (kept.length - 1) * 19 * U;
   for (const key of kept) {
-    write(ctx, `${Passives[key].name} ${state.passives[key]}`, w - 22, py, 13, 600, 'right');
-    py += 19;
+    write(ctx, `${Passives[key].name} ${state.passives[key]}`, w - 22 * U, py, 13 * U, 600, 'right');
+    py += 19 * U;
   }
 }
 
-function picking(ctx, state, w, h, show) {
-  ctx.fillStyle = 'rgba(236,231,220,0.9)';
+function picking(ctx, state, w, h, show, U) {
+  ctx.fillStyle = 'rgba(236,231,220,0.93)';
   ctx.fillRect(0, 0, w, h);
 
-  write(ctx, `LEVEL ${state.level}`, w / 2, h / 2 - 196, 40, 800, 'center');
-  write(ctx, 'TAKE ONE', w / 2, h / 2 - 162, 15, 600, 'center');
+  const list = cards(w, h, U);
+  const header = list[0].y - (list[0].flat ? 56 * U : 46 * U);
+  write(ctx, `LEVEL ${state.level}`, w / 2, header - 24 * U, 36 * U, 800, 'center');
+  write(ctx, 'TAKE ONE', w / 2, header + 8 * U, 14 * U, 600, 'center');
 
-  for (const r of cards(w, h)) {
+  for (const r of list) {
     const pick = state.choices[r.i];
     if (!pick) continue;
     const lit = show.overCard === r.i;
@@ -577,33 +613,47 @@ function picking(ctx, state, w, h, show) {
 
     if (lit) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.fill();
     }
     ctx.strokeStyle = Black;
-    ctx.lineWidth = lit ? 3 : 2;
-    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10); ctx.stroke();
+    ctx.lineWidth = (lit ? 3 : 2) * U;
+    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.stroke();
 
     const ink = lit ? Pale : Black;
-    write(ctx, pick.up ? 'IMPROVE' : pick.what === 'spell' ? 'NEW SPELL' : 'NEW POWER',
-      cx, top + 26, 11, 800, 'center', ink);
-    write(ctx, book.name, cx, top + 56, 22, 800, 'center', ink);
-    sigil(ctx, pick.key, cx, top + 122, 40, ink);
-    wrap(ctx, book.tells, cx, top + 194, r.w - 30, 13, 18, ink);
+    const badge = pick.up ? 'IMPROVE' : pick.what === 'spell' ? 'NEW SPELL' : 'NEW POWER';
+    const pips = (px, py) => {
+      for (let i = 0; i < MostLevel; i++) {
+        ctx.fillStyle = ink;
+        ctx.globalAlpha = i < have + 1 ? 1 : 0.22;
+        ctx.beginPath(); ctx.arc(px - (MostLevel - 1) * 7 * U + i * 14 * U, py, 5 * U, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    };
 
-    for (let i = 0; i < MostLevel; i++) {
-      ctx.fillStyle = ink;
-      ctx.globalAlpha = i < have + 1 ? 1 : 0.22;
-      ctx.beginPath(); ctx.arc(cx - (MostLevel - 1) * 7 + i * 14, top + 240, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
+    if (r.flat) {
+      // A wide strip: the mark on the left, everything else reading across from it.
+      sigil(ctx, pick.key, r.x + 58 * U, top + r.h / 2, 38 * U, ink);
+      write(ctx, badge, r.x + 110 * U, top + 28 * U, 10 * U, 800, 'left', ink);
+      write(ctx, book.name, r.x + 110 * U, top + 56 * U, 22 * U, 800, 'left', ink);
+      write(ctx, book.tells, r.x + 110 * U, top + 84 * U, 13 * U, 500, 'left', ink);
+      pips(r.x + r.w - 60 * U, top + r.h / 2);
+    } else {
+      write(ctx, badge, cx, top + 26 * U, 11 * U, 800, 'center', ink);
+      write(ctx, book.name, cx, top + 56 * U, 22 * U, 800, 'center', ink);
+      sigil(ctx, pick.key, cx, top + 122 * U, 40 * U, ink);
+      wrap(ctx, book.tells, cx, top + 194 * U, r.w - 30 * U, 13 * U, 18 * U, ink);
+      pips(cx, top + 240 * U);
     }
   }
-  write(ctx, 'click a card  ·  or press 1, 2, 3', w / 2, h / 2 + 180, 13, 500, 'center');
+  const last = list[2];
+  write(ctx, 'tap a card  ·  or press 1, 2, 3', w / 2, last.y + last.h + 32 * U, 13 * U, 500, 'center');
 }
 
 // --- the frame --------------------------------------------------------------------------------
 
-export function frame(ctx, w, h, state, show) {
+export function frame(ctx, w, h, state, show, dpr = 1) {
   const S = stage(w, h);
+  const U = Math.max(1, Math.min(2.4, dpr));
 
   const sky = ctx.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, '#f6f3ec');
@@ -658,26 +708,26 @@ export function frame(ctx, w, h, state, show) {
     ctx.globalAlpha = 1;
   }
 
-  panel(ctx, state, w, h);
+  panel(ctx, state, w, h, U);
 
   if (show.hint && state.t < 9 && state.phase === 'playing') {
     ctx.globalAlpha = Math.min(1, 9 - state.t);
-    write(ctx, 'YOUR SPELLS CAST THEMSELVES  —  CLICK TO MAKE THEM CAST FASTER',
-      w / 2, h - 118, 14, 700, 'center');
+    write(ctx, 'YOUR SPELLS CAST THEMSELVES  —  TAP TO MAKE THEM CAST FASTER',
+      w / 2, h - 118 * U, 14 * U, 700, 'center');
     ctx.globalAlpha = 1;
   }
 
-  if (state.phase === 'picking') picking(ctx, state, w, h, show);
+  if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
 
   if (state.phase === 'won' || state.phase === 'lost') {
     ctx.fillStyle = 'rgba(236,231,220,0.9)';
     ctx.fillRect(0, 0, w, h);
     const won = state.phase === 'won';
-    write(ctx, won ? 'YOU HELD' : 'THE WALL FELL', w / 2, h / 2 - 54, 46, 800, 'center');
+    write(ctx, won ? 'YOU HELD' : 'THE WALL FELL', w / 2, h / 2 - 54 * U, 46 * U, 800, 'center');
     const secs = Math.floor(state.t);
     write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
-      w / 2, h / 2 + 2, 19, 600, 'center');
-    write(ctx, 'CLICK TO BEGIN AGAIN', w / 2, h / 2 + 52, 15, 700, 'center');
+      w / 2, h / 2 + 2 * U, 19 * U, 600, 'center');
+    write(ctx, 'TAP TO BEGIN AGAIN', w / 2, h / 2 + 52 * U, 15 * U, 700, 'center');
   }
 }
 
