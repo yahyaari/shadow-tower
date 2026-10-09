@@ -772,9 +772,12 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
       w / 2, h / 2 + 14 * U, 17 * U, 600, 'center');
     if (show.best) {
-      write(ctx, show.best.beat ? `a new best — you had never passed stage ${show.best.was}`
-        : `your best is stage ${show.best.value}`,
-        w / 2, h / 2 + 44 * U, 14 * U, 500, 'center');
+      // On the very first run there is nothing to have beaten, and the sentence that compares
+      // against it reads "you had never passed stage 0".
+      const said = !show.best.beat ? `your best is stage ${show.best.value}`
+        : show.best.was > 0 ? `a new best — you had only reached stage ${show.best.was}`
+        : 'a new best';
+      write(ctx, said, w / 2, h / 2 + 44 * U, 14 * U, 500, 'center');
     }
     write(ctx, 'TAP TO BEGIN AGAIN', w / 2, h / 2 + 86 * U, 15 * U, 700, 'center');
   }

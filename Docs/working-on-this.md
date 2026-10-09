@@ -30,14 +30,20 @@ bir şekil. Bu bir eksiklik değil tarz — dört projedir ilk kez sanatın yokl
 | `src/store.js` | localStorage: en iyi bölüm, sessizlik. Her okuma try/catch içinde. |
 | `src/main.js` | Döngü, fare, parçacıklar. |
 | `Tools/test.mjs` | 47 kontrol + bot. |
-| `Tools/look.mjs` | Tarayıcıda bot oynatıp fotoğraf çeker (kart ekranı ve patron dahil). |
+| `Tools/look.mjs` | Tarayıcıda bot oynatıp fotoğraf çeker. Gerçek zamanlı. |
+| `Tools/peek.mjs` | Belirli bir ANA atlayıp çeker: patron, bölüm geçme, bitiş. Saniyeler. |
 
 ```sh
 node Tools/test.mjs
 node Tools/serve.mjs . 8050 0.0.0.0
 node Tools/look.mjs http://localhost:8050/ Logs/look "30,130" 1280 720
 node Tools/look.mjs http://localhost:8050/ Logs/phone "30,130" 390 844
+node Tools/peek.mjs http://localhost:8050/ Logs/peek 1280 720
 ```
+
+`look.mjs` oyunu gerçekten oynuyor, yani patronu görmek için gerçek zamanda yetmiş saniye
+beklemek gerekiyor — swiftshader'da bu dört dakika duvar saati. `peek.mjs` durumu doğrudan kurup
+o anı çekiyor. Denge ölçmek için değil, yeni çizilen bir şeyin doğru göründüğünü görmek için.
 
 **Yayınlama:** `master`'a push etmek yeter, GitHub Pages kendi yayınlıyor (~1 dk).
 
@@ -100,6 +106,11 @@ gerçek bir hedef, üçüncüsü övünülecek şey. Tıklamak koşuyu iki katı
 - **Ses ilk dokunuşa kadar açılmaz.** Tarayıcı kullanıcı dokunmadan ses bağlamı başlatmıyor;
   bir kere reddedilip tekrar denenmeyen bağlam, oyunun herkeste sessiz olup yazanda çalışması
   demek.
+- **`mend` pasifi açıkken duvar düşmüyor.** Bitiş ekranını denerken duvarı 1 cana indirdim ve
+  saniyede bir buçuk geri gelerek ayakta kaldı; ekranı hiç göremedim. `peek.mjs` artık önce
+  tamiri kapatıyor.
+- **İlk koşuda "en iyi" cümlesi kırılır.** "a new best — you had never passed stage 0" yazıyordu;
+  kıyaslanacak bir şey yokken kıyaslama cümlesi kurma.
 - **Koşu bitişi bir kere işlenmeli.** `step` her karede çağrılıyor ve on kare önce biten koşu
   hâlâ bitmiş durumda — `show.booked` bayrağı olmadan skor her karede kaydedilirdi.
 - **Denge tarayıcıda ölçülmez.** Oyun gerçek zamanlı ve swiftshader'da duvar saatinin ~%35'i
