@@ -1,0 +1,134 @@
+// The loop, the mouse, and the things that are presentation rather than rules.
+
+import { begin, step, click, buy, placeOf } from './rules.js';
+import { frame, hitButton, stage } from './draw.js';
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+let state = begin(Date.now());
+let show = fresh();
+let last = performance.now();
+let pointer = { x: -1, y: -1 };
+
+function fresh() {
+  return { bits: [], floats: [], over: null, hint: true, shake: 0, flash: 0 };
+}
+
+function size() {
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(window.innerWidth * scale);
+  canvas.height = Math.floor(window.innerHeight * scale);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', size);
+size();
+
+/**
+ * Turns what the rules reported into something to look at.
+ *
+ * The rules push plain events and never touch the screen. Without this a kill is silent: the
+ * figure is simply gone on the next frame, and the thing the whole game is about - putting them
+ * down - would be the one thing with no feedback at all.
+ */
+function readEvents() {
+  for (const e of state.events) {
+    if (e.kind === 'killed') {
+      for (let i = 0; i < 12 + e.size * 7; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 30 + Math.random() * 130;
+        show.bits.push({
+          x: e.x, y: e.y, z: 20 + Math.random() * 46,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.5, vz: 40 + Math.random() * 140,
+          size: 1.6 + Math.random() * 2.6 * e.size,
+          life: 0.5 + Math.random() * 0.5, max: 1,
+        });
+      }
+      show.floats.push({ x: e.x, y: e.y, text: `+${e.got}`, rise: 40, life: 0.85 });
+    } else if (e.kind === 'struck') {
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2;
+        show.bits.push({
+          x: e.x, y: e.y, z: 24 + Math.random() * 28,
+          vx: Math.cos(a) * 60, vy: Math.sin(a) * 30, vz: 40 + Math.random() * 60,
+          size: 1.2 + Math.random() * 1.6,
+          life: 0.22 + Math.random() * 0.18, max: 0.4,
+        });
+      }
+    } else if (e.kind === 'fire') {
+      show.flash = 1;
+    } else if (e.kind === 'bitten') {
+      show.shake = 1;
+    }
+  }
+  state.events.length = 0;
+}
+
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  step(state, dt);
+  readEvents();
+
+  show.shake = Math.max(0, show.shake - dt * 4);
+  show.flash = Math.max(0, show.flash - dt * 11);
+  for (let i = show.bits.length - 1; i >= 0; i--) {
+    const p = show.bits[i];
+    p.life -= dt;
+    if (p.life <= 0) { show.bits.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    p.vz -= 420 * dt;
+    if (p.z < 0) { p.z = 0; p.vz = 0; p.vx *= 0.7; p.vy *= 0.7; }
+  }
+  for (let i = show.floats.length - 1; i >= 0; i--) {
+    const f = show.floats[i];
+    f.life -= dt;
+    f.rise += dt * 46;
+    if (f.life <= 0) show.floats.splice(i, 1);
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (show.shake > 0.01) {
+    ctx.translate((Math.random() - 0.5) * show.shake * 7, (Math.random() - 0.5) * show.shake * 7);
+  }
+  frame(ctx, canvas.width, canvas.height, state, show);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function spot(e) {
+  const r = canvas.getBoundingClientRect();
+  const k = canvas.width / r.width;
+  return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
+}
+
+addEventListener('pointermove', (e) => {
+  pointer = spot(e);
+  show.over = hitButton(state, canvas.width, canvas.height, pointer.x, pointer.y);
+  canvas.style.cursor = show.over ? 'pointer' : 'crosshair';
+});
+
+addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  pointer = spot(e);
+  if (!state.alive) { state = begin(Date.now()); show = fresh(); show.hint = false; return; }
+  const kind = hitButton(state, canvas.width, canvas.height, pointer.x, pointer.y);
+  // A click on a button buys; a click anywhere else is the gun. Buying must never also fire,
+  // or every purchase reads as a misclick.
+  if (kind) { buy(state, kind); return; }
+  click(state);
+  show.hint = false;
+}, { passive: false });
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
+  if (e.key === '1') buy(state, 'damage');
+  if (e.key === '2') buy(state, 'rate');
+  if (e.key === '3') buy(state, 'gain');
+});
+addEventListener('contextmenu', (e) => e.preventDefault());
+
+window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, buy };
+console.log('[ShadowTower] ready');
