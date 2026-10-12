@@ -85,10 +85,26 @@ while (Date.now() < deadline && !log.some((l) => l.includes("[ShadowTower] ready
 await sleep(400);
 
 // Donanımlı bir büyücü kur: altı büyü, birkaç pasif, ve bölümün sonuna gel
+// Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
+await screenshot('loadout_yeni_hesap');
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.level = 9; d.xp = 700; d.best = 3; d.loadout = ['bolt','fireball','lightning']; return true; })()`);
+await sleep(400);
+await screenshot('loadout');
+
+// Donanımlı bir büyücü kur ve koşuyu başlat
 await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.level = 16;
+  d.loadout = ['bolt', 'fireball', 'frost', 'lightning', 'blade'];
+  window.ShadowTower.start();
   const s = window.ShadowTower.state;
-  s.spells = { bolt: 4, fireball: 3, lightning: 3, nova: 2, blade: 3, frost: 2 };
-  s.cools = { bolt: 0.2, fireball: 0.3, lightning: 0.4, nova: 0.5, frost: 0.6 };
+  s.kit.bolt = { tier: 3, taken: 9, boosts: { sharper: 3, more: 2, quicker: 2 }, evos: ['burst', 'fire'] };
+  s.kit.fireball = { tier: 2, taken: 6, boosts: { wider: 3, sharper: 2 }, evos: ['fire'] };
+  s.kit.frost = { tier: 2, taken: 5, boosts: { deep: 2, wider: 2 }, evos: ['freeze'] };
+  s.kit.lightning = { tier: 2, taken: 5, boosts: { jump: 3, sharper: 1 }, evos: ['storm'] };
+  // Birinin seviye borcu olsun ki kart ekranında bir DÖNÜŞÜM kartı görelim - ve elektrik
+  // taşıdığımız için "fırtına" dönüşümü de çıkabilsin.
+  s.kit.blade = { tier: 1, taken: 5, boosts: { more: 2, ring: 1, sharper: 2 }, evos: [] };
   s.passives = { might: 3, haste: 2, reach: 2, mend: 1 };
   s.level = 16;
   s.xp = 0; s.need = 40;

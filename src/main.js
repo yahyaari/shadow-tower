@@ -1,26 +1,31 @@
-// The loop, the mouse, and the things that are presentation rather than rules.
+// The loop, the input, and the things that are presentation rather than rules.
+//
+// Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
+// that is where the account level went up and where the spell it opened is waiting to be picked.
 
 import { begin, step, click, take } from './rules.js';
-import { frame, hitCard, cards } from './draw.js';
+import { frame, hitCard, cards, loadout, hitLoadout } from './draw.js';
 import * as sound from './sound.js';
-import * as store from './store.js';
+import * as meta from './meta.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
-const saved = store.load();
-sound.setMuted(!!saved.muted);
+let data = meta.load();
+sound.setMuted(!!data.muted);
 
-let state = begin(Date.now());
+let screen = 'loadout';           // 'loadout' | 'run'
+let state = null;
 let show = fresh();
 let last = performance.now();
-let pointer = { x: -1, y: -1 };
+let dpr = 1;
 
 function fresh() {
-  return { bits: [], floats: [], overCard: null, hint: true, shake: 0, best: null, booked: false };
+  return {
+    bits: [], floats: [], overCard: null, overTile: null, overBegin: false,
+    hint: true, shake: 0, booked: false, won: null,
+  };
 }
-
-let dpr = 1;
 
 function size() {
   const scale = Math.min(window.devicePixelRatio || 1, 2);
@@ -33,8 +38,15 @@ function size() {
 window.addEventListener('resize', size);
 size();
 
+function start() {
+  state = begin(Date.now(), data.loadout);
+  show = fresh();
+  show.hint = (data.runs || 0) < 2;
+  screen = 'run';
+}
+
 /**
- * Turns what the rules reported into something to look at.
+ * Turns what the rules reported into something to look at and listen to.
  *
  * The rules push plain events and never touch the screen. Without this a kill is silent - the
  * figure is simply gone on the next frame, and the thing the whole game is about would be the
@@ -85,13 +97,21 @@ function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  if (screen === 'loadout') {
+    loadout(ctx, data, canvas.width, canvas.height, show, dpr);
+    requestAnimationFrame(tick);
+    return;
+  }
+
   step(state, dt);
   readEvents();
 
-  // Booked once: `step` is called every frame and a run that ended ten frames ago is still ended.
+  // Booked once: `step` runs every frame and a run that ended ten frames ago is still ended.
   if (state.phase === 'lost' && !show.booked) {
     show.booked = true;
-    show.best = store.record(saved, state.stage, state.kills);
+    show.won = meta.record(data, state.stage, state.kills);
     sound.over();
   }
 
@@ -111,7 +131,6 @@ function tick(now) {
     if (f.life <= 0) show.floats.splice(i, 1);
   }
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (show.shake > 0.01) {
     ctx.translate((Math.random() - 0.5) * show.shake * 7, (Math.random() - 0.5) * show.shake * 7);
   }
@@ -127,26 +146,43 @@ function spot(e) {
 }
 
 addEventListener('pointermove', (e) => {
-  pointer = spot(e);
+  const p = spot(e);
+  if (screen === 'loadout') {
+    const over = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
+    show.overTile = over === '@begin' ? null : over;
+    show.overBegin = over === '@begin';
+    canvas.style.cursor = over ? 'pointer' : 'default';
+    return;
+  }
   show.overCard = state.phase === 'picking'
-    ? hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr)
+    ? hitCard(canvas.width, canvas.height, p.x, p.y, dpr)
     : null;
   canvas.style.cursor = show.overCard !== null ? 'pointer' : 'crosshair';
 });
 
 addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  pointer = spot(e);
-  if (state.phase === 'picking') show.overCard = hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr);
+  const p = spot(e);
+
+  if (screen === 'loadout') {
+    const hit = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
+    if (hit === '@begin') { start(); return; }
+    if (hit) { meta.toggle(data, hit); show.overTile = hit; }
+    return;
+  }
+
   if (state.phase === 'lost') {
-    state = begin(Date.now());
+    // Back to the loadout rather than straight into another run: the account just went up, and
+    // whatever that opened is sitting on that screen waiting to be picked up.
+    screen = 'loadout';
     show = fresh();
-    show.hint = false;
     return;
   }
   if (state.phase === 'picking') {
-    // Only a card does anything while choosing. A stray click must not take one for you.
-    const i = hitCard(canvas.width, canvas.height, pointer.x, pointer.y, dpr);
+    // A finger has no hover, so the card under it lights on contact rather than after a move
+    // event that never arrives.
+    const i = hitCard(canvas.width, canvas.height, p.x, p.y, dpr);
+    show.overCard = i;
     if (i !== null) { take(state, i); show.overCard = null; }
     return;
   }
@@ -157,8 +193,12 @@ addEventListener('pointerdown', (e) => {
 addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') {
     sound.setMuted(!sound.isMuted());
-    saved.muted = sound.isMuted();
-    store.save(saved);
+    data.muted = sound.isMuted();
+    meta.save(data);
+    return;
+  }
+  if (screen === 'loadout') {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); start(); }
     return;
   }
   if (state.phase === 'picking') {
@@ -166,10 +206,17 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
+  if (state.phase === 'lost') { screen = 'loadout'; show = fresh(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 
-window.ShadowTower = { get state() { return state; }, get show() { return show; }, click, take, sound };
+window.ShadowTower = {
+  get state() { return state; },
+  get show() { return show; },
+  get meta() { return data; },
+  get screen() { return screen; },
+  start, click, take, sound,
+};
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

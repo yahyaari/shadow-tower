@@ -1,126 +1,117 @@
 # Shadow Tower — bu projede çalışırken
 
-Ortada bir büyücü, etrafında bel hizasında bir duvar, her yönden gelen düşmanlar. Büyüler
-kendiliğinden çıkıyor, tıklamak hepsini hızlandırıyor. Öldürdükçe seviye atlıyorsun, her seviyede
-üç karttan biri. Bölümün sonunda patron geliyor; onu indirince duvar onarılıyor, bedava bir kart
-alıyorsun ve sıradaki bölüm daha zor başlıyor. Duvar yıkılınca koşu biter.
+Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
+
+- **Hesap.** Koşu bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
+- **Loadout.** On büyüden en fazla beşi koşuya götürülür. Hangi beşi götürdüğün, kartların sana
+  ne önerebileceğini belirler.
+- **Koşu.** Taşıdığın her büyü ilk saniyeden ateşler. Seviye atladıkça üç karttan biri seçilir.
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
-## Görünüm kuralı
+## Kart sistemi
 
-**Tam iki mürekkep var:** soluk gökyüzü ve saf siyah. Bir nesne ya ışıktır ya da ışıktan kesilmiş
-bir şekil. Bu bir eksiklik değil tarz — dört projedir ilk kez sanatın yokluğunu saklamıyoruz.
+İki tip kart var:
 
-- **Figürler her yönden gelmelerine rağmen ayakta çiziliyor.** Tepeden görülen şekil leke,
-  yandan görülen şekil yaratıktır.
-- **Orta bilerek alçak.** Halkanın ortasındaki uzun şey arkasından geleni gizler; her yönden
-  geliyorlarsa bu tahtanın yarısı demek. İlk sürümde oraya kule koymuştum ve tam olarak bu oldu.
-- **Duvar yıkıldıkça taşları eksiliyor.** Üstteki çubuk aynı şeyi sayıyla söylüyor ama gözün
-  zaten baktığı yer duvar.
-- **Yavaşlayan düşmanın ayağında halka var.** İki mürekkepte boyayacak renk yok.
+**Normal yükseltme** — +1 atış, +%18 hasar, -%13 bekleme, daha geniş patlama, delip geçme…
+Her büyünün 5 tanesi var, her birinin kendi tavanı (`most`).
+
+**Dönüşüm (tier)** — bir büyüye **beş normal yükseltme** yaptığında bir sonraki kartı dönüşüm
+olur: "çarptığı yerde patlar", "yere yangın bırakır", "elektrik fırtınası başlatır". Bir büyü en
+fazla **üç** dönüşüm alabilir (yani T4).
+
+## Kombo kuralı — bu oyunun kalbi
+
+41 dönüşümün **24'ü başka bir büyüye kilitli**. "Çarptığı yerde elektrik fırtınası" seçeneği,
+**Lightning loadout'unda yoksa asla çıkmaz**. Nadir değil — yok.
+
+Kod tarafında tek bir yerde: `evolutionsFor()` içindeki `!e.needs || carries(s, e.needs)`.
+Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 
 ## Dosyalar ve komutlar
 
 | yol | ne yapar |
 | --- | --- |
-| `src/rules.js` | Oyun. On büyü, dört pasif, dört düşman, bölümler. DOM yok. |
-| `src/draw.js` | Görünen her şey + `cards()` (fare de onu okuyor). |
-| `src/sound.js` | Dosyasız ses: osilatör ve gürültü. İlk dokunuşta açılır. |
-| `src/store.js` | localStorage: en iyi bölüm, sessizlik. Her okuma try/catch içinde. |
-| `src/main.js` | Döngü, fare, parçacıklar. |
-| `Tools/test.mjs` | 47 kontrol + bot. |
-| `Tools/look.mjs` | Tarayıcıda bot oynatıp fotoğraf çeker. Gerçek zamanlı. |
-| `Tools/peek.mjs` | Belirli bir ANA atlayıp çeker: patron, bölüm geçme, bitiş. Saniyeler. |
+| `src/spells.js` | Büyü kitabı. Saf veri: 10 büyü, 50 yükseltme, 41 dönüşüm, kilit seviyeleri. |
+| `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
+| `src/rules.js` | Oyun. DOM yok. `statsOf()` tek hesap yeri, `evoke()` dönüşüm etkileri. |
+| `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
+| `src/sound.js` | Dosyasız ses. |
+| `src/main.js` | İki ekran: loadout ve koşu. |
+| `Tools/test.mjs` | 91 kontrol + bot. |
+| `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
+| `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh
 node Tools/test.mjs
 node Tools/serve.mjs . 8050 0.0.0.0
-node Tools/look.mjs http://localhost:8050/ Logs/look "30,130" 1280 720
-node Tools/look.mjs http://localhost:8050/ Logs/phone "30,130" 390 844
 node Tools/peek.mjs http://localhost:8050/ Logs/peek 1280 720
+node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
 ```
 
-`look.mjs` oyunu gerçekten oynuyor, yani patronu görmek için gerçek zamanda yetmiş saniye
-beklemek gerekiyor — swiftshader'da bu dört dakika duvar saati. `peek.mjs` durumu doğrudan kurup
-o anı çekiyor. Denge ölçmek için değil, yeni çizilen bir şeyin doğru göründüğünü görmek için.
+**Yayınlama:** `master`'a push etmek yeter, GitHub Pages ~1 dakikada yayınlıyor.
 
-**Yayınlama:** `master`'a push etmek yeter, GitHub Pages kendi yayınlıyor (~1 dk).
+## Şu anki denge
 
-## Dengeyi üç kere yanlış kurdum
-
-Üçü de ölçümle çıktı, üçünü de not ediyorum çünkü aynı aileden hatalar.
-
-**1. Oyuncunun gücü tavan yapıyordu, düşmanınki yapmıyordu.** İlk halinde bot 60 koşunun
-sıfırında bölümü bitiriyordu. Duvarı üçe katladım, **5 saniye** kazandırdı — duvarın sorun
-olmadığının kanıtı buydu. Asıl sebep: düşman canı `basınç^1.9` ile sınırsız büyüyor, oyuncunun
-gücü ise ~3.5 katta duruyordu (6 büyü × 5 seviye + Güç). İki eğri bir dakikada kesişiyor ve bir
-daha buluşmuyor. **Çözüm: dalga sertleşmesin, kalabalıklaşsın** — can üssü 1.9 → 0.9, doğma
-sıklığı arttı. Türün gerçek şekli bu, ve yirmi tanesine birden vuran bir büyüyü değerli kılan da.
-
-**2. Duvar hiç oyuna girmiyordu.** Kazanan koşular duvarın %92'siyle, kaybedenler sıfırla
-bitiyordu. Sebep: çevre bir kez delinince on düşman aynı anda ısırıyor ve duvar iki nefes arasında
-gidiyor. Isırıklar yarıya indi; sızıntı artık aşındırma yapıyor.
-
-**3. Süreyle biten bölüm, bölüm değil.** Önce "180 saniye dayan, kazandın" vardı. Kendiliğinden
-biten bir şey, ne yaptığından bağımsız olarak bitiyor. Yerine patron geldi: bölüm, senin
-sebep olduğun bir şeyle bitiyor.
-
-Şu an:
 ```
-saniyede 6 tıklayan bir oyuncu, 60 koşu:
-  dayanma   en kısa 2:16   ortanca 3:28   en uzun 6:39
-  bölüm     en düşük 2   ortanca 2   en yüksek 4
-  seviye    en düşük 14   ortanca 17   en yüksek 23
-  1. bölümü geçen %100   2'yi %37   3'ü %5   4'ü %0
-  neredeyse hiç tıklamayan (1/sn): ortanca 1:39
+beş büyüyle, saniyede 6 tıklayan oyuncu, 60 koşu:
+  dayanma   en kısa 1:52   ortanca 3:55   en uzun 6:59
+  bölüm     ortanca 2   en yüksek 5
+  seviye    ortanca 28   dönüşüm ortanca 2, en çok 5
+  1. bölümü geçen %92   2'yi %43   3'ü %28
+  tek büyüyle (sadece Magic Bolt): ortanca 0:40
+  neredeyse hiç tıklamayan (1/sn): ortanca 1:24
 ```
 
-İlk bölümü herkes geçiyor (ilk oturuşta hiçbir şey başaramayan oyuncu geri gelmez), ikincisi
-gerçek bir hedef, üçüncüsü övünülecek şey. Tıklamak koşuyu iki katına çıkarıyor.
+Beş büyü tek büyüden **altı kat** iyi. Bu, loadout'un ve hesap ilerlemesinin anlamlı olduğunun
+tek kanıtı ve testte ayrı bir kontrol olarak duruyor.
 
-## Telefon
+## Üç kere ölçüm aletini oyun sandım
 
-Üç ayrı sorundu:
-- Dikey ekranda arena genişliğe sığdığı için üstü altı bomboştu. **Yassılık artık ekran oranına
-  göre**: dar ve uzun ekranda daire yuvarlaklaşıp o yüksekliği kullanıyor. Dünyada hiçbir şey
-  yerinden oynamıyor, sadece izdüşüm değişiyor.
-- Yazılar tuval pikseliyle ölçülüyordu, telefonun tuvali ekranının iki katı, yani masaüstünde
-  doğru görünen metin elde yarım boyda çıkıyordu. **Artık cihaz oranıyla çarpılıyor**; sıradan
-  monitörde oran 1 olduğu için oradaki görünüm değişmedi.
-- **Üç kart dar ekranda alt alta diziliyor**, işaret solda. Aynı üç dikdörtgen, aynı `cards()`
-  listesi, yani çizim ile dokunma çelişemez.
-- Parmakta hover yok: karta dokunulunca seçili hale geliyor.
+Bu bölümü uzun yazıyorum çünkü en pahalı hatalar bunlardı: **sorun oyunda değil, botumdaydı** ve
+her seferinde oyunu "düzeltmeye" başlamıştım.
 
-## Tuzaklar
+**1. Bot hep ilk kartı alıyordu.** Hiçbir büyü beş yükseltmeye ulaşmıyor, koşu başına sıfır
+dönüşüm alınıyordu. Bunu "dönüşümler çalışmıyor" diye okudum. Gerçek oyuncu odaklanır.
 
-- **"Sahadaki toplam can" ile hasar ölçme.** Her büyüyü tek tek sınarken bunu yaptım ve sayı
-  ARTTI (o sırada yeni düşmanlar doğdu). Test "hiçbir büyü hasar vermiyor" dedi. Artık sadece
-  başta koyulanların id'leri sayılıyor.
-- **Nova'nın yarıçapı 190**; test düşmanlarını 200'e koyarsan büyüyü değil mesafeyi ölçersin.
-- **Ön yaydaki ağaçları ele** (`front < 0.72`). İlk yazdığımda koşulu ters yazdım, boşluk
-  arkada açıldı.
-- **Üst üste iki isimsiz çubuk koyma.** Isı, bölüm çubuğunun hemen altındaydı ve ikisi de
-  okunmuyordu. Isı sola, adıyla taşındı.
-- **`cards()` tek kaynak**, çizim ve fare aynı listeyi okuyor.
-- **Ses ilk dokunuşa kadar açılmaz.** Tarayıcı kullanıcı dokunmadan ses bağlamı başlatmıyor;
-  bir kere reddedilip tekrar denenmeyen bağlam, oyunun herkeste sessiz olup yazanda çalışması
-  demek.
-- **`mend` pasifi açıkken duvar düşmüyor.** Bitiş ekranını denerken duvarı 1 cana indirdim ve
-  saniyede bir buçuk geri gelerek ayakta kaldı; ekranı hiç göremedim. `peek.mjs` artık önce
-  tamiri kapatıyor.
-- **İlk koşuda "en iyi" cümlesi kırılır.** "a new best — you had never passed stage 0" yazıyordu;
-  kıyaslanacak bir şey yokken kıyaslama cümlesi kurma.
-- **Koşu bitişi bir kere işlenmeli.** `step` her karede çağrılıyor ve on kare önce biten koşu
-  hâlâ bitmiş durumda — `show.booked` bayrağı olmadan skor her karede kaydedilirdi.
-- **Denge tarayıcıda ölçülmez.** Oyun gerçek zamanlı ve swiftshader'da duvar saatinin ~%35'i
-  hızında koşuyor; `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
+**2. Bot "en çok yatırdığım büyüyü büyüt" derken PASİFLERİ HİÇ ALMIYORDU.** Ve bu, şu yanıltıcı
+sonucu üretti: **tek büyülü bot 6:16, beş büyülü bot 3:28.** Günlerce "neden derinlik genişliği
+yeniyor" diye oyunu değiştirdim — dönüşüm sınırı koydum, tavanları kıstım, bekleme tabanını
+yükselttim. Hiçbiri işe yaramadı.
+
+Sebep şuydu: **tek büyülü havuz 5 girişlik** (1 büyü + 4 pasif), yani pasifler oraya
+kendiliğinden düşüyor ve maxlanıyordu. **Beş büyülü havuz 9 girişlik** ve botun kuralı pasiflere
+hiç puan vermiyordu — 200 saniyede sadece `haste 1` almıştı, öbürü `might 5, mend 5, haste 5`.
+Ölçtüğüm şey "bir büyü mü beş büyü mü" değil, "pasifleri alan bot mu almayan bot mu" idi.
+
+Bot kartları puanlamaya başlayınca sonuç **anında tersine döndü**: 0:38 / 2:33.
+
+**3. Hasarı "sahadaki toplam can" ile ölçmek.** Her büyüyü tek tek sınarken bunu yaptım ve sayı
+ARTTI, çünkü o sekiz saniyede yeni düşmanlar doğdu. Test "hiçbir büyü hasar vermiyor" dedi.
+
+Bunların ortak dersi: **bir ölçüm beklenmedik bir şey söylediğinde, önce ölçüm aletine bak.**
+
+## Diğer bulgular
+
+- **Kart havuzu büyü başına kurulmalı, yükseltme başına değil.** İlk halinde her mevcut yükseltme
+  havuza ayrı bir giriş koyuyordu; beş yükseltmesi olan bir büyü beş bilet, seviye kartı bir bilet
+  atıyordu, yani dönüşümler neredeyse hiç çıkmıyordu.
+- **Hak edilmiş bir seviye kartı kurayla değil, garantiyle gelir.** "Beş kere seç, seviye atlasın"
+  cümlesi bunu söylüyor; kurada çıkarsa verdiği söz bir piyango bileti olur.
+- **Koşu başına seçim sayısı, loadout boyutuyla orantılı olmalı.** Beş büyü × beş yükseltme = 25
+  seçim; koşu 18 seçim veriyorsa hiçbir büyü dönüşemez. Seviye maliyeti düzleştirildi (~28 seviye).
+- **`split` dönüşümü rastgele yöne atıyordu** ve hiçbir şeye isabet etmiyordu — test "bu dönüşüm
+  hiçbir şey yapmıyor" dedi. Artık en yakın ikisini avlıyor.
+- **Yerdeki ateş dolu disk olarak çizilince su birikintisi gibi okunuyor.** Sadece alev dilleri
+  kaldı.
+- **`mend` pasifi açıkken duvar düşmüyor**; bitiş ekranını test ederken önce onu kapatmak gerekti.
+- **Telefonda kutu yazıları taşar.** `fitWrite()` sığmıyorsa küçültüyor.
+- **Denge tarayıcıda ölçülmez.** `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
 
 ## Yapılmadı
 
 - Müzik yok (ses efektleri var).
-- Büyülerin birleşmesi (VS'teki evolution) yok.
+- Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
 - Tek arena, tek patron tipi.
-- Koşular arası kalıcı ilerleme yok — sadece en iyi bölüm kaydediliyor.
 - CrazyGames SDK bağlanmadı, kapak görseli yok.
-- Dikey telefonda hâlâ üstte altta boşluk var; daire geniş ekrana göre tasarlandı.
+- Gerçek parmakla oynanmadı.

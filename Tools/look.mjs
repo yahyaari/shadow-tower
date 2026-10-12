@@ -98,12 +98,22 @@ if (!log.some((l) => l.includes("[ShadowTower] ready"))) {
 
 // Botu sayfanın kendi kare döngüsüne kur: saniyede birkaç kere tıklar ve parası yettikçe en ucuz
 // yükseltmeyi alır. Dışarıdan CDP ile tıklamak saniyede birkaç kere zor; oyunun ritmi orada.
+// Oyun artık loadout ekranında açılıyor; koşuyu başlatmak gerekiyor.
+await evaluate(`
+  const d = window.ShadowTower.meta;
+  d.level = 16;
+  d.loadout = ['bolt', 'fireball', 'frost', 'lightning', 'blade'];
+  window.ShadowTower.start();
+  true
+`);
+await sleep(300);
+
 await evaluate(`
   window.__auto = true;
   (function auto() {
     if (!window.__auto) return;
     const g = window.ShadowTower, s = g.state;
-    if (s.phase === 'playing') g.click(s);
+    if (s && s.phase === 'playing') g.click(s);
     setTimeout(auto, 160);
   })();
   true
@@ -134,7 +144,7 @@ for (const mark of marks) {
     }
     await sleep(150);
   }
-  const s = await evaluate(`(() => { const s = window.ShadowTower.state; return { t: Math.floor(s.t), wall: Math.ceil(s.wall), kills: s.kills, level: s.level, phase: s.phase, spells: Object.keys(s.spells).join('+'), foes: s.foes.length }; })()`);
+  const s = await evaluate(`(() => { const s = window.ShadowTower.state; return { t: Math.floor(s.t), wall: Math.ceil(s.wall), kills: s.kills, level: s.level, phase: s.phase, spells: Object.keys(s.kit).map(k => k + (s.kit[k].tier > 1 ? 'T' + s.kit[k].tier : '')).join('+'), foes: s.foes.length }; })()`);
   await screenshot(`${String(mark).padStart(3, '0')}sn`);
   console.log(`      ${s.t}sn  duvar ${s.wall}  ${s.kills} olu  LV${s.level}  sahada ${s.foes}  ${s.spells}`);
   if (s.phase === 'won' || s.phase === 'lost') { await screenshot('bitti'); break; }

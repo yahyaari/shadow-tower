@@ -15,7 +15,12 @@
 // the first version did with a tower. A waist-high wall with a figure inside it reads as a place
 // worth defending without standing in front of anything.
 
-import { Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives, MostLevel } from './rules.js';
+import {
+  Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives,
+  BoostsPerTier, MostEvos, LoadoutSize, spellKeys, statsOf, carrying, describe,
+} from './rules.js';
+import { UnlockAt, nextUnlock } from './spells.js';
+import { needFor } from './meta.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
@@ -45,6 +50,18 @@ function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Bla
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
+}
+
+/**
+ * Writes text that fits, shrinking it rather than letting it run past where it was allowed.
+ *
+ * A phone tile is a third the width of a desktop one and the words in it are the same words, so
+ * a size chosen for one runs off the other - "Magic Bolt" came out through the side of its box.
+ */
+function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
+  ctx.font = `${weight} ${Math.round(px)}px ${Face}`;
+  const wide = ctx.measureText(text).width;
+  write(ctx, text, x, y, wide > room ? Math.max(8, px * room / wide) : px, weight, align, colour);
 }
 
 function wrap(ctx, text, x, y, width, size, lead, colour) {
@@ -341,6 +358,57 @@ function figure(ctx, S, f) {
   ctx.restore();
 }
 
+/**
+ * Fire and storms left lying about.
+ *
+ * Under the feet of everything, because they are on the floor - drawn over the top they read as
+ * a lid rather than as ground, and the crowd walking through them is half of what makes them
+ * worth taking.
+ */
+function grounds(ctx, S, state) {
+  for (const g of state.grounds) {
+    const k = Math.max(0, g.life / g.max);
+    const [gx, gy] = place(S, g.x, g.y);
+    ctx.save();
+    ctx.translate(gx, gy);
+    ctx.scale(1, S.squash);
+    if (g.kind === 'fire') {
+      // Tongues and nothing else. Drawn over a filled disc it read as a puddle - a flat shape on
+      // the floor is a hole, and no amount of flicker around the edge of a hole makes it a fire.
+      ctx.fillStyle = Black;
+      ctx.globalAlpha = 0.1 * k;
+      ctx.beginPath(); ctx.arc(0, 0, g.r * S.scale * 0.9, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 13; i++) {
+        const a = (i / 13) * Math.PI * 2 + g.x * 0.013;
+        const out = g.r * S.scale * (0.35 + 0.6 * Math.abs(Math.sin(state.t * 8 + i * 1.7)));
+        const foot = out * 0.42;
+        ctx.globalAlpha = 0.45 + k * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * out, Math.sin(a) * out);
+        ctx.quadraticCurveTo(
+          Math.cos(a + 0.26) * foot, Math.sin(a + 0.26) * foot,
+          Math.cos(a + 0.1) * foot * 0.3, Math.sin(a + 0.1) * foot * 0.3);
+        ctx.quadraticCurveTo(
+          Math.cos(a - 0.26) * foot, Math.sin(a - 0.26) * foot,
+          Math.cos(a) * out, Math.sin(a) * out);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.strokeStyle = Black;
+      ctx.globalAlpha = 0.25 + k * 0.4;
+      ctx.lineWidth = 3 * S.scale;
+      ctx.setLineDash([14 * S.scale, 12 * S.scale]);
+      ctx.lineDashOffset = state.t * -70;
+      ctx.beginPath(); ctx.arc(0, 0, g.r * S.scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+}
+
 // --- the spells -------------------------------------------------------------------------------
 
 /** How high above the ground a spell flies, so a bolt is never mistaken for something on it. */
@@ -426,23 +494,26 @@ function spellFx(ctx, S, state) {
     }
   }
 
-  // --- the orbiting blade
-  if (state.spells.blade) {
-    const ring = 150 + state.spells.blade * 14;
-    const bx = Math.cos(state.bladeAt) * ring, by = Math.sin(state.bladeAt) * ring;
-    const [px, py] = place(S, bx, by);
-    const k = depth(by) * S.scale;
-    ctx.save();
-    ctx.translate(px, py - up);
-    ctx.rotate(state.bladeAt * 3);
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const out = (i % 2 ? 9 : 22) * k;
-      i ? ctx.lineTo(Math.cos(a) * out, Math.sin(a) * out) : ctx.moveTo(Math.cos(a) * out, Math.sin(a) * out);
+  // --- the orbiting blades
+  if (state.kit.blade) {
+    const st = statsOf(state, 'blade');
+    for (let n = 0; n < st.count; n++) {
+      const at = state.bladeAt + (n / st.count) * Math.PI * 2;
+      const bx = Math.cos(at) * st.ring, by = Math.sin(at) * st.ring;
+      const [px, py] = place(S, bx, by);
+      const k = depth(by) * S.scale;
+      ctx.save();
+      ctx.translate(px, py - up);
+      ctx.rotate(at * 3);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const out = (i % 2 ? 9 : 22) * k;
+        i ? ctx.lineTo(Math.cos(a) * out, Math.sin(a) * out) : ctx.moveTo(Math.cos(a) * out, Math.sin(a) * out);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
     }
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
   }
 }
 
@@ -611,20 +682,29 @@ function panel(ctx, state, w, h, U) {
   ctx.fillStyle = Black;
   ctx.fillRect(22 * U, 110 * U, bw * state.heat, 7 * U);
 
-  // --- what you are carrying
-  const owned = Object.keys(state.spells);
-  let y = h - 22 * U - (owned.length - 1) * 21 * U;
-  write(ctx, 'SPELLS', 22 * U, y - 24 * U, 11 * U, 700);
+  // --- what you are carrying: the name, what tier it has reached, and how near the next one
+  const owned = carrying(state);
+  let y = h - 22 * U - (owned.length - 1) * 23 * U;
+  write(ctx, 'SPELLS', 22 * U, y - 26 * U, 11 * U, 700);
   for (const key of owned) {
+    const kit = state.kit[key];
     write(ctx, Spells[key].name, 22 * U, y, 14 * U, 600);
-    // pips rather than a number: read without being read
-    for (let i = 0; i < MostLevel; i++) {
+    if (kit.tier > 1) {
+      // a filled tag, so a spell that has become something reads differently at a glance
       ctx.fillStyle = Black;
-      ctx.globalAlpha = i < state.spells[key] ? 1 : 0.2;
-      ctx.beginPath(); ctx.arc(150 * U + i * 12 * U, y, 4 * U, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(126 * U, y - 9 * U, 26 * U, 18 * U, 4 * U); ctx.fill();
+      write(ctx, `T${kit.tier}`, 139 * U, y, 11 * U, 800, 'center', Pale);
+    }
+    // the climb to the next tier, as pips: five of them, then it becomes something
+    const done = kit.taken - (kit.tier - 1) * BoostsPerTier;
+    const capped = kit.evos.length >= MostEvos;
+    for (let i = 0; i < BoostsPerTier; i++) {
+      ctx.fillStyle = Black;
+      ctx.globalAlpha = capped ? 0.12 : i < done ? 1 : 0.2;
+      ctx.beginPath(); ctx.arc(166 * U + i * 12 * U, y, 4 * U, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    y += 21 * U;
+    y += 23 * U;
   }
 
   const kept = Object.keys(state.passives);
@@ -647,11 +727,10 @@ function picking(ctx, state, w, h, show, U) {
     w / 2, header + 8 * U, 14 * U, 600, 'center');
 
   for (const r of list) {
-    const pick = state.choices[r.i];
-    if (!pick) continue;
+    const card = describe(state, state.choices[r.i]);
+    if (!card) continue;
     const lit = show.overCard === r.i;
-    const book = pick.what === 'spell' ? Spells[pick.key] : Passives[pick.key];
-    const have = pick.what === 'spell' ? (state.spells[pick.key] || 0) : (state.passives[pick.key] || 0);
+    const big = !!card.tier;              // a tier card is the one that changes the spell
     const top = r.y - (lit ? 8 : 0);
     const cx = r.x + r.w / 2;
 
@@ -660,37 +739,171 @@ function picking(ctx, state, w, h, show, U) {
       ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.fill();
     }
     ctx.strokeStyle = Black;
-    ctx.lineWidth = (lit ? 3 : 2) * U;
+    ctx.lineWidth = (lit ? 3 : big ? 4 : 2) * U;
     ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.stroke();
 
     const ink = lit ? Pale : Black;
-    const badge = pick.up ? 'IMPROVE' : pick.what === 'spell' ? 'NEW SPELL' : 'NEW POWER';
+
+    /** The pips under a card: how many of this you have, out of how many you may. */
     const pips = (px, py) => {
-      for (let i = 0; i < MostLevel; i++) {
+      if (!card.most) return;
+      for (let i = 0; i < card.most; i++) {
         ctx.fillStyle = ink;
-        ctx.globalAlpha = i < have + 1 ? 1 : 0.22;
-        ctx.beginPath(); ctx.arc(px - (MostLevel - 1) * 7 * U + i * 14 * U, py, 5 * U, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = i < card.have + 1 ? 1 : 0.22;
+        ctx.beginPath(); ctx.arc(px - (card.most - 1) * 7 * U + i * 14 * U, py, 5 * U, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 1;
       }
     };
 
+    // A tier card says what it borrowed. "An electric storm where it lands" only exists because
+    // lightning is in the loadout, and a player who is not told that will never go looking for
+    // the next combination.
+    const foot = card.borrows ? `with ${card.borrows}`
+      : card.toTier > 0 ? `${card.toTier} more to tier ${(state.kit[card.mark] || {}).tier + 1}`
+      : '';
+
     if (r.flat) {
-      // A wide strip: the mark on the left, everything else reading across from it.
-      sigil(ctx, pick.key, r.x + 58 * U, top + r.h / 2, 38 * U, ink);
-      write(ctx, badge, r.x + 110 * U, top + 28 * U, 10 * U, 800, 'left', ink);
-      write(ctx, book.name, r.x + 110 * U, top + 56 * U, 22 * U, 800, 'left', ink);
-      write(ctx, book.tells, r.x + 110 * U, top + 84 * U, 13 * U, 500, 'left', ink);
+      sigil(ctx, card.mark, r.x + 58 * U, top + r.h / 2, 38 * U, ink);
+      write(ctx, card.badge.toUpperCase(), r.x + 110 * U, top + 26 * U, 10 * U, 800, 'left', ink);
+      write(ctx, card.title, r.x + 110 * U, top + 54 * U, 21 * U, 800, 'left', ink);
+      write(ctx, card.text, r.x + 110 * U, top + 80 * U, 12 * U, 500, 'left', ink);
+      if (foot) write(ctx, foot, r.x + 110 * U, top + 100 * U, 10 * U, 600, 'left', ink);
       pips(r.x + r.w - 60 * U, top + r.h / 2);
     } else {
-      write(ctx, badge, cx, top + 26 * U, 11 * U, 800, 'center', ink);
-      write(ctx, book.name, cx, top + 56 * U, 22 * U, 800, 'center', ink);
-      sigil(ctx, pick.key, cx, top + 122 * U, 40 * U, ink);
-      wrap(ctx, book.tells, cx, top + 194 * U, r.w - 30 * U, 13 * U, 18 * U, ink);
-      pips(cx, top + 240 * U);
+      write(ctx, card.badge.toUpperCase(), cx, top + 26 * U, 10 * U, 800, 'center', ink);
+      write(ctx, card.title, cx, top + 56 * U, 22 * U, 800, 'center', ink);
+      sigil(ctx, card.mark, cx, top + 120 * U, big ? 46 * U : 38 * U, ink);
+      wrap(ctx, card.text, cx, top + 190 * U, r.w - 30 * U, 13 * U, 18 * U, ink);
+      if (foot) write(ctx, foot, cx, top + 222 * U, 10 * U, 600, 'center', ink);
+      pips(cx, top + 246 * U);
     }
   }
-  const last = list[2];
-  write(ctx, 'tap a card  ·  or press 1, 2, 3', w / 2, last.y + last.h + 32 * U, 13 * U, 500, 'center');
+  write(ctx, 'tap a card  ·  or press 1, 2, 3', w / 2, list[2].y + list[2].h + 32 * U, 13 * U, 500, 'center');
+}
+
+// --- the loadout screen ------------------------------------------------------------------------
+
+/**
+ * Where the ten spells sit on the opening screen.
+ *
+ * Five across on a wide screen, two across on a tall one. Same list either way, and `hitLoadout`
+ * reads the same function, so a tile can never be drawn somewhere it cannot be tapped.
+ */
+export function tiles(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const tall = h > w * 1.1;
+  const cols = tall ? 2 : 5;
+  const rows = Math.ceil(spellKeys.length / cols);
+  const gap = 12 * U;
+  const tw = Math.min(tall ? 300 * U : 200 * U, (w - 48 * U - (cols - 1) * gap) / cols);
+  const th = tall ? 74 * U : 96 * U;
+  const left = w / 2 - (cols * tw + (cols - 1) * gap) / 2;
+  const top = h / 2 - (rows * th + (rows - 1) * gap) / 2 + (tall ? 10 * U : 16 * U);
+  // In the order they open, so the locked ones gather at the end and the grid reads as a path
+  // rather than a shelf with gaps in it.
+  const order = [...spellKeys].sort((a, b) => UnlockAt[a] - UnlockAt[b]);
+  return order.map((key, i) => ({
+    key,
+    x: left + (i % cols) * (tw + gap),
+    y: top + Math.floor(i / cols) * (th + gap),
+    w: tw, h: th, tall,
+  }));
+}
+
+export function begins(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const list = tiles(w, h, dpr);
+  const last = list[list.length - 1];
+  return { x: w / 2 - 130 * U, y: Math.min(h - 84 * U, last.y + last.h + 26 * U), w: 260 * U, h: 60 * U };
+}
+
+export function hitLoadout(w, h, px, py, dpr = 1) {
+  for (const t of tiles(w, h, dpr)) {
+    if (px >= t.x && px <= t.x + t.w && py >= t.y && py <= t.y + t.h) return t.key;
+  }
+  const b = begins(w, h, dpr);
+  if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) return '@begin';
+  return null;
+}
+
+/**
+ * The opening screen: the account, what it has opened, and what you are taking in.
+ *
+ * It is the first thing anybody sees, so it has to answer "what is this" before it asks anything.
+ * The account bar does that on its own - a number that goes up, with the next spell named next to
+ * it, is the whole reason to come back tomorrow stated in one line.
+ */
+export function loadout(ctx, meta, w, h, show, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, '#f6f3ec');
+  sky.addColorStop(0.55, Pale);
+  sky.addColorStop(1, '#cfc7b6');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  const list = tiles(w, h, dpr);
+  const headTop = list[0].y - (list[0].tall ? 128 * U : 104 * U);
+
+  write(ctx, 'SHADOW TOWER', w / 2, headTop, 34 * U, 800, 'center');
+
+  // the account: level, the climb to the next one, and what that one opens
+  const need = needFor(meta.level);
+  const bw = Math.min(460 * U, w - 48 * U);
+  const bx = w / 2 - bw / 2;
+  const by = headTop + 28 * U;
+  ctx.fillStyle = 'rgba(13,12,11,0.14)';
+  ctx.fillRect(bx, by, bw, 9 * U);
+  ctx.fillStyle = Black;
+  ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, meta.xp / need)), 9 * U);
+  const soon = nextUnlock(meta.level);
+  write(ctx, `LEVEL ${meta.level}`, bx, by + 24 * U, 13 * U, 800, 'left');
+  fitWrite(ctx, soon ? `${Spells[soon.key].name} at level ${soon.at}` : 'every spell is yours',
+    bx + bw, by + 24 * U, 13 * U, 600, 'right', Black, bw * 0.45);
+  if (meta.best) write(ctx, `best: stage ${meta.best}`, w / 2, by + 24 * U, 13 * U, 600, 'center');
+
+  write(ctx, `CHOOSE UP TO ${LoadoutSize}`, w / 2, list[0].y - 24 * U, 12 * U, 800, 'center');
+
+  for (const t of list) {
+    const open = UnlockAt[t.key] <= meta.level;
+    const taken = meta.loadout.includes(t.key);
+    const lit = show.overTile === t.key && open;
+    const sp = Spells[t.key];
+
+    if (taken) {
+      ctx.fillStyle = Black;
+      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
+    }
+    ctx.globalAlpha = open ? 1 : 0.3;
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = (taken || lit ? 3 : 1.6) * U;
+    ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
+
+    const ink = taken ? Pale : Black;
+    if (t.tall) {
+      const room = t.w - 92 * U;
+      sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 30 * U, ink);
+      fitWrite(ctx, open ? sp.name : 'LOCKED', t.x + 76 * U, t.y + 28 * U, 17 * U, 800, 'left', ink, room);
+      fitWrite(ctx, open ? sp.tells : `opens at level ${UnlockAt[t.key]}`,
+        t.x + 76 * U, t.y + 50 * U, 11 * U, 500, 'left', ink, room);
+    } else {
+      const room = t.w - 16 * U;
+      sigil(ctx, t.key, t.x + t.w / 2, t.y + 32 * U, 30 * U, ink);
+      fitWrite(ctx, open ? sp.name : 'LOCKED', t.x + t.w / 2, t.y + 64 * U, 14 * U, 800, 'center', ink, room);
+      write(ctx, open ? '' : `level ${UnlockAt[t.key]}`, t.x + t.w / 2, t.y + 81 * U, 10 * U, 600, 'center', ink);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const b = begins(w, h, dpr);
+  const ready = show.overBegin;
+  ctx.fillStyle = ready ? Black : 'rgba(13,12,11,0)';
+  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.fill();
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = 3 * U;
+  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.stroke();
+  write(ctx, `BEGIN  ·  ${meta.loadout.length}/${LoadoutSize}`, b.x + b.w / 2, b.y + b.h / 2,
+    19 * U, 800, 'center', ready ? Pale : Black);
 }
 
 // --- the frame --------------------------------------------------------------------------------
@@ -723,6 +936,7 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   }
 
   platform(ctx, S);
+  grounds(ctx, S, state);
 
   const things = [];
   for (const t of Trees) things.push({ y: Math.sin(t.a) * t.r, draw: () => tree(ctx, S, t) });
@@ -764,22 +978,36 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
 
   if (state.phase === 'lost') {
-    ctx.fillStyle = 'rgba(236,231,220,0.9)';
+    ctx.fillStyle = 'rgba(236,231,220,0.92)';
     ctx.fillRect(0, 0, w, h);
-    write(ctx, 'THE WALL FELL', w / 2, h / 2 - 76 * U, 44 * U, 800, 'center');
-    write(ctx, `STAGE ${state.stage}`, w / 2, h / 2 - 24 * U, 30 * U, 800, 'center');
+    const won = show.won;
+    const row = (n) => h / 2 + (n - 2.2) * 34 * U;
+
+    write(ctx, 'THE WALL FELL', w / 2, row(0) - 22 * U, 42 * U, 800, 'center');
+    write(ctx, `STAGE ${state.stage}`, w / 2, row(1), 30 * U, 800, 'center');
     const secs = Math.floor(state.t);
     write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
-      w / 2, h / 2 + 14 * U, 17 * U, 600, 'center');
-    if (show.best) {
-      // On the very first run there is nothing to have beaten, and the sentence that compares
-      // against it reads "you had never passed stage 0".
-      const said = !show.best.beat ? `your best is stage ${show.best.value}`
-        : show.best.was > 0 ? `a new best — you had only reached stage ${show.best.was}`
-        : 'a new best';
-      write(ctx, said, w / 2, h / 2 + 44 * U, 14 * U, 500, 'center');
+      w / 2, row(2), 16 * U, 600, 'center');
+
+    if (won) {
+      // The account is the reason to go again, so it is said here rather than left on a screen
+      // the player has to go back to before they find out anything happened.
+      write(ctx, `+${won.earned} EXPERIENCE`, w / 2, row(3.1), 17 * U, 800, 'center');
+      if (won.opened.length) {
+        const names = won.opened.map((k) => Spells[k].name).join(' and ');
+        write(ctx, `LEVEL ${won.level} — ${names.toUpperCase()} UNLOCKED`, w / 2, row(4.1), 15 * U, 800, 'center');
+      } else if (won.levelled) {
+        const soon = nextUnlock(won.level);
+        write(ctx, soon ? `level ${won.level} — ${Spells[soon.key].name} at level ${soon.at}` : `level ${won.level}`,
+          w / 2, row(4.1), 14 * U, 600, 'center');
+      } else if (won.beatBest) {
+        write(ctx, won.wasBest ? `a new best — you had only reached stage ${won.wasBest}` : 'a new best',
+          w / 2, row(4.1), 14 * U, 600, 'center');
+      } else {
+        write(ctx, `your best is stage ${won.best}`, w / 2, row(4.1), 14 * U, 600, 'center');
+      }
     }
-    write(ctx, 'TAP TO BEGIN AGAIN', w / 2, h / 2 + 86 * U, 15 * U, 700, 'center');
+    write(ctx, 'TAP TO CHOOSE AGAIN', w / 2, row(5.6), 15 * U, 700, 'center');
   }
 }
 

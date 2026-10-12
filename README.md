@@ -2,50 +2,71 @@
 
 **Play it: https://yahyaari.github.io/shadow-tower/**
 
-A wizard, a waist-high wall, and everything in the dark walking towards you. Your spells cast
-themselves — tap to make them cast faster. Every few kills you level up and take one of three
-cards: a new spell, a deeper one, or a power that improves everything you own. Survive the waves,
-kill the Warden at the end of the stage, and the next stage begins harder.
+A wizard, a waist-high wall, and everything in the dark walking towards you. You bring up to five
+spells; they cast themselves, and tapping makes all of them cast faster. Every few kills you take
+one of three cards. Survive the waves, kill the Warden at the end of the stage, and the next
+stage begins harder.
 
 Black and white, silhouettes only. No engine, no build step, no dependencies: the browser opens
-`index.html` and the game is running. The whole thing is about 50 KB.
+`index.html` and the game is running. The whole thing is under 100 KB.
+
+## Three layers
+
+**The account.** Finishing a run earns experience that keeps between runs, and account levels
+unlock spells — Magic Bolt from the start, Shards at 2, Fireball at 3, and so on to Meteor at 16.
+That is what you take into the next run, and it is the only reason to open the game tomorrow.
+
+**The loadout.** Up to five of the ten, chosen on the opening screen. Which five you bring decides
+what the cards can offer you, so it is a real decision rather than a menu.
+
+**The run.** Everything you own casts from the first second. Levelling up offers three cards: most
+are ordinary boosts — one more bolt, a wider blast, a shorter cooldown — and **every fifth boost
+on a spell turns it into the next tier**, which is a card that changes what the spell *does*
+rather than how much of it there is.
+
+## The combinations
+
+A tier card can borrow from another spell, and those only exist if you are carrying it.
+
+> **Conduct** — an electric storm where it lands.
+
+Magic Bolt can only be offered that if **Lightning** is in your loadout. Not rarely: never. Of the
+41 tier cards in the game, 24 are locked behind another spell, so what you bring decides what your
+spells can become. Fireball lets things leave fire behind; Frost Orb lets them freeze; Lightning
+lets them arc.
 
 ## Controls
 
 | | |
 | --- | --- |
-| tap / click anywhere | speed up every spell for a moment |
+| tap / click | speed up every spell for a moment |
 | space | the same |
 | 1 2 3 | take that card when levelling |
 | M | mute |
 
 ## The spells
 
-Ten, each with a different job rather than a bigger number than the last. You can carry six, each
-up to five levels.
+**Magic Bolt** homes on the nearest · **Shards** throws three in a fan · **Wisp** hunts whatever is
+toughest · **Fireball** bursts where it lands · **Frost Orb** bursts and slows · **Lightning**
+leaps between them · **Beam** burns a line clean through · **Nova** hits everything near the wall ·
+**Meteor** falls on the thickest part of the crowd · **Orbit** is a blade circling you, always.
 
-**Magic Bolt** homes on the nearest · **Shards** throws three in a fan · **Wisp** hunts whatever
-is toughest · **Fireball** bursts where it lands · **Frost Orb** bursts and slows · **Lightning**
-leaps between them · **Beam** burns a line clean through · **Nova** hits everything near the wall
-· **Meteor** falls on the thickest part of the crowd · **Orbit** is a blade circling you, always.
-
-And four powers: **Might** (damage), **Haste** (cast speed), **Reach** (blast size), **Mend** (the
-wall rebuilds itself).
+And four powers that help everything: **Might**, **Haste**, **Reach**, **Mend**.
 
 ## Running it
 
 ```sh
 node Tools/serve.mjs . 8050          # then open http://localhost:8050
-node Tools/test.mjs                  # the rules and a bot, no browser, about a second
-node Tools/look.mjs http://localhost:8050/ Logs/look "30,130" 1280 720
+node Tools/test.mjs                  # the rules and a bot, no browser
+node Tools/peek.mjs http://localhost:8050/ Logs/peek 1280 720
 ```
 
 `src/rules.js` is the whole game and touches no DOM, which is why a bot can play hundreds of runs
-in Node and say whether the curve is right. `src/draw.js` decides nothing. Notes on how it is
-built and what went wrong on the way are in [`Docs/working-on-this.md`](Docs/working-on-this.md).
+in Node and say whether the curve is right. `src/draw.js` decides nothing. `src/spells.js` is all
+data. Notes on how it is built, and the four balance mistakes made on the way, are in
+[`Docs/working-on-this.md`](Docs/working-on-this.md).
 
 ## Where it stands
 
-A decent player clears stage 1 every time, stage 2 about a third of the time, and stage 3 rarely.
-A run lasts about three and a half minutes. There is no music, no second kind of arena, and the
-spells do not combine into anything yet.
+No music, one arena, one kind of boss. The spells do not combine into named weapons the way the
+genre's best do — a tier borrows an effect rather than producing a new spell.
