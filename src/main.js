@@ -26,7 +26,7 @@ let dpr = 1;
 function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
-    hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false,
+    hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null,
   };
 }
 
@@ -163,6 +163,8 @@ addEventListener('pointermove', (e) => {
     show.overMenu = !hit ? null
       : hit.what === 'tile' ? 'tile:' + hit.key
       : hit.what === 'tab' ? 'tab:' + hit.key
+      : hit.what === 'codexHalf' ? 'codexHalf:' + hit.key
+      : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';
     return;
@@ -182,7 +184,10 @@ addEventListener('pointerdown', (e) => {
     if (!hit) return;
     if (hit.what === 'openSettings') { show.settings = true; return; }
     if (hit.what === 'closeSettings') { show.settings = false; return; }
-    if (hit.what === 'tab') { data.tab = hit.key; meta.save(data); return; }
+    if (hit.what === 'tab') { data.tab = hit.key; show.codexPick = null; meta.save(data); return; }
+    if (hit.what === 'codexHalf') { data.codex = hit.key; meta.save(data); return; }
+    if (hit.what === 'codexOpen') { show.codexPick = hit.key; return; }
+    if (hit.what === 'codexClose') { show.codexPick = null; return; }
     if (hit.what === 'lang') {
       const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
       setLanguage(next);

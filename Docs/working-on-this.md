@@ -28,9 +28,23 @@ yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 | Büyüler | **çalışıyor** — loadout seçimi. Büyü geliştirme buraya gelecek. |
 | Ödüller | iskelet — şans çarkı, sandık, reklam izleyip ödül |
 | Kahraman | iskelet — tek sıra beceri ağacı, yıldızlarla alınır |
-| Külliyat | iskelet — düşman ve büyü ansiklopedisi |
+| Külliyat | **çalışıyor** — iki yarı: BÜYÜLER ve CANAVARLAR |
 
-Üç sekme bilerek iskelet: önce menünün şekli üstünde anlaşılacak, içleri sekme sekme konuşulacak.
+İki sekme hâlâ iskelet (Ödüller, Kahraman): içleri sekme sekme konuşulacak.
+
+### Külliyat
+
+**Büyüler** yarısı on büyüyü ızgara olarak gösteriyor; birine dokununca kendi sayfası açılıyor:
+adı, ne yaptığı, bütün **yükseltmeleri** (adı, ne verdiği, en fazla kaç tane) ve bütün
+**kademeleri**. Kademenin yanında `needs Fireball` / `Ateş Topu gerekir` yazıyor — oyuncunun
+kombinasyonları koşuya girmeden önce planlayabileceği tek yer burası, ve külliyatın asıl sebebi
+de bu.
+
+**Canavarlar** yarısı dört yaratığı siluetiyle, sayılarıyla (can, hız, ısırık, deneyim) ve birer
+cümleyle listeliyor. Sayılar `Kinds`'tan okunuyor, elle yazılmıyor.
+
+Panel yüksekliği içeriğinden hesaplanıyor: sabit yükseklikte Magic Bolt'un altında üçte iki boş
+alan kalıyordu ve daha dolu bir büyüyü kırpardı.
 
 **Bölüm resmi çizilerek üretiliyor**, yüklenmiyor. Aynı iki mürekkep, bölüm numarasından
 tohumlanmış — kırkıncı bölümün de kendi ufku var ve her açılışta aynı. `stages.js` içinde altı

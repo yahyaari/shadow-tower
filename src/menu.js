@@ -14,7 +14,7 @@ import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
 import { needFor, furthestStage, starsAt, totalStars } from './meta.js';
 import { stageOf, kindsOn } from './stages.js';
-import { Kinds } from './rules.js';
+import { Kinds, BoostsPerTier, MostEvos } from './rules.js';
 
 const { Black, Pale } = Inks;
 
@@ -147,6 +147,75 @@ export function settingsPanel(w, h, dpr = 1) {
   };
 }
 
+/** The two halves of the codex, as a pair of buttons at the top of the band. */
+export function codexTabs(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const bw = Math.min(180 * U, (w - 56 * U) / 2);
+  const bh = 36 * U;
+  const y = b.top + 6 * U;
+  return {
+    spells: { x: w / 2 - bw - 6 * U, y, w: bw, h: bh },
+    foes: { x: w / 2 + 6 * U, y, w: bw, h: bh },
+  };
+}
+
+/** The ten spells, as a grid of marks. */
+export function codexGrid(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const cols = narrow(w, h) ? 3 : 5;
+  const rows = Math.ceil(spellKeys.length / cols);
+  const gap = 10 * U;
+  const tw = Math.min(190 * U, (w - 36 * U - (cols - 1) * gap) / cols);
+  const th = Math.min(96 * U, (b.height - 90 * U - (rows - 1) * gap) / rows);
+  const left = w / 2 - (cols * tw + (cols - 1) * gap) / 2;
+  const top = b.top + 68 * U;
+  const order = [...spellKeys].sort((a, c) => UnlockAt[a] - UnlockAt[c]);
+  return order.map((key, i) => ({
+    key,
+    x: left + (i % cols) * (tw + gap),
+    y: top + Math.floor(i / cols) * (th + gap),
+    w: tw, h: th,
+  }));
+}
+
+/** The creatures, one to a row, because each needs a sentence beside it. */
+export function codexRows(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const keys = ['walker', 'runner', 'brute', 'warden'];
+  const gap = 10 * U;
+  const rw = Math.min(680 * U, w - 36 * U);
+  const rh = Math.min(104 * U, (b.height - 80 * U - (keys.length - 1) * gap) / keys.length);
+  const top = b.top + 60 * U;
+  return keys.map((key, i) => ({
+    key, x: w / 2 - rw / 2, y: top + i * (rh + gap), w: rw, h: rh,
+  }));
+}
+
+/**
+ * An opened spell, sized to what is written in it.
+ *
+ * A fixed height left two thirds of the panel empty under Magic Bolt and would have clipped a
+ * spell with more in it; the height is counted off the rows instead.
+ */
+export function codexPanel(w, h, dpr = 1, key = null) {
+  const U = unit(dpr);
+  const pw = Math.min(720 * U, w - 32 * U);
+  const twoUp = pw > 520 * U;
+  const sp = key && Spells[key];
+  const rows = !sp ? 6
+    : twoUp ? Math.max(sp.boosts.length, sp.evolutions.length)
+    : sp.boosts.length + sp.evolutions.length;
+  const ph = Math.min(h - 100 * U, 118 * U + rows * 37 * U + (twoUp ? 0 : 32 * U) + 40 * U);
+  return {
+    box: { x: w / 2 - pw / 2, y: h / 2 - ph / 2, w: pw, h: ph },
+    close: { x: w / 2 + pw / 2 - 56 * U, y: h / 2 - ph / 2 + 12 * U, w: 44 * U, h: 44 * U },
+    twoUp,
+  };
+}
+
 const inside = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 export function menuHit(data, show, w, h, px, py, dpr = 1) {
@@ -171,6 +240,20 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
   }
   if (data.tab === 'spells') {
     for (const t of spellTiles(w, h, dpr)) if (inside(t, px, py)) return { what: 'tile', key: t.key };
+  }
+  if (data.tab === 'codex') {
+    // An open entry is the only thing on the screen, bar the way out of it.
+    if (show.codexPick) {
+      const cp = codexPanel(w, h, dpr, show.codexPick);
+      if (inside(cp.close, px, py) || !inside(cp.box, px, py)) return { what: 'codexClose' };
+      return null;
+    }
+    const ct = codexTabs(w, h, dpr);
+    if (inside(ct.spells, px, py)) return { what: 'codexHalf', key: 'spells' };
+    if (inside(ct.foes, px, py)) return { what: 'codexHalf', key: 'foes' };
+    if (data.codex === 'spells') {
+      for (const t of codexGrid(w, h, dpr)) if (inside(t, px, py)) return { what: 'codexOpen', key: t.key };
+    }
   }
   return null;
 }
@@ -486,6 +569,146 @@ function spellsTab(ctx, data, w, h, U, show) {
   write(ctx, say(UI.spellsSoon), w / 2, b.bottom - 18 * U, 11 * U, 500, 'center');
 }
 
+/**
+ * The codex: everything the game has in it, written down.
+ *
+ * Two halves, because a spell and a creature want different shapes on the page - a spell has a
+ * list of upgrades and tiers under it, a creature has a silhouette and a sentence. Spells open
+ * into an entry of their own, and the entry is the only place a player can find out which
+ * combinations exist before meeting one.
+ */
+function codexTab(ctx, data, w, h, U, show) {
+  const b = band(w, h, U);
+  const ct = codexTabs(w, h, U);
+
+  const half = (box, label, on, lit) => {
+    ctx.fillStyle = on ? Black : 'rgba(13,12,11,0)';
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = (on ? 2.4 : 1.4) * U;
+    ctx.globalAlpha = on || lit ? 1 : 0.4;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    write(ctx, label, box.x + box.w / 2, box.y + box.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
+  };
+  half(ct.spells, say(UI.codexSpells), data.codex === 'spells', show.overMenu === 'codexHalf:spells');
+  half(ct.foes, say(UI.codexFoes), data.codex === 'foes', show.overMenu === 'codexHalf:foes');
+
+  if (data.codex === 'spells') {
+    write(ctx, say(UI.codexTap), w / 2, b.top + 56 * U, 10 * U, 500, 'center');
+    for (const t of codexGrid(w, h, U)) {
+      const lit = show.overMenu === 'codexOpen:' + t.key;
+      ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
+      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = (lit ? 2.6 : 1.5) * U;
+      ctx.globalAlpha = lit ? 1 : 0.6;
+      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
+      ctx.globalAlpha = 1;
+      const ink = lit ? Pale : Black;
+      sigil(ctx, t.key, t.x + t.w / 2, t.y + t.h * 0.36, 30 * U, ink);
+      fitWrite(ctx, say(Spells[t.key].name), t.x + t.w / 2, t.y + t.h * 0.76, 13 * U, 800, 'center', ink, t.w - 12 * U);
+    }
+  } else {
+    for (const r of codexRows(w, h, U)) {
+      const k = Kinds[r.key];
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 1.5 * U;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 9 * U); ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // The Warden is drawn smaller here than its size in the game would suggest: its horns
+      // reach further above its feet than anything else and were leaving the top of the row.
+      const mark = r.key === 'warden' ? Math.min(46, r.h * 0.46) : Math.min(58, r.h * 0.6);
+      creatureMark(ctx, r.key, r.x + 46 * U, r.y + r.h - 18 * U, mark * U, Black);
+      write(ctx, say(UI['foe_' + r.key]), r.x + 92 * U, r.y + 24 * U, 17 * U, 800, 'left');
+
+      // the numbers, said in the same breath as the name
+      const bits = [
+        `${say(UI.statHealth)} ${k.hp}`,
+        `${say(UI.statSpeed)} ${k.speed}`,
+        `${say(UI.statBite)} ${k.bite}`,
+        `${say(UI.statXp)} ${k.xp}`,
+      ].join('   ·   ');
+      fitWrite(ctx, bits, r.x + r.w - 16 * U, r.y + 24 * U, 10 * U, 600, 'right', Black, r.w - 220 * U);
+
+      wrap(ctx, say(UI['about_' + r.key]), r.x + 92 * U + (r.w - 108 * U) / 2, r.y + r.h * 0.66,
+        r.w - 108 * U, 11 * U, 15 * U, Black);
+    }
+  }
+
+  // --- one spell, opened
+  if (show.codexPick && Spells[show.codexPick]) {
+    const key = show.codexPick;
+    const sp = Spells[key];
+    const cp = codexPanel(w, h, U, key);
+    const { box } = cp;
+
+    ctx.fillStyle = 'rgba(236,231,220,0.9)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = Pale;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 16 * U); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 3 * U;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 16 * U); ctx.stroke();
+
+    sigil(ctx, key, box.x + 46 * U, box.y + 44 * U, 34 * U, Black);
+    write(ctx, say(sp.name), box.x + 76 * U, box.y + 34 * U, 22 * U, 800, 'left');
+    fitWrite(ctx, say(sp.tells), box.x + 76 * U, box.y + 58 * U, 12 * U, 500, 'left', Black, box.w - 150 * U);
+
+    {
+      const c = cp.close;
+      const cx = c.x + c.w / 2, cy = c.y + c.h / 2, r = c.w * 0.24;
+      ctx.globalAlpha = show.overMenu === 'codexClose' ? 1 : 0.6;
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 3 * U;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+      ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    const twoUp = cp.twoUp;
+    const colW = twoUp ? (box.w - 64 * U) / 2 : box.w - 48 * U;
+    const leftX = box.x + 24 * U;
+    const rightX = twoUp ? box.x + 40 * U + colW : leftX;
+    let ly = box.y + 96 * U;
+    let ry = twoUp ? ly : 0;
+
+    write(ctx, say(UI.codexBoosts), leftX, ly, 11 * U, 800, 'left');
+    ly += 22 * U;
+    for (const bst of sp.boosts) {
+      write(ctx, say(bst.name), leftX, ly, 13 * U, 700, 'left');
+      write(ctx, say(UI.times, bst.most || 1), leftX + colW, ly, 9 * U, 600, 'right');
+      ly += 15 * U;
+      fitWrite(ctx, say(bst.tells), leftX, ly, 11 * U, 500, 'left', Black, colW);
+      ly += 22 * U;
+    }
+
+    if (!twoUp) { ry = ly + 10 * U; }
+    write(ctx, say(UI.codexTiers), rightX, ry, 11 * U, 800, 'left');
+    ry += 22 * U;
+    for (const evo of sp.evolutions) {
+      write(ctx, say(evo.name), rightX, ry, 13 * U, 700, 'left');
+      if (evo.needs) {
+        // The whole reason this page exists: which other spell a tier is borrowed from.
+        write(ctx, say(UI.codexNeeds, say(Spells[evo.needs].name)), rightX + colW, ry, 9 * U, 700, 'right');
+      }
+      ry += 15 * U;
+      fitWrite(ctx, say(evo.tells), rightX, ry, 11 * U, 500, 'left', Black, colW);
+      ry += 22 * U;
+    }
+
+    ctx.globalAlpha = 0.6;
+    fitWrite(ctx, say(UI.codexRule, BoostsPerTier, MostEvos),
+      box.x + box.w / 2, box.y + box.h - 20 * U, 10 * U, 600, 'center', Black, box.w - 40 * U);
+    ctx.globalAlpha = 1;
+  }
+}
+
 // --- the whole screen ---------------------------------------------------------------------------
 
 export function menu(ctx, data, w, h, show, dpr = 1) {
@@ -550,7 +773,7 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   else if (data.tab === 'spells') spellsTab(ctx, data, w, h, U, show);
   else if (data.tab === 'wheel') soon(ctx, w, h, U, say(UI.tabWheel), [say(UI.wheelSoon)]);
   else if (data.tab === 'hero') soon(ctx, w, h, U, say(UI.tabHero), [say(UI.heroSoon)]);
-  else soon(ctx, w, h, U, say(UI.tabCodex), [say(UI.codexSoon)]);
+  else codexTab(ctx, data, w, h, U, show);
 
   // --- the tabs, as cards
   {

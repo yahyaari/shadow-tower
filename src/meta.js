@@ -22,6 +22,7 @@ const blank = {
   stars: null,      // stage number -> best stars ever earned there
   stage: 1,         // the one showing on the menu
   tab: 'map',       // which menu tab was last open
+  codex: 'spells',  // and which half of the codex
 };
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
@@ -112,6 +113,7 @@ export function tidy(data) {
   }
   data.stage = Math.max(1, Math.min(furthestStage(data), Math.floor(data.stage || 1)));
   if (!TabKeys.includes(data.tab)) data.tab = 'map';
+  if (data.codex !== 'spells' && data.codex !== 'foes') data.codex = 'spells';
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])

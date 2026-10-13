@@ -102,11 +102,25 @@ await evaluate(`(() => {
 await sleep(400);
 await screenshot('menu_map');
 
-for (const tab of ['wheel', 'hero', 'spells', 'codex']) {
+for (const tab of ['wheel', 'hero', 'spells']) {
   await evaluate(`(() => { window.ShadowTower.meta.tab = '${tab}'; return true; })()`);
   await sleep(350);
   await screenshot('menu_' + tab);
 }
+
+// Kulliyat: iki yarisi ve acilmis bir buyu
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'codex'; d.codex = 'spells'; return true; })()`);
+await sleep(350);
+await screenshot('kulliyat_buyuler');
+await evaluate(`(() => { window.ShadowTower.show.codexPick = 'bolt'; return true; })()`);
+await sleep(350);
+await screenshot('kulliyat_buyu_bolt');
+await evaluate(`(() => { window.ShadowTower.show.codexPick = 'fireball'; return true; })()`);
+await sleep(350);
+await screenshot('kulliyat_buyu_fireball');
+await evaluate(`(() => { const d = window.ShadowTower.meta; window.ShadowTower.show.codexPick = null; d.codex = 'foes'; return true; })()`);
+await sleep(350);
+await screenshot('kulliyat_canavarlar');
 
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'map'; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
 await sleep(350);
