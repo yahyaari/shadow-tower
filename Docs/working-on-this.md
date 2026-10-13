@@ -27,10 +27,40 @@ yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 | Harita | **çalışıyor** — bölüm seçimi, bölüm resmi, yıldızlar, düşman listesi, OYNA |
 | Büyüler | **çalışıyor** — loadout seçimi. Büyü geliştirme buraya gelecek. |
 | Ödüller | iskelet — şans çarkı, sandık, reklam izleyip ödül |
-| Kahraman | iskelet — tek sıra beceri ağacı, yıldızlarla alınır |
+| Kahraman | **çalışıyor** — 50 basamaklı merdiven, deneyimle alınır |
 | Külliyat | **çalışıyor** — iki yarı: BÜYÜLER ve CANAVARLAR |
 
-İki sekme hâlâ iskelet (Ödüller, Kahraman): içleri sekme sekme konuşulacak.
+Bir sekme hâlâ iskelet (Ödüller) — reklam kısmı CrazyGames SDK'sı istediği için en sona.
+
+### Kahraman
+
+Elli basamaklı bir merdiven, aşağıdan yukarı, kaydırmalı. Her basamak **küçük ve genel**: +%2.5
+hasar, +10 duvar, -%0.5 bekleme, +%1.5 alan, onarım, deneyim kazancı. **Hiçbiri bir büyüye özel
+değil** ve test bunu kontrol ediyor — olsaydı, kart hiç bahsetmeden hangi büyüyü getireceğine
+karar verirdi.
+
+Deneyimle alınıyor, yıldızla değil. Deneyim artık iki işi birden yapıyor: `xp` ana seviyeye doğru
+tırmanıp sıfırlanıyor (büyü kilitleri), `bank` ise harcanabilir bakiye olarak duruyor. Tek sayı
+kazanılıyor, iki yol birden besleniyor — merdiveni dolduran biri büyü açmayı bırakmıyor,
+biriktiren biri de daha hızlı açmıyor.
+
+| | |
+| --- | --- |
+| maliyet | 250, 500, 630, … 3.040 — toplam **98.290 deneyim** |
+| koşu başına deneyim | 1. bölüm 143, 4. bölüm 725 (ortalama ~434) |
+| yani | yaklaşık **226 koşu** |
+| tamamında | hasar +%54, duvar +145, bekleme -%7.2, alan +%11, onarım 1.13/sn, deneyim +%15 |
+
+Basamak büyüklüğü 20. ve 35. basamakta artıyor, yoksa en üstteki basamak on iki katı fiyata
+aynı şeyi verirdi.
+
+**Merdivenin asıl işi ölçüldü:** bugün çok sert olan bölümleri zamanla açıyor.
+
+```
+bölüm 3:  merdivensiz % 43   tam merdivenle % 98
+bölüm 4:  merdivensiz % 28   tam merdivenle % 90
+bölüm 5:  merdivensiz % 13   tam merdivenle % 90
+```
 
 ### Külliyat
 
@@ -117,6 +147,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | --- | --- |
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
 | `src/stages.js` | Bölüm adları, görünümleri ve hangi düşmanların geldiği. Saf veri. |
+| `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/menu.js` | Beş sekmeli menü. Çizim ilkelerini `draw.js`'ten alır. |
 | `src/spells.js` | Büyü kitabı. Saf veri: 10 büyü, 50 yükseltme, 41 dönüşüm, kilit seviyeleri. |
 | `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
@@ -241,6 +272,11 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
   tam siyah; isim görünmüyordu. Artık resmin altında.
 - **Dar ekranda üst bar tek satıra sığmaz.** Seviye, yıldız sayısı ve iki ayar pili üst üste
   bindi; telefonda iki satıra ayrıldı.
+- **Kaydırılan bir listede dokunuş ile sürükleme ayrılmalı.** Kahraman merdiveninde basma
+  anında değil, BIRAKMA anında karar veriliyor: az kımıldadıysa dokunuş, çok kımıldadıysa
+  sürükleme. Yoksa her kaydırma denemesi bir basamak satın alırdı.
+- **Ekran dışındaki bir şey satın alınamamalı.** Dokunma testi, sıradaki basamağın gerçekten
+  görünür olup olmadığına da bakıyor.
 - **Siluetleri iki yerde çizme.** Menünün yaratık listesi için `body()` `figure()`'dan ayrıldı:
   iki kopya, biri değişince eşleşmeyi bırakan iki kopyadır — külliyat da tam bunun için var.
 - **Aynı koşuyu tekrar bitirirken `show.booked` sıfırlanmazsa** bitiş ekranı eski sonucu gösterir

@@ -12,7 +12,8 @@ import {
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
-import { needFor, furthestStage, starsAt, totalStars } from './meta.js';
+import { needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus } from './meta.js';
+import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
 import { Kinds, BoostsPerTier, MostEvos } from './rules.js';
 
@@ -216,6 +217,44 @@ export function codexPanel(w, h, dpr = 1, key = null) {
   };
 }
 
+/**
+ * The hero ladder, drawn from the bottom up.
+ *
+ * Step one is at the foot and fifty is at the head, because that is the direction a ladder goes
+ * and because the thing you are about to buy should be near your thumb. It is taller than any
+ * screen, so it scrolls; `heroReach` is how far it can be pushed.
+ */
+export function heroRow(w, h, dpr = 1) {
+  const U = unit(dpr);
+  return { height: 66 * U, left: Math.max(16 * U, w / 2 - 240 * U), width: Math.min(480 * U, w - 32 * U) };
+}
+
+export function heroReach(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const r = heroRow(w, h, dpr);
+  return Math.max(0, HeroSteps * r.height + 70 * U - b.height);
+}
+
+/** Where step `n` lands on the screen for a given scroll. */
+export function heroAt(n, w, h, dpr, scroll) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const r = heroRow(w, h, dpr);
+  const top = b.top + 62 * U + (HeroSteps - n) * r.height - scroll;
+  return { x: r.left, y: top, w: r.width, h: r.height - 8 * U };
+}
+
+/** Where the ladder should sit when it is first opened: the next step, in the middle. */
+export function heroHome(data, w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const r = heroRow(w, h, dpr);
+  const next = Math.min(HeroSteps, (data.hero || 0) + 1);
+  const want = 62 * U + (HeroSteps - next) * r.height - b.height * 0.55;
+  return Math.max(0, Math.min(heroReach(w, h, dpr), want));
+}
+
 const inside = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 export function menuHit(data, show, w, h, px, py, dpr = 1) {
@@ -240,6 +279,15 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
   }
   if (data.tab === 'spells') {
     for (const t of spellTiles(w, h, dpr)) if (inside(t, px, py)) return { what: 'tile', key: t.key };
+  }
+  if (data.tab === 'hero') {
+    const next = heroNext(data);
+    if (next) {
+      const r = heroAt(next.n, w, h, dpr, show.heroScroll || 0);
+      const b = band(w, h, dpr);
+      // only if it is actually on screen - a tap must not buy something scrolled out of sight
+      if (r.y > b.top - r.h && r.y < b.bottom && inside(r, px, py)) return { what: 'heroBuy' };
+    }
   }
   if (data.tab === 'codex') {
     // An open entry is the only thing on the screen, bar the way out of it.
@@ -709,6 +757,112 @@ function codexTab(ctx, data, w, h, U, show) {
   }
 }
 
+/**
+ * The hero ladder.
+ *
+ * Fifty steps, bottom to top, one bought at a time. Everything above the next one is drawn faint
+ * - you can read what is coming, which is the point of a ladder, but there is only ever one
+ * thing you can press.
+ */
+function heroTab(ctx, data, w, h, U, show) {
+  const b = band(w, h, U);
+  const row = heroRow(w, h, U);
+  const have = data.hero || 0;
+  const next = heroNext(data);
+  const scroll = show.heroScroll || 0;
+
+  // --- what is in the purse, and what the next step wants
+  write(ctx, say(UI.heroBank), row.left, b.top + 18 * U, 10 * U, 700, 'left');
+  write(ctx, String(Math.round(data.bank || 0)), row.left, b.top + 38 * U, 22 * U, 800, 'left');
+  write(ctx, say(UI.heroStep, have, HeroSteps), row.left + row.width, b.top + 38 * U, 13 * U, 700, 'right');
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, b.top + 56 * U, w, b.bottom - b.top - 56 * U);
+  ctx.clip();
+
+  const spineX = row.left + 26 * U;
+
+  // --- the spine, drawn once behind everything
+  {
+    const top = heroAt(HeroSteps, w, h, U, scroll);
+    const foot = heroAt(1, w, h, U, scroll);
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 3 * U;
+    ctx.globalAlpha = 0.18;
+    ctx.beginPath();
+    ctx.moveTo(spineX, top.y + top.h / 2);
+    ctx.lineTo(spineX, foot.y + foot.h / 2);
+    ctx.stroke();
+    // the part already climbed is solid
+    ctx.globalAlpha = 1;
+    if (have > 0) {
+      const done = heroAt(have, w, h, U, scroll);
+      ctx.beginPath();
+      ctx.moveTo(spineX, done.y + done.h / 2);
+      ctx.lineTo(spineX, foot.y + foot.h / 2);
+      ctx.stroke();
+    }
+  }
+
+  for (const step of Ladder) {
+    const r = heroAt(step.n, w, h, U, scroll);
+    if (r.y + r.h < b.top || r.y > b.bottom) continue;      // off screen, not drawn
+
+    const owned = step.n <= have;
+    const isNext = next && step.n === next.n;
+    const canBuy = isNext && (data.bank || 0) >= step.cost;
+    const lit = isNext && show.overMenu === 'heroBuy';
+    const bon = Bonus[step.key];
+    const cy = r.y + r.h / 2;
+
+    ctx.globalAlpha = owned ? 1 : isNext ? 1 : 0.34;
+
+    // the node on the spine
+    ctx.fillStyle = owned ? Black : Pale;
+    ctx.beginPath(); ctx.arc(spineX, cy, 13 * U, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = (isNext ? 3 : 2) * U;
+    ctx.beginPath(); ctx.arc(spineX, cy, 13 * U, 0, Math.PI * 2); ctx.stroke();
+    if (owned) {
+      ctx.strokeStyle = Pale;
+      ctx.lineWidth = 2.6 * U;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(spineX - 5 * U, cy); ctx.lineTo(spineX - 1 * U, cy + 4 * U); ctx.lineTo(spineX + 5 * U, cy - 4 * U);
+      ctx.stroke();
+    }
+
+    // the card beside it
+    const cx = spineX + 24 * U;
+    const cw = row.left + row.width - cx;
+    if (isNext) {
+      ctx.fillStyle = lit && canBuy ? Black : 'rgba(13,12,11,0)';
+      ctx.beginPath(); ctx.roundRect(cx, r.y, cw, r.h, 9 * U); ctx.fill();
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 2.4 * U;
+      ctx.beginPath(); ctx.roundRect(cx, r.y, cw, r.h, 9 * U); ctx.stroke();
+    }
+    const ink = lit && canBuy ? Pale : Black;
+
+    write(ctx, say(bon.name), cx + 14 * U, cy - 10 * U, 13 * U, 800, 'left', ink);
+    fitWrite(ctx, say(bon.tells, amountText(step.key, step.amount)),
+      cx + 14 * U, cy + 10 * U, 11 * U, 500, 'left', ink, cw - 110 * U);
+
+    if (!owned) {
+      const short = !canBuy && isNext;
+      ctx.globalAlpha = isNext ? (short ? 0.45 : 1) : 0.34;
+      write(ctx, String(step.cost), cx + cw - 14 * U, cy, 14 * U, 800, 'right', ink);
+      ctx.globalAlpha = owned ? 1 : isNext ? 1 : 0.34;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+
+  if (!next) write(ctx, say(UI.heroDone), w / 2, b.bottom - 16 * U, 12 * U, 700, 'center');
+}
+
 // --- the whole screen ---------------------------------------------------------------------------
 
 export function menu(ctx, data, w, h, show, dpr = 1) {
@@ -772,7 +926,7 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   if (data.tab === 'map') mapTab(ctx, data, w, h, U, show);
   else if (data.tab === 'spells') spellsTab(ctx, data, w, h, U, show);
   else if (data.tab === 'wheel') soon(ctx, w, h, U, say(UI.tabWheel), [say(UI.wheelSoon)]);
-  else if (data.tab === 'hero') soon(ctx, w, h, U, say(UI.tabHero), [say(UI.heroSoon)]);
+  else if (data.tab === 'hero') heroTab(ctx, data, w, h, U, show);
   else codexTab(ctx, data, w, h, U, show);
 
   // --- the tabs, as cards

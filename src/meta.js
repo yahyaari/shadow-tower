@@ -6,6 +6,7 @@
 
 import { LoadoutSize, Always, UnlockAt, unlocked, spellKeys } from './spells.js';
 import { Languages } from './text.js';
+import { Ladder, Steps as HeroSteps, totals as heroTotals, costOf as heroCost } from './hero.js';
 
 const Key = 'shadowtower';
 
@@ -23,7 +24,30 @@ const blank = {
   stage: 1,         // the one showing on the menu
   tab: 'map',       // which menu tab was last open
   codex: 'spells',  // and which half of the codex
+  hero: 0,          // how many steps of the hero ladder are bought
+  bank: 0,          // experience still to spend
 };
+
+/**
+ * The two things experience does.
+ *
+ * `xp` climbs toward the next account level and resets, which is what unlocks spells. `bank` is
+ * the same experience kept as a balance, and the hero ladder spends it. One number earned, two
+ * tracks fed - a player who buys everything on the ladder does not stop unlocking spells, and a
+ * player who hoards does not get them faster.
+ */
+export const heroBonus = (data) => heroTotals(data.hero || 0);
+
+export const heroNext = (data) => ((data.hero || 0) >= HeroSteps ? null : Ladder[data.hero || 0]);
+
+export function buyHero(data) {
+  const next = heroNext(data);
+  if (!next || (data.bank || 0) < next.cost) return false;
+  data.bank -= next.cost;
+  data.hero = (data.hero || 0) + 1;
+  save(data);
+  return true;
+}
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
 
@@ -114,6 +138,8 @@ export function tidy(data) {
   data.stage = Math.max(1, Math.min(furthestStage(data), Math.floor(data.stage || 1)));
   if (!TabKeys.includes(data.tab)) data.tab = 'map';
   if (data.codex !== 'spells' && data.codex !== 'foes') data.codex = 'spells';
+  data.hero = Math.max(0, Math.min(HeroSteps, Math.floor(data.hero || 0)));
+  data.bank = Math.max(0, Math.round(data.bank || 0));
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
@@ -166,11 +192,12 @@ export function finish(data, stage, wall, maxWall, kills) {
 }
 
 export function record(data, stage, kills) {
-  const earned = worth(stage, kills);
+  const earned = Math.round(worth(stage, kills) * (1 + heroBonus(data).gain));
   const wasLevel = data.level;
   const wasBest = data.best || 0;
 
   data.xp += earned;
+  data.bank = (data.bank || 0) + earned;
   data.runs = (data.runs || 0) + 1;
   data.kills = (data.kills || 0) + kills;
   while (data.xp >= needFor(data.level)) {

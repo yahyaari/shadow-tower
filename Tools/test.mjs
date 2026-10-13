@@ -13,7 +13,8 @@ import {
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from '../src/meta.js';
+import { needFor, worth, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero } from '../src/meta.js';
+import { Ladder, Steps as HeroSteps, Bonus, costOf as heroCost, totals as heroTotals, wholeLadder } from '../src/hero.js';
 
 let passed = 0;
 const failures = [];
@@ -579,6 +580,84 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   check('hızlıyken de mermiler isabet ediyor', after < before * 0.9 || fast.kills > 0);
 }
 
+// --- kahraman merdiveni --------------------------------------------------------------------------
+
+check('merdiven elli basamak', Ladder.length === HeroSteps && HeroSteps === 50, `${Ladder.length}`);
+check('ilk basamak 250, ikincisi 500', heroCost(1) === 250 && heroCost(2) === 500,
+  `${heroCost(1)} / ${heroCost(2)}`);
+check('maliyet hep artıyor', Ladder.every((st, i) => i === 0 || st.cost > Ladder[i - 1].cost));
+
+// Kullanıcının koyduğu kural: hiçbir basamak tek bir büyüye ait olmamalı. Olsaydı, kart hiç
+// bahsetmeden hangi büyüyü getireceğine karar verirdi.
+check('hiçbir basamak bir büyüye özel değil',
+  Ladder.every((st) => !spellKeys.includes(st.key) && Bonus[st.key]),
+  Ladder.filter((st) => spellKeys.includes(st.key)).map((st) => st.key).join(','));
+
+check('her basamağın yazısı ve miktarı var',
+  Ladder.every((st) => Bonus[st.key].name && Bonus[st.key].tells && st.amount > 0));
+
+{
+  // Üstteki basamaklar alttakilerden daha çok vermeli, yoksa on iki katı ödeyip aynı şeyi alırsın
+  const early = Ladder.find((st) => st.key === 'dmg');
+  const late = [...Ladder].reverse().find((st) => st.key === 'dmg');
+  check('yukarıdaki basamak aşağıdakinden büyük', late.amount > early.amount,
+    `${early.amount} -> ${late.amount}`);
+}
+
+{
+  const d = tidy({ level: 1, loadout: ['bolt'], bank: 740, hero: 0 });
+  check('ilk basamak alınıyor', buyHero(d) === true && d.hero === 1 && d.bank === 490,
+    `basamak ${d.hero}, kalan ${d.bank}`);
+  check('kalan para ikinciye yetmiyor', buyHero(d) === false && d.hero === 1 && d.bank === 490,
+    `basamak ${d.hero}, kalan ${d.bank}`);
+  d.bank += 20;
+  check('yeterince biriktirince alınıyor', buyHero(d) === true && d.hero === 2 && d.bank === 10,
+    `basamak ${d.hero}, kalan ${d.bank}`);
+  const poor = tidy({ level: 1, loadout: ['bolt'], bank: 100, hero: 0 });
+  check('parası yetmeyen basamak alınmıyor', buyHero(poor) === false && poor.hero === 0);
+  const full = tidy({ level: 1, loadout: ['bolt'], bank: 1e9, hero: HeroSteps });
+  check('merdiven bitince alınacak bir şey kalmıyor', heroNext(full) === null && buyHero(full) === false);
+}
+
+{
+  const none = heroBonus({ hero: 0 });
+  const all = heroBonus({ hero: HeroSteps });
+  check('merdivensizken hiçbir artış yok', Object.values(none).every((v) => v === 0));
+  check('merdiven hasarı artırıyor', all.dmg > 0.4, `%${(all.dmg * 100).toFixed(0)}`);
+  check('merdiven duvarı büyütüyor', all.wall >= 100, String(all.wall));
+  check('merdiven beklemeyi kısaltıyor', all.cd > 0.05, `%${(all.cd * 100).toFixed(1)}`);
+  check('merdiven oyunu ele geçirmiyor', all.dmg < 1 && all.cd < 0.2,
+    `hasar %${(all.dmg * 100).toFixed(0)}, bekleme %${(all.cd * 100).toFixed(0)}`);
+}
+
+{
+  // Ve gerçekten koşuya giriyor mu
+  const plain = begin(44, ['bolt'], 1);
+  const climbed = begin(44, ['bolt'], 1, heroTotals(HeroSteps));
+  check('merdiven koşudaki hasara yansıyor',
+    statsOf(climbed, 'bolt').damage > statsOf(plain, 'bolt').damage * 1.4,
+    `${statsOf(plain, 'bolt').damage.toFixed(1)} -> ${statsOf(climbed, 'bolt').damage.toFixed(1)}`);
+  check('merdiven duvara yansıyor', climbed.maxWall > plain.maxWall + 100);
+  check('merdiven beklemeye yansıyor', statsOf(climbed, 'bolt').every < statsOf(plain, 'bolt').every);
+}
+
+{
+  // Deneyim kazancı da merdivene bağlı
+  const plain = tidy({ level: 1, loadout: ['bolt'], hero: 0 });
+  const climbed = tidy({ level: 1, loadout: ['bolt'], hero: HeroSteps });
+  const a = record(plain, 2, 300).earned;
+  const b = record(climbed, 2, 300).earned;
+  check('öğrenme basamakları deneyimi artırıyor', b > a, `${a} -> ${b}`);
+}
+
+console.log('');
+console.log(`kahraman merdiveni: ${HeroSteps} basamak, toplam ${wholeLadder.toLocaleString('en')} deneyim`);
+{
+  const all = heroBonus({ hero: HeroSteps });
+  console.log(`  tamamı: hasar +%${(all.dmg * 100).toFixed(0)}  duvar +${all.wall}  bekleme -%${(all.cd * 100).toFixed(1)}  ` +
+    `alan +%${(all.area * 100).toFixed(0)}  onarım ${all.mend.toFixed(2)}/sn  deneyim +%${(all.gain * 100).toFixed(0)}`);
+}
+
 // --- hesap: ana seviye ve kilitler --------------------------------------------------------------
 
 check('ilk büyü baştan açık', UnlockAt.bolt === 1);
@@ -629,10 +708,11 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
   check(`${pairs.length} yazının hepsi iki dilde`, broken.length === 0,
     broken.slice(0, 6).map(([w]) => w).join(', '));
 
-  // Ve çevrilmiş olmalı: iki dilde aynı yazanlar sadece özel adlar olabilir
+  // Ve çevrilmiş olmalı. İki dilde aynı kalabilecek olanlar: özel adlar (Nova, Meteor) ve
+  // içinde kelime olmayan biçimler ("{0} / {1}"). Bir avuçtan fazlası, unutulmuş çeviri demek.
   const sameBoth = pairs.filter(([, v]) => Array.isArray(v) && v[0] === v[1]);
-  check('neredeyse her yazı gerçekten çevrilmiş', sameBoth.length <= 3,
-    sameBoth.map(([w]) => w).join(', '));
+  check('neredeyse her yazı gerçekten çevrilmiş', sameBoth.length <= 5,
+    `${sameBoth.length} tane: ${sameBoth.map(([w]) => w).join(', ')}`);
 }
 
 {
@@ -701,8 +781,8 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
 // --- the bot ---------------------------------------------------------------------------------
 
 /** Makul bir oyuncu: saniyede altı tıklar ve kartları puanlar. Tek bir bölüm oynar. */
-function botRun(seed, loadout, stage = 1, clicksPerSecond = 6) {
-  const s = begin(seed, loadout, stage);
+function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0) {
+  const s = begin(seed, loadout, stage, heroTotals(hero));
   const dt = 1 / 60;
   let since = 0;
   let guard = 0;
@@ -759,6 +839,23 @@ for (const stage of [1, 2, 3, 4, 5]) {
 // Tek büyü, erken bölümlerde dolu loadouttan İYİ - ve bu doğru: ilk bölümler affedici ve
 // odaklanmak işe yarıyor. Asıl soru derin bölümlerde ne olduğu, çünkü loadout oraya yetişmek
 // için var. Ölçüm: 1. bölümde tek büyü %100 / dört büyü %88, ama 3.'de %18 / %43, 5.'de %0 / %13.
+// Merdivenin asıl işi: bugün çok sert olan bölümleri zamanla ulaşılabilir kılmak.
+console.log('');
+console.log('merdivenin bölümlere etkisi (40 koşu):');
+for (const stage of [3, 4, 5]) {
+  const off = [], on = [];
+  for (let i = 1; i <= 40; i++) {
+    off.push(botRun(i * 7919, Four, stage, 6, 0).done);
+    on.push(botRun(i * 7919, Four, stage, 6, HeroSteps).done);
+  }
+  const pc = (a) => Math.round(a.filter(Boolean).length / a.length * 100);
+  console.log(`  bölüm ${stage}:  merdivensiz %${String(pc(off)).padStart(3)}   tam merdivenle %${String(pc(on)).padStart(3)}`);
+  if (stage === 5) {
+    check('tam merdiven derin bölümleri açıyor', pc(on) > pc(off) + 10,
+      `bölüm 5: %${pc(off)} -> %${pc(on)}`);
+  }
+}
+
 const solo = [];
 for (let i = 1; i <= 30; i++) solo.push(botRun(i * 104729, ['bolt'], 3).done);
 const lazy = [];

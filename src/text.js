@@ -101,6 +101,10 @@ export const UI = {
   spellsSoon:   ['upgrading spells between runs comes here',
                  'koşular arası büyü geliştirme buraya gelecek'],
 
+  heroBank:     ['EXPERIENCE TO SPEND', 'HARCANACAK DENEYİM'],
+  heroStep:     ['{0} / {1}', '{0} / {1}'],
+  heroDone:     ['the whole ladder is yours', 'bütün merdiven senin'],
+
   codexSpells:  ['SPELLS', 'BÜYÜLER'],
   codexFoes:    ['MONSTERS', 'CANAVARLAR'],
   codexBoosts:  ['UPGRADES', 'YÜKSELTMELER'],

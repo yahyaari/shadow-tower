@@ -5,7 +5,7 @@
 
 import { begin, advance, click, take } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
-import { menu, menuHit } from './menu.js';
+import { menu, menuHit, heroHome, heroReach } from './menu.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
@@ -26,7 +26,7 @@ let dpr = 1;
 function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
-    hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null,
+    hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null, heroScroll: null,
   };
 }
 
@@ -42,7 +42,7 @@ window.addEventListener('resize', size);
 size();
 
 function start() {
-  state = begin(Date.now(), data.loadout, data.stage);
+  state = begin(Date.now(), data.loadout, data.stage, meta.heroBonus(data));
   show = fresh();
   show.hint = (data.runs || 0) < 2;
   screen = 'run';
@@ -103,6 +103,9 @@ function tick(now) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   if (screen === 'menu') {
+    if (data.tab === 'hero' && show.heroScroll === null) {
+      show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
+    }
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
     return;
@@ -150,6 +153,54 @@ function tick(now) {
 }
 requestAnimationFrame(tick);
 
+/** How far the hero ladder may be pushed, given the window it is in. */
+function heroClamp(at) {
+  return Math.max(0, Math.min(heroReach(canvas.width, canvas.height, dpr), at));
+}
+
+let drag = null;
+
+function doMenu(hit) {
+  if (!hit) return;
+  if (hit.what === 'openSettings') { show.settings = true; return; }
+  if (hit.what === 'closeSettings') { show.settings = false; return; }
+  if (hit.what === 'tab') {
+    data.tab = hit.key;
+    show.codexPick = null;
+    if (hit.key === 'hero') show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
+    meta.save(data);
+    return;
+  }
+  if (hit.what === 'codexHalf') { data.codex = hit.key; meta.save(data); return; }
+  if (hit.what === 'codexOpen') { show.codexPick = hit.key; return; }
+  if (hit.what === 'codexClose') { show.codexPick = null; return; }
+  if (hit.what === 'heroBuy') {
+    if (meta.buyHero(data)) sound.levelled();
+    return;
+  }
+  if (hit.what === 'lang') {
+    const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
+    setLanguage(next);
+    data.lang = next;
+    meta.save(data);
+    return;
+  }
+  if (hit.what === 'sound') {
+    sound.setMuted(!sound.isMuted());
+    data.muted = sound.isMuted();
+    meta.save(data);
+    return;
+  }
+  if (hit.what === 'stage') {
+    const far = meta.furthestStage(data);
+    const want = data.stage + hit.step;
+    if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
+    return;
+  }
+  if (hit.what === 'play') { start(); return; }
+  if (hit.what === 'tile') { meta.toggle(data, hit.key); return; }
+}
+
 function spot(e) {
   const r = canvas.getBoundingClientRect();
   const k = canvas.width / r.width;
@@ -158,6 +209,12 @@ function spot(e) {
 
 addEventListener('pointermove', (e) => {
   const p = spot(e);
+  if (drag) {
+    const dy = p.y - drag.y;
+    drag.moved = Math.max(drag.moved, Math.abs(dy));
+    show.heroScroll = heroClamp(drag.from - dy);
+    return;
+  }
   if (screen === 'menu') {
     const hit = menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr);
     show.overMenu = !hit ? null
@@ -180,35 +237,13 @@ addEventListener('pointerdown', (e) => {
   const p = spot(e);
 
   if (screen === 'menu') {
-    const hit = menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr);
-    if (!hit) return;
-    if (hit.what === 'openSettings') { show.settings = true; return; }
-    if (hit.what === 'closeSettings') { show.settings = false; return; }
-    if (hit.what === 'tab') { data.tab = hit.key; show.codexPick = null; meta.save(data); return; }
-    if (hit.what === 'codexHalf') { data.codex = hit.key; meta.save(data); return; }
-    if (hit.what === 'codexOpen') { show.codexPick = hit.key; return; }
-    if (hit.what === 'codexClose') { show.codexPick = null; return; }
-    if (hit.what === 'lang') {
-      const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
-      setLanguage(next);
-      data.lang = next;
-      meta.save(data);
+    // The hero ladder is taller than the screen, so a press there might be a scroll. It is
+    // settled on release: moved a little, it was a tap; moved a lot, it was a drag.
+    if (data.tab === 'hero' && !show.settings) {
+      drag = { y: p.y, from: show.heroScroll || 0, moved: 0 };
       return;
     }
-    if (hit.what === 'sound') {
-      sound.setMuted(!sound.isMuted());
-      data.muted = sound.isMuted();
-      meta.save(data);
-      return;
-    }
-    if (hit.what === 'stage') {
-      const far = meta.furthestStage(data);
-      const want = data.stage + hit.step;
-      if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
-      return;
-    }
-    if (hit.what === 'play') { start(); return; }
-    if (hit.what === 'tile') { meta.toggle(data, hit.key); return; }
+    doMenu(menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr));
     return;
   }
 
@@ -239,6 +274,23 @@ addEventListener('pointerdown', (e) => {
   }
   click(state);
   show.hint = false;
+}, { passive: false });
+
+addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const was = drag;
+  drag = null;
+  // a press that barely moved was meant as a tap
+  if (was.moved > 6 * dpr) return;
+  const p = spot(e);
+  doMenu(menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr));
+});
+addEventListener('pointercancel', () => { drag = null; });
+
+addEventListener('wheel', (e) => {
+  if (screen !== 'menu' || data.tab !== 'hero' || show.settings) return;
+  e.preventDefault();
+  show.heroScroll = heroClamp((show.heroScroll || 0) + e.deltaY);
 }, { passive: false });
 
 addEventListener('keydown', (e) => {

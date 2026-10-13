@@ -102,7 +102,19 @@ await evaluate(`(() => {
 await sleep(400);
 await screenshot('menu_map');
 
-for (const tab of ['wheel', 'hero', 'spells']) {
+// Kahraman merdiveni: uc ayri noktada
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'hero'; d.hero = 0; d.bank = 600; window.ShadowTower.show.heroScroll = null; return true; })()`);
+await sleep(400);
+await screenshot('kahraman_bas');
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.hero = 14; d.bank = 1400; window.ShadowTower.show.heroScroll = null; return true; })()`);
+await sleep(400);
+await screenshot('kahraman_orta');
+await evaluate(`(() => { window.ShadowTower.show.heroScroll = 0; return true; })()`);
+await sleep(400);
+await screenshot('kahraman_tepe');
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.hero = 0; d.bank = 0; return true; })()`);
+
+for (const tab of ['wheel', 'spells']) {
   await evaluate(`(() => { window.ShadowTower.meta.tab = '${tab}'; return true; })()`);
   await sleep(350);
   await screenshot('menu_' + tab);

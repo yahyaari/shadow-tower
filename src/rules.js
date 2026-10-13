@@ -103,7 +103,10 @@ export function xpFor(level) {
  * as cards. That is the difference between a loadout and a starting hand: you begin a run with
  * one spell every time and build the rest, and what you brought decides what you can build.
  */
-export function begin(seed = Date.now(), loadout = [Always], stage = 1) {
+/** What the hero ladder adds, when nothing has been bought. */
+export const NoHero = { dmg: 0, wall: 0, cd: 0, area: 0, mend: 0, gain: 0 };
+
+export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = NoHero) {
   const carried = loadout.filter((k) => Spells[k]).slice(0, LoadoutSize);
   if (!carried.includes(Always)) carried.unshift(Always);
   const kit = { [Always]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
@@ -115,7 +118,8 @@ export function begin(seed = Date.now(), loadout = [Always], stage = 1) {
     stageT: 0,
     boss: null,
     phase: 'playing',             // 'playing' | 'picking' | 'done' | 'lost'
-    wall: Base.wall, maxWall: Base.wall,
+    hero: { ...NoHero, ...hero },
+    wall: Base.wall + (hero.wall || 0), maxWall: Base.wall + (hero.wall || 0),
     level: 1, xp: 0, need: xpFor(1),
     kills: 0,
     heat: 0,
@@ -175,22 +179,23 @@ export function statsOf(s, key) {
     for (const [knob, v] of Object.entries(b.does)) add[knob] = (add[knob] || 0) + v * n;
   }
 
+  const hero = s.hero || NoHero;
   const tierLift = Math.min(0.9, (kit.tier - 1) * 0.3);
   // Each spell's own area, from its own Wider cards. There is no global one any more, so this is
   // also what the spell's evolutions are sized by - a wider Fireball leaves a wider fire.
-  const size = 1 + add.blast;
+  const size = (1 + add.blast) * (1 + hero.area);
 
   return {
     tier: kit.tier,
     size,
-    damage: sp.damage * (1 + add.dmg + tierLift),
+    damage: sp.damage * (1 + add.dmg + tierLift) * (1 + hero.dmg),
     // Two floors, and the absolute one is the important half.
     //
     // Damage, projectile count and fire rate multiply each other, so a spell that can halve its
     // own cooldown AND quadruple its projectiles is not four times better, it is eight - which is
     // how a bot carrying one spell reached 831 damage a second while a bot carrying four managed
     // 262. No spell may cast faster than three times a second however much is poured into it.
-    every: Math.max(0.3, (sp.every * Math.max(0.6, 1 + add.cd)) / haste(s)),
+    every: Math.max(0.3, (sp.every * Math.max(0.6, 1 + add.cd) * (1 - hero.cd)) / haste(s)),
     count: (sp.count || 1) + add.count,
     spread: (sp.spread || 0.34) + add.spread,
     blast: (sp.blast || 0) * size,
@@ -667,7 +672,8 @@ export function step(s, dt) {
     }
   }
 
-  if (s.passives.mend) s.wall = Math.min(s.maxWall, s.wall + s.passives.mend * 1.1 * dt);
+  const repair = (s.passives.mend || 0) * 1.1 + (s.hero ? s.hero.mend : 0);
+  if (repair > 0) s.wall = Math.min(s.maxWall, s.wall + repair * dt);
 
   // --- the spells, each on its own clock
   for (const key of carrying(s)) {
