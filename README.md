@@ -20,7 +20,11 @@ for the ones you already had, so it is the reason to open the game tomorrow.
 **The loadout.** Four slots. The first is always Magic Bolt; you choose the other three. It is a
 pool rather than a starting hand — what you bring decides what the cards can offer you.
 
-**The run.** It opens with Magic Bolt and nothing else. The three spells you brought arrive as
+**The stage.** Chosen from the menu, with arrows either side. A stage is waves and then the
+Warden; finishing it is scored on how much of the wall is still standing — 100% is three stars,
+95% two, 60% one. Stars are kept at their best, and finishing a stage opens the next.
+
+**The run.** A stage opens with Magic Bolt and nothing else. The three spells you brought arrive as
 **NEW SPELL** cards as you level, and only cast once taken. Every other card belongs to a spell
 you are carrying — more projectiles, a wider blast, a shorter cooldown — and **every fifth boost
 on a spell turns it into the next tier**, a card that changes what the spell *does* rather than

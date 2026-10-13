@@ -2,55 +2,60 @@
 
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
-- **Hesap.** Koşu bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
-- **Loadout.** Dört slot, ilki **sabit: Magic Bolt**. Diğer üçünü sen seçersin. Ama bu bir
-  "başlangıç eli" değil, bir **havuz**: loadout, kartların sana ne önerebileceğini belirler.
-- **Koşu.** Açılışta **sadece Magic Bolt ateşler.** Getirdiğin diğer üç büyü, seviye atladıkça
-  "YENİ BÜYÜ" kartı olarak çıkar ve ancak alınca ateşlemeye başlar.
-
-Yani her koşu tek büyüyle açılır ve sen onu kurarsın; ne kurabileceğini ise ne getirdiğin
-belirler. Kart ekranındaki tipik bir seçim şöyle görünür:
-
-```
-NEW POWER        NEW SPELL              MAGIC BOLT
-Haste            Lightning              Sharper
-+13% cast speed  leaps between them     +18% damage
-                 not cast until you      5 more to tier 2
-                 take it
-```
+- **Hesap.** Bölüm bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
+- **Loadout.** Dört slot, ilki **sabit: Magic Bolt**. Diğer üçünü sen seçersin. Bu bir "başlangıç
+  eli" değil bir **havuz**: ne getirdiğin, kartların sana ne önerebileceğini belirler.
+- **Bölüm.** Ana menüden seçilir (`◀ BÖLÜM 3 ▶`). Açılışta **sadece Magic Bolt ateşler**;
+  getirdiğin diğer üçü "YENİ BÜYÜ" kartı olarak çıkar ve ancak alınca ateşler. Bölüm, patronu
+  indirince biter ve **ayakta kalan duvara göre yıldız** verir.
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
+## Bölümler ve yıldızlar
+
+Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca bölüm **1:45** sürüyor.
+
+| ayakta kalan duvar | yıldız |
+|---|---|
+| %100 | ★★★ |
+| %95+ | ★★☆ |
+| %60+ | ★☆☆ |
+| altı | bitirdin ama yıldız yok |
+
+Yıldızlar her bölüm için **en iyisi** saklanıyor: kötü giden bir tekrar kazanılmışı geri almıyor,
+yoksa kimse tekrar denemezdi. Bir bölümü bitirmek sonrakini açıyor.
+
+Zorluk bölüm numarasıyla **çarpılıyor** (`StageStep = 0.2`), zamanla toplanmıyor. Çünkü her bölüm
+sıfırdan oynanıyor: 5. bölüm, beş dakikalık bir dalgayla tek büyüyle karşılaşmamalı.
+
 ## Kart sistemi
 
-Kartların hepsi bir büyüye aittir. **Küresel pasif yok** — tek istisna Onarım.
+**Kartta sadece büyünün adı ve vereceği güç yazar.** Eskiden yükseltmenin kendi uydurma adı
+("Quicker"), kaçıncısı olduğu ve bir sonraki kademeye kaç kaldığı da yazıyordu — iki saniyede
+okunan bir kartın üstünde üç ayrı defter kaydı. Kart bir seçimdir, ilerleme raporu değil.
 
-**Normal yükseltme** — "Magic Bolt: +%40 hasar", "Nova: +%13 hasar". Oran her büyüde farklı ve
-bu bilerek: aynı kalabalığa karşı on saniyede Nova 589, Magic Bolt 56 hasar veriyor, yani sabit
-bir "+%18" birine on kat fazla kazandırırdı. **En çok iş yapan en az kazanır.**
+Tek istisna: bir dönüşüm başka bir büyüden ödünç alıyorsa "**Ateş Topu sayesinde**" yazıyor. O
+defter kaydı değil — kombinasyonların var olduğunu oyuncuya söyleyen tek yer.
 
-| büyü | sahada ölçülen çıktı | hasar kartı | bekleme kartı |
+Oran her büyüde farklı, çünkü sabit bir "+%18" iki ayrı büyüde aynı kart değil. Aynı kalabalığa
+karşı on saniyede Nova 589, Magic Bolt 56 hasar veriyor:
+
+| büyü | ölçülen çıktı | hasar kartı | bekleme kartı |
 |---|---|---|---|
 | Nova | 589 | +%13 | -%8 |
 | Meteor | 389 | +%14 | -%10 |
 | Fireball | 205 | +%19 | -%13 |
-| Frost Orb | 140 | +%24 | -%15 |
-| Lightning | 139 | +%24 | -%15 |
-| Shards | 109 | +%29 | -%18 |
-| Wisp | 104 | +%29 | -%18 |
-| Orbit | 103 | +%29 | -%18 |
+| Frost / Lightning | ~140 | +%24 | -%15 |
+| Shards / Wisp / Orbit | ~105 | +%29 | -%18 |
 | Beam | 89 | +%32 | -%20 |
 | Magic Bolt | 56 | +%40 | -%25 |
 
-Kart yazısı **sayıdan üretiliyor** (`+${pct(n)}% damage`), yani bir kart veremeyeceği bir rakamı
-vaat edemez. Test de bunu kontrol ediyor.
+Kart yazısı **sayıdan üretiliyor** (`+${pct(n)}% damage`), yani veremeyeceği bir rakamı vaat
+edemez.
 
-**Dönüşüm (tier)** — bir büyüye beş yükseltme yaptığında bir sonraki kartı dönüşüm olur. En fazla
-üç dönüşüm (T4).
+**Dönüşüm (tier)** — bir büyüye beş yükseltme yaptığında sonraki kartı dönüşüm olur, en fazla üç.
 
-**Onarım** — tek pasif. Diğerleri "daha hızlı öldür" diyor, bu "daha uzun dayan" diyor; koşunun
-ikisine de ihtiyacı var. Ve **duvar hasar almadan sunulmuyor**: dolu bir duvarı onarmayı teklif
-eden kart boşa giden karttır.
+**Onarım** — tek pasif, ve **duvar hasar almadan sunulmuyor**.
 
 ## Kombo kuralı — bu oyunun kalbi
 
@@ -91,16 +96,30 @@ node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
 ## Şu anki denge
 
 ```
-loadout: bolt, fireball, frost, lightning — saniyede 6 tıklayan oyuncu, 60 koşu:
-  dayanma   en kısa 1:46   ortanca 4:13   en uzun 6:39
-  bölüm     ortanca 3   en yüksek 4
-  seviye    ortanca 30   dönüşüm ortanca 3, en çok 5
-  1. bölümü geçen %85   2'yi %50   3'ü %27
-  sadece sabit büyüyle: ortanca 3:10
-  neredeyse hiç tıklamayan (1/sn): ortanca 1:41
+loadout: bolt, fireball, frost, lightning — bölüm başına 40 koşu:
+bölüm  bitirme   süre    yıldız dağılımı (0/1/2/3)
+  1     % 88    1:44    10 / 5 / 2 / 18
+  2     % 65    1:41     5 / 2 / 2 / 17
+  3     % 43    1:47     7 / 1 / 3 / 6
+  4     % 28    1:42     2 / 1 / 0 / 8
+  5     % 13    1:42     1 / 1 / 3 / 0
+  sadece sabit büyüyle 3. bölüm: %23  (dört büyüyle %43)
 ```
 
-Ortanca koşu 4:13 — iki koşu CrazyGames'in 10 dakikalık oturum eşiğini geçiyor.
+Bir bölüm ~1:45, yani CrazyGames'in 10 dakikalık oturum eşiği **altı bölüm** demek — ve
+tekrar oynanabilir olmaları (yıldız toplamak) bunu doğal kılıyor.
+
+**Tek büyü mü dört büyü mü**, bölüme göre değişiyor ve bu bilerek böyle:
+
+| bölüm | tek büyü | dört büyü |
+|---|---|---|
+| 1 | %100 | %88 |
+| 2 | %100 | %65 |
+| 3 | **%18** | **%43** |
+| 5 | **%0** | **%13** |
+
+İlk bölümler affedici ve odaklanmak işe yarıyor; 3'ten sonra loadout şart. Tek büyü erken tepe
+yapıp çöküyor, dolu loadout ölçekleniyor.
 
 ## Dil
 
@@ -173,6 +192,10 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - **`mend` pasifi açıkken duvar düşmüyor**; bitiş ekranını test ederken önce onu kapatmak gerekti.
 - **Telefonda kutu yazıları taşar.** `fitWrite()` sığmıyorsa küçültüyor.
 - **Denge tarayıcıda ölçülmez.** `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
+- **Ok yönü: uç, gösterdiği yöne gider.** Ters yazınca sol ok ">" çizdi.
+- **Aynı koşuyu tekrar bitirirken `show.booked` sıfırlanmazsa** bitiş ekranı eski sonucu gösterir
+  — %70 duvarla üç yıldız yazdı. Gerçek akışta `start()` sıfırlıyor, ama `peek.mjs` sıfırlamıyordu
+  ve ekran görüntüsü yalan söylüyordu.
 - **Oyundan çıkarılan bir anahtar kayıtlı durumda kalabilir.** Might/Haste/Reach kaldırılınca
   `peek.mjs` hâlâ onları kuruyordu ve panel `Passives[key].name` okurken bütün kareyi düşürdü.
   Artık kitabın tanımadığı anahtarlar atlanıyor.

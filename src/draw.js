@@ -21,7 +21,7 @@ import {
 } from './rules.js';
 import { UnlockAt, nextUnlock } from './spells.js';
 import { say, UI, LanguageNames, Languages, language } from './text.js';
-import { needFor, Speeds } from './meta.js';
+import { needFor, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from './meta.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
@@ -518,6 +518,41 @@ function spellFx(ctx, S, state) {
   }
 }
 
+/**
+ * A star. Filled when earned, outlined when not.
+ *
+ * In two inks there is no gold, so what carries it is solid against hollow - which also means a
+ * row of them reads at a glance from across a phone.
+ */
+function star(ctx, x, y, r, filled, colour) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const out = (i % 2 ? r * 0.44 : r);
+    i ? ctx.lineTo(Math.cos(a) * out, Math.sin(a) * out) : ctx.moveTo(Math.cos(a) * out, Math.sin(a) * out);
+  }
+  ctx.closePath();
+  if (filled) {
+    ctx.fillStyle = colour;
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = Math.max(1.5, r * 0.13);
+    ctx.globalAlpha = 0.35;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+/** A row of three, for a stage. */
+function stars(ctx, x, y, r, got, colour) {
+  const gap = r * 2.5;
+  for (let i = 0; i < 3; i++) star(ctx, x - gap + i * gap, y, r, i < got, colour);
+}
+
 /** A small mark for each spell. The same vocabulary of shapes as the field uses. */
 function sigil(ctx, key, x, y, s, colour) {
   ctx.save();
@@ -771,16 +806,13 @@ function picking(ctx, state, w, h, show, U) {
 
   const list = cards(w, h, U);
   const top0 = list[0].y;
-  write(ctx, state.cleared ? say(UI.cleared, state.stage - 1) : say(UI.level, state.level),
-    w / 2, top0 - 52 * U, 32 * U, 800, 'center');
-  write(ctx, state.cleared ? say(UI.mended) : say(UI.takeOne),
-    w / 2, top0 - 24 * U, 13 * U, 600, 'center');
+  write(ctx, say(UI.level, state.level), w / 2, top0 - 52 * U, 32 * U, 800, 'center');
+  write(ctx, say(UI.takeOne), w / 2, top0 - 24 * U, 13 * U, 600, 'center');
 
   for (const r of list) {
     const card = describe(state, state.choices[r.i]);
     if (!card) continue;
     const lit = show.overCard === r.i;
-    const big = !!card.tier || !!card.fresh;     // a tier or a new spell: the cards that change a run
     const top = r.y - (lit ? 8 : 0);
     const cx = r.x + r.w / 2;
     // Everything is a fraction of the card, so a card half the width is a card and not a label.
@@ -791,33 +823,21 @@ function picking(ctx, state, w, h, show, U) {
       ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.fill();
     }
     ctx.strokeStyle = Black;
-    ctx.lineWidth = (lit ? 3 : big ? 4 : 2) * U;
+    ctx.lineWidth = (lit ? 3 : card.big ? 4 : 2) * U;
     ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.stroke();
 
     const ink = lit ? Pale : Black;
     const room = r.w - 0.1 * f;
 
-    fitWrite(ctx, card.badge.toUpperCase(), cx, top + 0.1 * f, 0.052 * f, 800, 'center', ink, room);
-    fitWrite(ctx, card.title, cx, top + 0.215 * f, 0.105 * f, 800, 'center', ink, room);
-    sigil(ctx, card.mark, cx, top + 0.46 * f, big ? 0.23 * f : 0.19 * f, ink);
-    wrap(ctx, card.text, cx, top + 0.77 * f, room, 0.062 * f, 0.085 * f, ink);
+    if (card.badge) fitWrite(ctx, card.badge.toUpperCase(), cx, top + 0.11 * f, 0.05 * f, 800, 'center', ink, room);
+    fitWrite(ctx, card.title, cx, top + 0.235 * f, 0.108 * f, 800, 'center', ink, room);
+    sigil(ctx, card.mark, cx, top + 0.5 * f, card.big ? 0.24 * f : 0.2 * f, ink);
+    wrap(ctx, card.text, cx, top + 0.83 * f, room, 0.066 * f, 0.09 * f, ink);
 
-    const foot = card.borrows ? say(UI.withSpell, card.borrows)
-      : card.fresh ? say(UI.notYet)
-      : card.toTier > 0 ? say(UI.moreToTier, card.toTier, (state.kit[card.mark] || {}).tier + 1)
-      : '';
-    if (foot) fitWrite(ctx, foot, cx, top + 1.0 * f, 0.048 * f, 600, 'center', ink, room);
-
-    if (card.most) {
-      const dot = 0.028 * f, step = 0.075 * f;
-      for (let i = 0; i < card.most; i++) {
-        ctx.fillStyle = ink;
-        ctx.globalAlpha = i < card.have + 1 ? 1 : 0.22;
-        ctx.beginPath();
-        ctx.arc(cx - (card.most - 1) * step / 2 + i * step, top + 1.14 * f, dot, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
+    // The one extra line that survives: which other spell lent this. It is not bookkeeping - it
+    // is the only place the player is ever told the combinations exist.
+    if (card.borrows) {
+      fitWrite(ctx, say(UI.withSpell, card.borrows), cx, top + 1.08 * f, 0.05 * f, 600, 'center', ink, room);
     }
   }
   write(ctx, say(UI.tapCard), w / 2, list[0].y + list[0].h + 26 * U, 13 * U, 500, 'center');
@@ -850,6 +870,33 @@ export function tiles(w, h, dpr = 1) {
     y: top + Math.floor(i / cols) * (th + gap),
     w: tw, h: th, tall,
   }));
+}
+
+/**
+ * The stage picker: an arrow either side of the stage you are about to play.
+ *
+ * Above the loadout rather than on a screen of its own, because choosing the stage and choosing
+ * what to take into it are one decision - a later stage is a reason to bring something different.
+ */
+export function stageBox(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const list = tiles(w, h, dpr);
+  const y = list[0].y - 92 * U;
+  const r = 24 * U;
+  return {
+    prev: { x: w / 2 - 130 * U - r, y: y - r, w: r * 2, h: r * 2 },
+    next: { x: w / 2 + 130 * U - r, y: y - r, w: r * 2, h: r * 2 },
+    at: { x: w / 2, y },
+  };
+}
+
+export function hitStage(w, h, px, py, dpr = 1) {
+  const b = stageBox(w, h, dpr);
+  for (const what of ['prev', 'next']) {
+    const r = b[what];
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return what;
+  }
+  return null;
 }
 
 export function begins(w, h, dpr = 1) {
@@ -885,7 +932,7 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   ctx.fillRect(0, 0, w, h);
 
   const list = tiles(w, h, dpr);
-  const headTop = list[0].y - (list[0].tall ? 128 * U : 104 * U);
+  const headTop = list[0].y - (list[0].tall ? 196 * U : 172 * U);
 
   fitWrite(ctx, say(UI.title), w / 2, headTop, 34 * U, 800, 'center', Black, w - 48 * U);
 
@@ -903,6 +950,32 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   fitWrite(ctx, soon ? say(UI.unlockSoon, say(Spells[soon.key].name), soon.at) : say(UI.allYours),
     bx + bw, by + 24 * U, 13 * U, 600, 'right', Black, bw * 0.45);
   if (meta.best) write(ctx, say(UI.bestStage, meta.best), w / 2, by + 24 * U, 13 * U, 600, 'center');
+
+  // --- which stage, and what it has been worth so far
+  {
+    const box = stageBox(w, h, dpr);
+    const far = furthestStage(meta);
+    const arrow = (r, pointing, on) => {
+      ctx.globalAlpha = on ? 1 : 0.18;
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 3 * U;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2, a = 9 * U;
+      // The tip goes the way it points. Written the other way round, the left arrow drew a ">".
+      ctx.beginPath();
+      ctx.moveTo(cx - pointing * a * 0.5, cy - a);
+      ctx.lineTo(cx + pointing * a * 0.5, cy);
+      ctx.lineTo(cx - pointing * a * 0.5, cy + a);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    };
+    arrow(box.prev, -1, meta.stage > 1);
+    arrow(box.next, 1, meta.stage < far);
+    write(ctx, say(UI.stage, meta.stage), box.at.x, box.at.y - 6 * U, 28 * U, 800, 'center');
+    const got = starsAt(meta, meta.stage);
+    stars(ctx, box.at.x, box.at.y + 26 * U, 9 * U, got || 0, Black);
+  }
 
   const room = LoadoutSize - meta.loadout.length;
   write(ctx, room > 0 ? say(UI.chooseMore, room) : say(UI.chooseUpTo, LoadoutSize),
@@ -952,7 +1025,7 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   ctx.strokeStyle = Black;
   ctx.lineWidth = 3 * U;
   ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.stroke();
-  write(ctx, say(UI.begin, meta.loadout.length, LoadoutSize), b.x + b.w / 2, b.y + b.h / 2,
+  write(ctx, `${say(UI.play)}  ·  ${say(UI.stage, meta.stage)}`, b.x + b.w / 2, b.y + b.h / 2,
     19 * U, 800, 'center', ready ? Pale : Black);
 
   // --- language and sound, under the button that starts a run
@@ -1041,37 +1114,42 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
 
+  // --- the stage is finished, and scored on how much wall is still standing
+  if (state.phase === 'done') {
+    ctx.fillStyle = 'rgba(236,231,220,0.93)';
+    ctx.fillRect(0, 0, w, h);
+    const won = show.won;
+    const row = (n) => h / 2 + (n - 2.6) * 34 * U;
+    const part = Math.round((Math.max(0, state.wall) / state.maxWall) * 100);
+
+    write(ctx, say(UI.complete, state.stage), w / 2, row(0) - 18 * U, 34 * U, 800, 'center');
+    stars(ctx, w / 2, row(1.4), 26 * U, won ? won.stars : 0, Black);
+    write(ctx, say(UI.wallLeft, part), w / 2, row(2.9), 16 * U, 600, 'center');
+
+    if (won) {
+      const need = nextStarAt(won.stars);
+      write(ctx, need === null ? say(UI.allStars) : say(UI.starFor, need),
+        w / 2, row(3.7), 13 * U, 500, 'center');
+      write(ctx, say(UI.earned, won.earned), w / 2, row(4.7), 16 * U, 800, 'center');
+      if (won.opened.length) {
+        fitWrite(ctx, say(UI.unlocked, won.level, won.opened.map((k) => say(Spells[k].name)).join(' + ').toUpperCase()),
+          w / 2, row(5.5), 14 * U, 800, 'center', Black, w - 48 * U);
+      }
+    }
+    write(ctx, say(UI.toMenu), w / 2, row(6.6), 15 * U, 700, 'center');
+  }
+
   if (state.phase === 'lost') {
     ctx.fillStyle = 'rgba(236,231,220,0.92)';
     ctx.fillRect(0, 0, w, h);
-    const won = show.won;
-    const row = (n) => h / 2 + (n - 2.2) * 34 * U;
+    const row = (n) => h / 2 + (n - 1.6) * 34 * U;
 
-    write(ctx, say(UI.fell), w / 2, row(0) - 22 * U, 42 * U, 800, 'center');
-    write(ctx, say(UI.stage, state.stage), w / 2, row(1), 30 * U, 800, 'center');
+    write(ctx, say(UI.fell), w / 2, row(0) - 18 * U, 40 * U, 800, 'center');
+    write(ctx, say(UI.stage, state.stage), w / 2, row(1), 26 * U, 800, 'center');
     const secs = Math.floor(state.t);
     const clock = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
-    write(ctx, say(UI.runLine, state.level, state.kills, clock), w / 2, row(2), 16 * U, 600, 'center');
-
-    if (won) {
-      // The account is the reason to go again, so it is said here rather than left on a screen
-      // the player has to go back to before they find out anything happened.
-      write(ctx, say(UI.earned, won.earned), w / 2, row(3.1), 17 * U, 800, 'center');
-      let line;
-      if (won.opened.length) {
-        line = say(UI.unlocked, won.level, won.opened.map((k) => say(Spells[k].name)).join(' + ').toUpperCase());
-      } else if (won.levelled) {
-        const soon = nextUnlock(won.level);
-        line = soon ? say(UI.levelledTo, won.level, say(Spells[soon.key].name), soon.at)
-          : say(UI.levelledPlain, won.level);
-      } else if (won.beatBest) {
-        line = won.wasBest ? say(UI.newBestWas, won.wasBest) : say(UI.newBest);
-      } else {
-        line = say(UI.yourBest, won.best);
-      }
-      fitWrite(ctx, line, w / 2, row(4.1), 15 * U, 700, 'center', Black, w - 48 * U);
-    }
-    write(ctx, say(UI.tapAgain), w / 2, row(5.6), 15 * U, 700, 'center');
+    write(ctx, say(UI.runLine, state.level, state.kills, clock), w / 2, row(2), 15 * U, 600, 'center');
+    write(ctx, say(UI.retry), w / 2, row(3.4), 15 * U, 700, 'center');
   }
 }
 

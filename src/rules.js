@@ -56,7 +56,18 @@ export const SprintAt = 210;
  * player has four spells with tiers on them and the wave has to have grown into that.
  */
 export const Grace = 25;
-export const pressure = (s) => 1 + Math.max(0, s.t - Grace) / 56;
+
+/**
+ * How hard it is right now.
+ *
+ * Two parts. Within a stage it climbs with the clock, flat for the first `Grace` seconds because
+ * every stage opens with one spell and the rest have to be picked up. Between stages it steps up
+ * by a fixed amount, rather than carrying on from where the last one stopped - a stage is played
+ * from scratch, so stage five cannot start at five minutes' worth of wave with one spell in hand.
+ */
+export const StageStep = 0.2;
+export const pressure = (s) =>
+  (1 + Math.max(0, s.t - Grace) / 56) * (1 + ((s.stage || 1) - 1) * StageStep);
 export const spawnEvery = (s) => Math.max(0.05, 0.85 / Math.pow(pressure(s), 1.3));
 
 export function seeded(seed) {
@@ -79,7 +90,7 @@ export function seeded(seed) {
  * Thirty picks is five spells at six each: everything tiers once, and what you favour tiers twice.
  */
 export function xpFor(level) {
-  return Math.round(2 * Math.pow(1.14, level - 1) + (level - 1) * 1.0);
+  return Math.round(2 * Math.pow(1.1, level - 1) + (level - 1) * 0.8);
 }
 
 // --- a run --------------------------------------------------------------------------------------
@@ -92,7 +103,7 @@ export function xpFor(level) {
  * as cards. That is the difference between a loadout and a starting hand: you begin a run with
  * one spell every time and build the rest, and what you brought decides what you can build.
  */
-export function begin(seed = Date.now(), loadout = [Always]) {
+export function begin(seed = Date.now(), loadout = [Always], stage = 1) {
   const carried = loadout.filter((k) => Spells[k]).slice(0, LoadoutSize);
   if (!carried.includes(Always)) carried.unshift(Always);
   const kit = { [Always]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
@@ -100,11 +111,10 @@ export function begin(seed = Date.now(), loadout = [Always]) {
   return {
     roll: seeded(seed),
     t: 0,
-    stage: 1,
+    stage: Math.max(1, Math.floor(stage)),
     stageT: 0,
     boss: null,
-    cleared: false,
-    phase: 'playing',             // 'playing' | 'picking' | 'lost'
+    phase: 'playing',             // 'playing' | 'picking' | 'done' | 'lost'
     wall: Base.wall, maxWall: Base.wall,
     level: 1, xp: 0, need: xpFor(1),
     kills: 0,
@@ -524,7 +534,11 @@ export function offer(s) {
 }
 
 /**
- * What a card says, in the language that is on.
+ * What a card says: the name of the spell, and the power it gives. Nothing else.
+ *
+ * It used to carry the upgrade's own invented name, how many of that upgrade you had, and how
+ * many more picks until the spell levelled - three pieces of bookkeeping on a card you read in
+ * two seconds while things are walking at you. A card is a choice, not a progress report.
  *
  * Here rather than in the view, because a card that promises one thing and does another is the
  * worst bug this game can have, and a test can only catch it if it can read the promise. That
@@ -533,50 +547,31 @@ export function offer(s) {
  */
 export function describe(s, pick) {
   if (!pick) return null;
+
   if (pick.what === 'passive') {
     const p = Passives[pick.key];
-    const have = s.passives[pick.key] || 0;
-    return {
-      badge: say(have ? UI.power : UI.newPower),
-      title: say(p.name),
-      text: say(p.tells),
-      mark: pick.key, have, most: MostPassive,
-    };
+    return { title: say(p.name), text: say(p.tells), mark: pick.key };
   }
+
   const sp = Spells[pick.key];
+
   if (pick.what === 'spell') {
-    return {
-      badge: say(UI.newSpell),
-      title: say(sp.name),
-      text: say(sp.tells),
-      mark: pick.key,
-      fresh: true,
-      have: 0, most: 0,
-    };
+    return { badge: say(UI.newSpell), title: say(sp.name), text: say(sp.tells), mark: pick.key, big: true };
   }
-  const kit = s.kit[pick.key];
+
   if (pick.what === 'evolution') {
     const evo = sp.evolutions.find((e) => e.onHit === pick.evo);
     return {
-      badge: say(UI.tierCard, say(sp.name), kit.tier + 1),
-      title: say(evo.name),
+      title: say(sp.name),
       text: say(evo.tells),
       mark: pick.key,
-      tier: kit.tier + 1,
-      have: kit.tier, most: 0,
+      big: true,
       borrows: evo.needs ? say(Spells[evo.needs].name) : null,
     };
   }
+
   const b = sp.boosts.find((x) => x.key === pick.boost);
-  return {
-    badge: say(sp.name),
-    title: say(b.name),
-    text: say(b.tells),
-    mark: pick.key,
-    have: kit.boosts[b.key] || 0,
-    most: b.most || 3,
-    toTier: kit.tier * BoostsPerTier - kit.taken,   // how many more boosts until it levels
-  };
+  return { title: say(sp.name), text: say(b.tells), mark: pick.key };
 }
 
 export function take(s, index) {
@@ -601,7 +596,6 @@ export function take(s, index) {
     s.events.push({ kind: 'took', pick });
   }
   s.choices = [];
-  s.cleared = false;
   s.phase = 'playing';
   return true;
 }
@@ -643,7 +637,8 @@ export function step(s, dt) {
   s.heat = Math.max(0, s.heat - Heat.fade * dt);
   s.cast = Math.max(0, s.cast - dt * 5);
 
-  if (!s.boss && s.stageT >= StageWaves) {
+  if (!s.boss && !s.bossDone && s.stageT >= StageWaves) {
+    s.bossDone = true;
     s.boss = spawn(s, 'warden');
     s.boss.hp *= 1 + (s.stage - 1) * 0.42;
     s.boss.maxHp = s.boss.hp;
@@ -794,15 +789,12 @@ export function step(s, dt) {
   s.foes = s.foes.filter((f) => f.hp > 0);
   for (const id of Object.keys(s.bladeHits)) if (s.bladeHits[id] < s.t - 2) delete s.bladeHits[id];
 
+  // The boss is the end of the stage, and the end of the run. A run used to roll straight into
+  // the next stage; now a stage is a thing you choose from the menu, finish, and are scored on.
   if (s.boss && s.boss.hp <= 0) {
     s.boss = null;
-    s.stage += 1;
-    s.stageT = 0;
-    s.wall = Math.min(s.maxWall, s.wall + s.maxWall * 0.4);
-    s.choices = offer(s);
-    s.cleared = true;
-    if (s.choices.length) s.phase = 'picking';
-    s.events.push({ kind: 'cleared', stage: s.stage - 1 });
+    s.phase = 'done';
+    s.events.push({ kind: 'cleared', stage: s.stage });
     return s;
   }
 

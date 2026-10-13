@@ -19,7 +19,46 @@ const blank = {
   muted: false,
   lang: 'en',       // English by default; Turkish is chosen, not detected
   speed: 1,
+  stars: null,      // stage number -> best stars ever earned there
+  stage: 1,         // the one showing on the menu
 };
+
+/**
+ * What finishing a stage is worth, in stars.
+ *
+ * Measured on the wall that is still standing, because the wall is the only thing a run can
+ * protect. Three stars means nothing ever reached it - which on a later stage is a real feat and
+ * is meant to be.
+ */
+export function starsFor(wall, maxWall) {
+  const part = maxWall > 0 ? wall / maxWall : 0;
+  if (part >= 1) return 3;
+  if (part >= 0.95) return 2;
+  if (part >= 0.6) return 1;
+  return 0;
+}
+
+/** How much of the wall the next star up would need, or null at three. */
+export function nextStarAt(stars) {
+  return stars >= 3 ? null : stars === 2 ? 100 : stars === 1 ? 95 : 60;
+}
+
+/** Stage one is always there; each later one opens when the one before it has been finished. */
+export function stageOpen(data, stage) {
+  if (stage <= 1) return true;
+  return (data.stars || {})[stage - 1] !== undefined;
+}
+
+export function furthestStage(data) {
+  let n = 1;
+  while (stageOpen(data, n + 1)) n += 1;
+  return n;
+}
+
+export const starsAt = (data, stage) => (data.stars || {})[stage];
+
+export const totalStars = (data) =>
+  Object.values(data.stars || {}).reduce((a, b) => a + b, 0);
 
 export const Speeds = [1, 1.5, 2];
 
@@ -63,6 +102,13 @@ export function tidy(data) {
   if (!Languages.includes(data.lang)) data.lang = 'en';
   if (!Speeds.includes(data.speed)) data.speed = 1;
 
+  data.stars = (data.stars && typeof data.stars === 'object') ? data.stars : {};
+  for (const [k, v] of Object.entries(data.stars)) {
+    const n = Number(k);
+    if (!Number.isInteger(n) || n < 1 || !Number.isInteger(v) || v < 0 || v > 3) delete data.stars[k];
+  }
+  data.stage = Math.max(1, Math.min(furthestStage(data), Math.floor(data.stage || 1)));
+
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
     .filter((k, i, all) => spellKeys.includes(k) && open.includes(k) && all.indexOf(k) === i && k !== Always);
@@ -93,6 +139,26 @@ export function save(data) {
  * and what that opened. Levelling more than once on a single run is possible on a long one, so
  * this loops rather than levelling at most once.
  */
+/**
+ * Books a finished stage.
+ *
+ * Stars are kept at their best: a replay that goes worse does not take back what was earned, or
+ * nobody would ever risk a replay.
+ */
+export function finish(data, stage, wall, maxWall, kills) {
+  const stars = starsFor(wall, maxWall);
+  const had = data.stars[stage];
+  const beat = had === undefined || stars > had;
+  if (beat) data.stars[stage] = stars;
+  // `record` already returns `opened` for the spells the account unlocked, so the stage that
+  // just opened is named something else rather than quietly overwriting it.
+  const openedStage = had === undefined && stageOpen(data, stage + 1);
+  const account = record(data, stage, kills);
+  if (data.stage < furthestStage(data)) data.stage = Math.min(furthestStage(data), stage + 1);
+  save(data);
+  return { stars, had, beat, openedStage, ...account };
+}
+
 export function record(data, stage, kills) {
   const earned = worth(stage, kills);
   const wasLevel = data.level;

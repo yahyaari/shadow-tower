@@ -88,29 +88,29 @@ await sleep(400);
 
 // Donanımlı bir büyücü kur: altı büyü, birkaç pasif, ve bölümün sonuna gel
 // Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
-await screenshot('loadout_yeni_hesap');
+await screenshot('menu_yeni_hesap');
 
 // Ayni ekran Turkce
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
 await sleep(400);
-await screenshot('loadout_tr');
+await screenshot('menu_tr');
 
-// Ilerlemis bir hesap, Ingilizce
+// Ilerlemis bir hesap: bolum 3 secili, onceki bolumlerin yildizlari var
 await evaluate(`(() => {
   const d = window.ShadowTower.meta;
   d.lang = 'en'; window.ShadowTower.setLanguage('en');
-  d.level = 8; d.xp = 700; d.best = 3;
-  d.loadout = ['bolt', 'fireball', 'lightning'];
+  d.level = 8;
+  d.xp = 700;
+  d.stars = { 1: 3, 2: 2, 3: 1 };
+  d.stage = 3;
+  d.loadout = ['bolt', 'fireball', 'lightning', 'frost'];
   return true;
 })()`);
 await sleep(400);
-await screenshot('loadout');
+await screenshot('menu');
 
-// Kosunun ilk saniyeleri: tek buyuyle basliyor, ilk kart ekraninda YENI BUYU cikiyor
+// Kosunun ilk kart ekrani: tek buyuyle basliyor
 await evaluate(`(() => {
-  const d = window.ShadowTower.meta;
-  d.lang = 'en'; window.ShadowTower.setLanguage('en');
-  d.level = 13; d.loadout = ['bolt', 'fireball', 'frost', 'lightning'];
   window.ShadowTower.start();
   const s = window.ShadowTower.state;
   s.xp = s.need;
@@ -122,71 +122,48 @@ for (let i = 0; i < 60; i++) {
 }
 await sleep(500);
 console.log('  acilista atesleyen: ' + await evaluate(`Object.keys(window.ShadowTower.state.kit).join('+')`));
-await screenshot('ilk_kartlar');
+await screenshot('kartlar');
+await evaluate(`window.ShadowTower.take(window.ShadowTower.state, 0); true`);
 
+// Patron ani
 await evaluate(`(() => {
-  const d = window.ShadowTower.meta;
-  d.level = 16;
-  d.loadout = ['bolt', 'fireball', 'frost', 'lightning', 'blade'];
-  window.ShadowTower.start();
   const s = window.ShadowTower.state;
-  s.kit.bolt = { tier: 3, taken: 9, boosts: { sharper: 3, more: 2, quicker: 2 }, evos: ['burst', 'fire'] };
-  s.kit.fireball = { tier: 2, taken: 6, boosts: { wider: 3, sharper: 2 }, evos: ['fire'] };
-  s.kit.frost = { tier: 2, taken: 5, boosts: { deep: 2, wider: 2 }, evos: ['freeze'] };
-  s.kit.lightning = { tier: 2, taken: 5, boosts: { jump: 3, sharper: 1 }, evos: ['storm'] };
-  // Birinin seviye borcu olsun ki kart ekranında bir DÖNÜŞÜM kartı görelim - ve elektrik
-  // taşıdığımız için "fırtına" dönüşümü de çıkabilsin.
-  s.kit.blade = { tier: 1, taken: 5, boosts: { more: 2, ring: 1, sharper: 2 }, evos: [] };
-  s.passives = { mend: 2 };
-  s.level = 16;
-  s.xp = 0; s.need = 40;
+  s.kit.fireball = { tier: 2, taken: 6, boosts: { wider: 2, sharper: 2 }, evos: ['fire'] };
+  s.cools.fireball = 0.2;
+  s.kit.frost = { tier: 1, taken: 3, boosts: { deep: 2 }, evos: [] };
+  s.cools.frost = 0.3;
+  s.passives = { mend: 1 };
   s.t = 70; s.stageT = 70;
-  s.wall = s.maxWall * 0.62;
+  s.wall = s.maxWall * 0.72;
   return true;
 })()`);
-
 for (let i = 0; i < 120; i++) {
   if (await evaluate('!!window.ShadowTower.state.boss')) break;
   await sleep(150);
 }
 await sleep(900);
-await screenshot("patron");
+await screenshot('patron');
 
-// Hiz kontrolu: 2x secip oyun saatinin gercekten hizlandigini olc
-await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); d.speed = 2; return true; })()`);
-const before = await evaluate('window.ShadowTower.state.t');
-await sleep(1500);
-const after = await evaluate('window.ShadowTower.state.t');
-console.log(`  2x: 1.5sn duvar saatinde oyun ${(after - before).toFixed(2)}sn ilerledi`);
-await screenshot("hiz_2x_turkce");
-console.log('  ' + await evaluate(`(() => { const s = window.ShadowTower.state; return 'bolum ' + s.stage + ', patron can ' + Math.ceil(s.boss ? s.boss.hp : -1) + '/' + Math.ceil(s.boss ? s.boss.maxHp : -1) + ', sahada ' + s.foes.length; })()`));
-
-// Patronu indir: bölüm geçme ekranı
-await evaluate('window.ShadowTower.state.boss.hp = 0; true');
-for (let i = 0; i < 60; i++) {
-  if (await evaluate(`window.ShadowTower.state.phase === 'picking'`)) break;
-  await sleep(100);
+// Bolum tamamlandi: uc ayri yildiz durumu
+for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bitti_1yildiz', 0.7]]) {
+  await evaluate(`(() => {
+    const s = window.ShadowTower.state;
+    // Ayni kosuyu tekrar bitiriyoruz; gercek akista start() bunlari sifirliyor.
+    window.ShadowTower.show.booked = false;
+    window.ShadowTower.show.won = null;
+    s.phase = 'playing';
+    s.wall = s.maxWall * ${part};
+    if (s.boss) s.boss.hp = 0;
+    else { s.bossDone = false; s.stageT = 1e9; }
+    return true;
+  })()`);
+  for (let i = 0; i < 160; i++) {
+    if (await evaluate(`window.ShadowTower.state.phase === 'done'`)) break;
+    await sleep(80);
+  }
+  await sleep(500);
+  await screenshot(name);
 }
-await sleep(500);
-await screenshot("bolum_gecildi");
-
-// Ve duvarı yıkıp bitiş ekranı
-// Tamir pasifi kapatılmadan duvar düşmüyor: ilk denemede 1 cana indirdim ve saniyede bir
-// buçuk geri gelerek ayakta kaldı, bitiş ekranını hiç göremedim.
-await evaluate(`(() => {
-  const s = window.ShadowTower.state;
-  window.ShadowTower.take(s, 0);
-  s.passives.mend = 0;
-  s.wall = 1;
-  for (const f of s.foes) { f.r = 96; f.biteCool = 0; }
-  return true;
-})()`);
-for (let i = 0; i < 100; i++) {
-  if (await evaluate(`window.ShadowTower.state.phase === 'lost'`)) break;
-  await sleep(150);
-}
-await sleep(700);
-await screenshot("bitis");
 
 writeFileSync(join(outDir, "console.txt"), log.join("\n"));
 console.log(bad ? `KONSOLDA ${bad} HATA:\n` + log.filter((l) => l.startsWith("[error]") || l.startsWith("[exception]")).join("\n") : "konsol temiz");

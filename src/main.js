@@ -4,7 +4,7 @@
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
 import { begin, advance, click, take } from './rules.js';
-import { frame, hitCard, cards, loadout, hitLoadout, hitSpeed, hitSettings } from './draw.js';
+import { frame, hitCard, cards, loadout, hitLoadout, hitSpeed, hitSettings, hitStage } from './draw.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
@@ -41,7 +41,7 @@ window.addEventListener('resize', size);
 size();
 
 function start() {
-  state = begin(Date.now(), data.loadout);
+  state = begin(Date.now(), data.loadout, data.stage);
   show = fresh();
   show.hint = (data.runs || 0) < 2;
   screen = 'run';
@@ -114,10 +114,14 @@ function tick(now) {
 
 
   // Booked once: `step` runs every frame and a run that ended ten frames ago is still ended.
-  if (state.phase === 'lost' && !show.booked) {
+  if (!show.booked && (state.phase === 'done' || state.phase === 'lost')) {
     show.booked = true;
-    show.won = meta.record(data, state.stage, state.kills);
-    sound.over();
+    if (state.phase === 'done') {
+      show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills);
+      sound.cleared();
+    } else {
+      sound.over();
+    }
   }
 
   // The specks run at the same speed as the fight, or they drift about behind it
@@ -172,6 +176,13 @@ addEventListener('pointerdown', (e) => {
   const p = spot(e);
 
   if (screen === 'loadout') {
+    const step = hitStage(canvas.width, canvas.height, p.x, p.y, dpr);
+    if (step) {
+      const far = meta.furthestStage(data);
+      const want = data.stage + (step === 'next' ? 1 : -1);
+      if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
+      return;
+    }
     const knob = hitSettings(canvas.width, canvas.height, p.x, p.y, dpr);
     if (knob === 'lang') {
       const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
@@ -198,11 +209,15 @@ addEventListener('pointerdown', (e) => {
     if (pace) { data.speed = pace; show.speed = pace; meta.save(data); return; }
   }
 
-  if (state.phase === 'lost') {
-    // Back to the loadout rather than straight into another run: the account just went up, and
-    // whatever that opened is sitting on that screen waiting to be picked up.
+  if (state.phase === 'done') {
+    // Back to the menu, which has already moved on to the stage this one opened.
     screen = 'loadout';
     show = fresh();
+    return;
+  }
+  if (state.phase === 'lost') {
+    // Straight back into the same stage. Failing a stage you chose is a retry, not a trip home.
+    start();
     return;
   }
   if (state.phase === 'picking') {
@@ -233,7 +248,8 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
-  if (state.phase === 'lost') { screen = 'loadout'; show = fresh(); return; }
+  if (state.phase === 'done') { screen = 'loadout'; show = fresh(); return; }
+  if (state.phase === 'lost') { start(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
 });
 addEventListener('contextmenu', (e) => e.preventDefault());

@@ -9,11 +9,11 @@ import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
   tierDue, evolutionsFor, boostsFor,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
-  spellKeys, passiveKeys, haste, describe, advance, waiting, Always,
+  spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure,
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, record, toggle, tidy, Speeds } from '../src/meta.js';
+import { needFor, worth, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from '../src/meta.js';
 
 let passed = 0;
 const failures = [];
@@ -445,14 +445,72 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   step(s, 1 / 60);
   check('bölümün sonunda patron geliyor', !!s.boss && s.boss.boss === true);
   check('patron çok daha dayanıklı', s.boss.maxHp > Kinds.brute.hp * 5);
-  s.wall = 100;
   s.boss.hp = 0;
   step(s, 1 / 60);
-  check('patron ölünce bölüm geçiliyor', s.stage === 2 && s.boss === null);
-  check('bölüm geçince duvar onarılıyor', s.wall > 100);
-  check('bölüm geçince bedava kart geliyor', s.phase === 'picking' && s.cleared === true);
-  take(s, 0);
-  check('bedava karttan sonra bayrak iniyor', s.cleared === false && s.phase === 'playing');
+  check('patron ölünce bölüm BİTİYOR', s.phase === 'done', s.phase);
+  check('bölüm bitince düşman dalgası durmuş oluyor', s.boss === null);
+}
+
+{
+  // Patron bir kere gelir: öldükten sonra bölüm bitiyor, yenisi doğmamalı
+  const s = begin(21, ['bolt']);
+  s.kit = {}; s.cools = {}; s.loadout = [];
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  s.boss.hp = 0;
+  step(s, 1 / 60);
+  s.phase = 'playing';
+  s.stageT = StageWaves * 3;
+  step(s, 1 / 60);
+  check('patron ikinci kez gelmiyor', s.boss === null);
+}
+
+{
+  // Bölüm numarası zorluğu belirlemeli, ve her bölüm kendi başına oynanabilir olmalı:
+  // 5. bölüm, beş dakikalık bir dalgayla değil, biraz daha sert bir dalgayla başlar.
+  const easy = begin(22, ['bolt'], 1);
+  const hard = begin(22, ['bolt'], 5);
+  check('sonraki bölüm daha zor başlıyor', pressure(hard) > pressure(easy) * 1.4,
+    `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
+  easy.t = 72; hard.t = 72;
+  check('ama sıfırdan oynanamayacak kadar değil', pressure(hard) < pressure(easy) * 2.5,
+    `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
+}
+
+// --- yıldızlar ----------------------------------------------------------------------------------
+
+{
+  check('tam duvarla üç yıldız', starsFor(300, 300) === 3);
+  check('%95 üstü iki yıldız', starsFor(286, 300) === 2 && starsFor(299, 300) === 2);
+  check('%60 üstü bir yıldız', starsFor(190, 300) === 1 && starsFor(284, 300) === 1);
+  check('%60 altı yıldız yok', starsFor(170, 300) === 0);
+  check('sıradaki yıldızın eşiği söyleniyor',
+    nextStarAt(0) === 60 && nextStarAt(1) === 95 && nextStarAt(2) === 100 && nextStarAt(3) === null);
+}
+
+{
+  const d = tidy({ level: 13, loadout: ['bolt'] });
+  check('birinci bölüm hep açık', stageOpen(d, 1));
+  check('ikinci bölüm başta kapalı', !stageOpen(d, 2));
+
+  const r = finish(d, 1, 300, 300, 400);
+  check('bölüm bitince yıldız kaydediliyor', r.stars === 3 && starsAt(d, 1) === 3);
+  check('bölüm bitince sonraki açılıyor', stageOpen(d, 2) && furthestStage(d) === 2);
+  check('bölüm bitince menü sonrakine geçiyor', d.stage === 2, String(d.stage));
+
+  const worse = finish(d, 1, 100, 300, 400);
+  check('kötü bir tekrar kazanılmış yıldızı geri almıyor', starsAt(d, 1) === 3 && worse.stars === 0);
+
+  const better = finish(d, 2, 290, 300, 400);
+  check('ikinci bölüm de kaydediliyor', starsAt(d, 2) === 2 && better.beat === true);
+  check('üçüncü bölüm açıldı', stageOpen(d, 3));
+}
+
+{
+  const d = tidy({ level: 13, loadout: ['bolt'], stage: 9, stars: {} });
+  check('menü açılmamış bir bölümde kalmıyor', d.stage === 1, String(d.stage));
+  const bad = tidy({ level: 13, loadout: ['bolt'], stars: { '1': 9, 'x': 2, '2': 1 } });
+  check('bozuk yıldız kaydı temizleniyor', bad.stars['1'] === undefined && bad.stars.x === undefined && bad.stars['2'] === 1);
 }
 
 {
@@ -642,24 +700,18 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
 
 // --- the bot ---------------------------------------------------------------------------------
 
-/** Makul bir oyuncu: saniyede altı tıklar ve seçimde dönüşümü, yoksa ilk kartı alır. */
-function botRun(seed, loadout, clicksPerSecond = 6) {
-  const s = begin(seed, loadout);
+/** Makul bir oyuncu: saniyede altı tıklar ve kartları puanlar. Tek bir bölüm oynar. */
+function botRun(seed, loadout, stage = 1, clicksPerSecond = 6) {
+  const s = begin(seed, loadout, stage);
   const dt = 1 / 60;
   let since = 0;
   let guard = 0;
   while ((s.phase === 'playing' || s.phase === 'picking') && guard++ < 60 * 420) {
     if (s.phase === 'picking') {
-      // Kartları puanlar. İlk iki halinde de ölçüm aletiydi sorun, oyun değil:
-      //   - önce hep ilk kartı alıyordu, hiçbir büyü beş yükseltmeye ulaşmıyordu;
-      //   - sonra "en çok yatırdığım büyüyü büyüt" dedim ve PASİFLERİ HİÇ ALMADI. Tek büyülü
-      //     havuz beş girişlik olduğu için pasifler oraya kendiliğinden düşüp maxlanıyordu,
-      //     beş büyülü havuzda ise hiç seçilmiyordu - "tek büyü beşten iyi" sonucunu veren şey
-      //     buydu, 200 saniyede beş büyülü bot sadece haste 1 almıştı.
       let best = 0, bestScore = -1e9;
       s.choices.forEach((c, j) => {
         let score;
-        if (c.what === 'spell') score = 120;        // getirdiğin büyüyü almazsan tek büyüyle kalırsın
+        if (c.what === 'spell') score = 120;
         else if (c.what === 'evolution') score = 100;
         else if (c.what === 'passive') score = 34 - (s.passives[c.key] || 0) * 8;
         else score = 18 + (s.kit[c.key] ? s.kit[c.key].taken * 4 : 0);
@@ -673,47 +725,61 @@ function botRun(seed, loadout, clicksPerSecond = 6) {
     step(s, dt);
     s.events.length = 0;
   }
-  const evos = carrying(s).reduce((a, k) => a + s.kit[k].evos.length, 0);
-  return { t: s.t, stage: s.stage, level: s.level, kills: s.kills, evos };
+  return {
+    done: s.phase === 'done',
+    t: s.t,
+    level: s.level,
+    kills: s.kills,
+    stars: s.phase === 'done' ? starsFor(s.wall, s.maxWall) : 0,
+    evos: carrying(s).reduce((a, k) => a + s.kit[k].evos.length, 0),
+  };
 }
 
-const Five = ['bolt', 'fireball', 'frost', 'lightning'];
-const runs = [];
-for (let i = 1; i <= 60; i++) runs.push(botRun(i * 7919, Five));
+const Four = ['bolt', 'fireball', 'frost', 'lightning'];
 const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
-const lived = runs.map((r) => r.t).sort((a, b) => a - b);
-const stages = runs.map((r) => r.stage).sort((a, b) => a - b);
-const levels = runs.map((r) => r.level).sort((a, b) => a - b);
-const evos = runs.map((r) => r.evos).sort((a, b) => a - b);
-const reached = (n) => runs.filter((r) => r.stage > n).length / runs.length;
 
 console.log('');
-console.log(`loadout: ${Five.join(', ')} — saniyede 6 tıklayan oyuncu, 60 koşu:`);
-console.log(`  dayanma   en kısa ${fmt(lived[0])}   ortanca ${fmt(lived[30])}   en uzun ${fmt(lived[59])}`);
-console.log(`  bölüm     ortanca ${stages[30]}   en yüksek ${stages[59]}`);
-console.log(`  seviye    ortanca ${levels[30]}   dönüşüm ortanca ${evos[30]}, en çok ${evos[59]}`);
-console.log(`  1. bölümü geçen %${(reached(1) * 100).toFixed(0)}   2'yi %${(reached(2) * 100).toFixed(0)}   3'ü %${(reached(3) * 100).toFixed(0)}`);
+console.log(`loadout: ${Four.join(', ')} — saniyede 6 tıklayan oyuncu, bölüm başına 40 koşu:`);
+console.log('bölüm  bitirme   süre    yıldız dağılımı (0/1/2/3)   ortanca seviye/dönüşüm');
+const byStage = [];
+for (const stage of [1, 2, 3, 4, 5]) {
+  const runs = [];
+  for (let i = 1; i <= 40; i++) runs.push(botRun(i * 7919, Four, stage));
+  const done = runs.filter((r) => r.done);
+  const times = done.map((r) => r.t).sort((a, b) => a - b);
+  const spread = [0, 1, 2, 3].map((n) => runs.filter((r) => r.done && r.stars === n).length);
+  const lv = runs.map((r) => r.level).sort((a, b) => a - b)[20];
+  const ev = runs.map((r) => r.evos).sort((a, b) => a - b)[20];
+  byStage.push({ stage, rate: done.length / runs.length, spread, times });
+  console.log(`  ${stage}     %${String(Math.round(done.length / runs.length * 100)).padStart(3)}   ` +
+    `${(times.length ? fmt(times[Math.floor(times.length / 2)]) : ' -- ').padStart(5)}    ` +
+    `${spread.join(' / ').padEnd(22)}  ${lv} / ${ev}`);
+}
 
+// Tek büyü, erken bölümlerde dolu loadouttan İYİ - ve bu doğru: ilk bölümler affedici ve
+// odaklanmak işe yarıyor. Asıl soru derin bölümlerde ne olduğu, çünkü loadout oraya yetişmek
+// için var. Ölçüm: 1. bölümde tek büyü %100 / dört büyü %88, ama 3.'de %18 / %43, 5.'de %0 / %13.
 const solo = [];
-for (let i = 1; i <= 40; i++) solo.push(botRun(i * 104729, ['bolt']).t);
-solo.sort((a, b) => a - b);
-console.log(`  sadece sabit büyüyle (hiç kart alınmadan): ortanca ${fmt(solo[20])}`);
-
+for (let i = 1; i <= 30; i++) solo.push(botRun(i * 104729, ['bolt'], 3).done);
 const lazy = [];
-for (let i = 1; i <= 40; i++) lazy.push(botRun(i * 104729, Five, 1).t);
-lazy.sort((a, b) => a - b);
-console.log(`  neredeyse hiç tıklamayan (1/sn): ortanca ${fmt(lazy[20])}`);
+for (let i = 1; i <= 30; i++) lazy.push(botRun(i * 104729, Four, 1, 1).done);
+console.log(`  sadece sabit büyüyle 3. bölüm: %${Math.round(solo.filter(Boolean).length / solo.length * 100)}  (dört büyüyle %${Math.round(byStage[2].rate * 100)})`);
+console.log(`  neredeyse hiç tıklamayan (1/sn), 1. bölüm: %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
-check('ilk bölümü çoğu oyuncu geçiyor', reached(1) > 0.6, `%${(reached(1) * 100).toFixed(0)}`);
-// Bir koşu kendiliğinden bitmeli. Botun sınırına dayanması "ölmedi" demek değil, "ne kadar
-// yaşadığını ölçemedik" demek - ve ölçemediğim bir sayıyla denge ayarlanmaz.
-check('koşu botun sınırına dayanmıyor', lived[30] < 410, `ortanca ${fmt(lived[30])}`);
-check('koşu bir yerde bitiyor', stages[59] < 25, `en yüksek bölüm ${stages[59]}`);
-check('bölümler zorlaşıyor', reached(3) < reached(1) * 0.95);
-check('oyuncu bir sürü seçim yapıyor', levels[30] >= 12, `ortanca seviye ${levels[30]}`);
-check('bir koşuda birkaç dönüşüm alınıyor', evos[30] >= 2, `ortanca ${evos[30]}`);
-check('dolu loadout tek büyüden iyi', lived[30] > solo[20] * 1.15, `${fmt(lived[30])} vs ${fmt(solo[20])}`);
-check('tıklamak işe yarıyor', lived[30] > lazy[20] * 1.08, `${fmt(lived[30])} vs ${fmt(lazy[20])}`);
+// Birinci bölümü neredeyse herkes bitirmeli - ilk oturuşta hiçbir şey başaramayan oyuncu geri
+// gelmez. Ama üç yıldız kolay olmamalı, yoksa yıldızın bir anlamı kalmaz.
+check('birinci bölümü çoğu oyuncu bitiriyor', byStage[0].rate > 0.85, `%${Math.round(byStage[0].rate * 100)}`);
+check('bölümler zorlaşıyor', byStage[4].rate < byStage[0].rate * 0.85,
+  `1: %${Math.round(byStage[0].rate * 100)}  5: %${Math.round(byStage[4].rate * 100)}`);
+check('üç yıldız garanti değil', byStage[0].spread[3] < 40, `${byStage[0].spread[3]}/40`);
+check('üç yıldız imkânsız da değil', byStage.some((b) => b.spread[3] > 0),
+  byStage.map((b) => b.spread[3]).join(','));
+check('bir bölüm makul sürüyor', byStage[0].times.length > 0 && byStage[0].times[Math.floor(byStage[0].times.length / 2)] < 240,
+  byStage[0].times.length ? fmt(byStage[0].times[Math.floor(byStage[0].times.length / 2)]) : 'hiç bitmedi');
+check('dolu loadout derin bölümlerde tek büyüden iyi', byStage[2].rate > solo.filter(Boolean).length / solo.length * 1.3,
+  `3. bölüm: %${Math.round(byStage[2].rate * 100)} vs %${Math.round(solo.filter(Boolean).length / solo.length * 100)}`);
+check('tıklamak işe yarıyor', byStage[0].rate > lazy.filter(Boolean).length / lazy.length,
+  `%${Math.round(byStage[0].rate * 100)} vs %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
 console.log('');
 if (failures.length) {
