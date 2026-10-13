@@ -137,7 +137,7 @@ await evaluate(`(() => {
   // Birinin seviye borcu olsun ki kart ekranında bir DÖNÜŞÜM kartı görelim - ve elektrik
   // taşıdığımız için "fırtına" dönüşümü de çıkabilsin.
   s.kit.blade = { tier: 1, taken: 5, boosts: { more: 2, ring: 1, sharper: 2 }, evos: [] };
-  s.passives = { might: 3, haste: 2, reach: 2, mend: 1 };
+  s.passives = { mend: 2 };
   s.level = 16;
   s.xp = 0; s.need = 40;
   s.t = 70; s.stageT = 70;

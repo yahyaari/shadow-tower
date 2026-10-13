@@ -23,14 +23,34 @@ Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io
 
 ## Kart sistemi
 
-İki tip kart var:
+Kartların hepsi bir büyüye aittir. **Küresel pasif yok** — tek istisna Onarım.
 
-**Normal yükseltme** — +1 atış, +%18 hasar, -%13 bekleme, daha geniş patlama, delip geçme…
-Her büyünün 5 tanesi var, her birinin kendi tavanı (`most`).
+**Normal yükseltme** — "Magic Bolt: +%40 hasar", "Nova: +%13 hasar". Oran her büyüde farklı ve
+bu bilerek: aynı kalabalığa karşı on saniyede Nova 589, Magic Bolt 56 hasar veriyor, yani sabit
+bir "+%18" birine on kat fazla kazandırırdı. **En çok iş yapan en az kazanır.**
 
-**Dönüşüm (tier)** — bir büyüye **beş normal yükseltme** yaptığında bir sonraki kartı dönüşüm
-olur: "çarptığı yerde patlar", "yere yangın bırakır", "elektrik fırtınası başlatır". Bir büyü en
-fazla **üç** dönüşüm alabilir (yani T4).
+| büyü | sahada ölçülen çıktı | hasar kartı | bekleme kartı |
+|---|---|---|---|
+| Nova | 589 | +%13 | -%8 |
+| Meteor | 389 | +%14 | -%10 |
+| Fireball | 205 | +%19 | -%13 |
+| Frost Orb | 140 | +%24 | -%15 |
+| Lightning | 139 | +%24 | -%15 |
+| Shards | 109 | +%29 | -%18 |
+| Wisp | 104 | +%29 | -%18 |
+| Orbit | 103 | +%29 | -%18 |
+| Beam | 89 | +%32 | -%20 |
+| Magic Bolt | 56 | +%40 | -%25 |
+
+Kart yazısı **sayıdan üretiliyor** (`+${pct(n)}% damage`), yani bir kart veremeyeceği bir rakamı
+vaat edemez. Test de bunu kontrol ediyor.
+
+**Dönüşüm (tier)** — bir büyüye beş yükseltme yaptığında bir sonraki kartı dönüşüm olur. En fazla
+üç dönüşüm (T4).
+
+**Onarım** — tek pasif. Diğerleri "daha hızlı öldür" diyor, bu "daha uzun dayan" diyor; koşunun
+ikisine de ihtiyacı var. Ve **duvar hasar almadan sunulmuyor**: dolu bir duvarı onarmayı teklif
+eden kart boşa giden karttır.
 
 ## Kombo kuralı — bu oyunun kalbi
 
@@ -72,19 +92,15 @@ node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
 
 ```
 loadout: bolt, fireball, frost, lightning — saniyede 6 tıklayan oyuncu, 60 koşu:
-  dayanma   en kısa 1:55   ortanca 5:36   en uzun 6:59
-  bölüm     ortanca 3   en yüksek 5
-  seviye    ortanca 34   dönüşüm ortanca 2, en çok 5
-  1. bölümü geçen %98   2'yi %52   3'ü %45
-  sadece sabit büyüyle (hiç kart alınmadan): ortanca 0:45
-  neredeyse hiç tıklamayan (1/sn): ortanca 1:13
+  dayanma   en kısa 1:46   ortanca 4:13   en uzun 6:39
+  bölüm     ortanca 3   en yüksek 4
+  seviye    ortanca 30   dönüşüm ortanca 3, en çok 5
+  1. bölümü geçen %85   2'yi %50   3'ü %27
+  sadece sabit büyüyle: ortanca 3:10
+  neredeyse hiç tıklamayan (1/sn): ortanca 1:41
 ```
 
-Dolu loadout, kart almayan bir koşudan **yedi kat** iyi. Bu, loadout'un ve hesap ilerlemesinin
-anlamlı olduğunun tek kanıtı ve testte ayrı bir kontrol olarak duruyor.
-
-Ortanca koşu 5:36 — CrazyGames'in 10 dakikalık oturum eşiği için bilerek böyle: iki koşu o eşiği
-geçiyor.
+Ortanca koşu 4:13 — iki koşu CrazyGames'in 10 dakikalık oturum eşiğini geçiyor.
 
 ## Dil
 
@@ -117,30 +133,29 @@ darboğaz olduğu için iki kat simülasyon istemek kare hızını yarıya indir
 ilerlememiş gibi görünüyor. Bu yüzden adımlama `advance()` içine taşındı ve tuvalsiz test
 ediliyor — 2 saniyelik duvar saatinde 1x→2.0sn, 1.5x→3.0sn, 2x→4.0sn.
 
+## Derinlik mi genişlik mi — en uzun savaş
+
+Bu oyunda en çok uğraştığım şey: **tek bir büyüye yatırım yapmak, dört büyü taşımaktan iyi
+olmamalı**, yoksa loadout'un hiçbir anlamı kalmaz. Üç ayrı turda üç ayrı sebeple ters döndü.
+
+**1. Pasifler yüzünden (ölçüm aleti hatası).** Botum pasifleri hiç almıyordu. Tek büyülü havuz
+beş girişlikti, pasifler oraya kendiliğinden düşüp maxlanıyordu; dört büyülü havuzda ise hiç
+seçilmiyordu. Ölçtüğüm şey "bir büyü mü dört büyü mü" değil, "pasifleri alan bot mu almayan bot
+mu" idi. Bot kartları puanlamaya başlayınca sonuç anında tersine döndü.
+
+**2. Çarpım yüzünden.** Hasar, mermi sayısı ve atış hızı birbirini çarpıyor. Tek büyüye on iki
+seçim koymak on iki kat değil, **otuz kat** demek. Ölçtüm: 90. saniyede tek büyülü bot **1872
+dps**, dört büyülü bot **168 dps** — on bir kat. Çözüm küçük yüzde değil **kısa merdiven**: bir
+büyü altı-yedi seçimde yükseltmelerini tüketiyor, gerisi başka yere gitmek zorunda.
+
+**3. Bekleme süresi yüzünden.** Yine de 3.2 kat fark kaldı. Sebep: bir büyü hem mermi sayısını
+dörde katlayıp hem beklemesini yarıya indirebiliyordu — saniyede 18 mermi. **Mutlak bir taban**
+kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar yatırılırsa yatırılsın.
+
+Şu an dolu loadout tek büyüden iyi ve testte ayrı bir kontrol olarak duruyor. Fark hâlâ mütevazı
+(4:13 vs 3:10) — gerçek oyunda loadout zaten hep dört, ama bu kontrol kanarya olarak kalsın.
+
 ## Üç kere ölçüm aletini oyun sandım
-
-Bu bölümü uzun yazıyorum çünkü en pahalı hatalar bunlardı: **sorun oyunda değil, botumdaydı** ve
-her seferinde oyunu "düzeltmeye" başlamıştım.
-
-**1. Bot hep ilk kartı alıyordu.** Hiçbir büyü beş yükseltmeye ulaşmıyor, koşu başına sıfır
-dönüşüm alınıyordu. Bunu "dönüşümler çalışmıyor" diye okudum. Gerçek oyuncu odaklanır.
-
-**2. Bot "en çok yatırdığım büyüyü büyüt" derken PASİFLERİ HİÇ ALMIYORDU.** Ve bu, şu yanıltıcı
-sonucu üretti: **tek büyülü bot 6:16, beş büyülü bot 3:28.** Günlerce "neden derinlik genişliği
-yeniyor" diye oyunu değiştirdim — dönüşüm sınırı koydum, tavanları kıstım, bekleme tabanını
-yükselttim. Hiçbiri işe yaramadı.
-
-Sebep şuydu: **tek büyülü havuz 5 girişlik** (1 büyü + 4 pasif), yani pasifler oraya
-kendiliğinden düşüyor ve maxlanıyordu. **Beş büyülü havuz 9 girişlik** ve botun kuralı pasiflere
-hiç puan vermiyordu — 200 saniyede sadece `haste 1` almıştı, öbürü `might 5, mend 5, haste 5`.
-Ölçtüğüm şey "bir büyü mü beş büyü mü" değil, "pasifleri alan bot mu almayan bot mu" idi.
-
-Bot kartları puanlamaya başlayınca sonuç **anında tersine döndü**: 0:38 / 2:33.
-
-**3. Hasarı "sahadaki toplam can" ile ölçmek.** Her büyüyü tek tek sınarken bunu yaptım ve sayı
-ARTTI, çünkü o sekiz saniyede yeni düşmanlar doğdu. Test "hiçbir büyü hasar vermiyor" dedi.
-
-Bunların ortak dersi: **bir ölçüm beklenmedik bir şey söylediğinde, önce ölçüm aletine bak.**
 
 ## Diğer bulgular
 
@@ -158,6 +173,12 @@ Bunların ortak dersi: **bir ölçüm beklenmedik bir şey söylediğinde, önce
 - **`mend` pasifi açıkken duvar düşmüyor**; bitiş ekranını test ederken önce onu kapatmak gerekti.
 - **Telefonda kutu yazıları taşar.** `fitWrite()` sığmıyorsa küçültüyor.
 - **Denge tarayıcıda ölçülmez.** `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
+- **Oyundan çıkarılan bir anahtar kayıtlı durumda kalabilir.** Might/Haste/Reach kaldırılınca
+  `peek.mjs` hâlâ onları kuruyordu ve panel `Passives[key].name` okurken bütün kareyi düşürdü.
+  Artık kitabın tanımadığı anahtarlar atlanıyor.
+- **Olmayan bir yükseltmeyi test kurulumunda verme.** Dönüşüm boyutunu bolt üzerinde ölçmeye
+  çalıştım ama bolt'un ALAN KARTI YOK; `statsOf` onu sessizce atlıyor ve sayı hiç değişmiyordu.
+  Ölçtüğüm şey oyun değil kendi kurulumumun hatasıydı — bu projede üçüncü kez.
 - **Koşu tek büyüyle açılınca erken baskı yeniden ayarlanmalı.** Loadout havuza dönüşünce
   açılış çok zayıfladı ve 1. bölümü geçen oranı %93'ten %55'e düştü; baskı böleni 58'den 72'ye
   çıkarıldı.

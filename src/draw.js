@@ -575,16 +575,13 @@ function sigil(ctx, key, x, y, s, colour) {
     }
   } else if (key === 'blade') { star(8, 0.2, 0.5); ctx.fill(); }
   else {
+    // Mend is the only passive left: a cross in a ring, which is the one mark here that is not
+    // about hurting something.
     ctx.beginPath(); ctx.arc(0, 0, 0.44 * s, 0, Math.PI * 2); ctx.stroke();
-    if (key === 'might') { ctx.beginPath(); ctx.moveTo(-0.16 * s, 0.16 * s); ctx.lineTo(0.16 * s, -0.16 * s); ctx.stroke(); }
-    if (key === 'haste') { star(3, 0.1, 0.3); ctx.fill(); }
-    if (key === 'reach') { ctx.beginPath(); ctx.arc(0, 0, 0.2 * s, 0, Math.PI * 2); ctx.stroke(); }
-    if (key === 'mend') {
-      ctx.beginPath();
-      ctx.moveTo(-0.2 * s, 0); ctx.lineTo(0.2 * s, 0);
-      ctx.moveTo(0, -0.2 * s); ctx.lineTo(0, 0.2 * s);
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.moveTo(-0.2 * s, 0); ctx.lineTo(0.2 * s, 0);
+    ctx.moveTo(0, -0.2 * s); ctx.lineTo(0, 0.2 * s);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -757,7 +754,10 @@ function panel(ctx, state, w, h, U, show) {
     y += 23 * U;
   }
 
-  const kept = Object.keys(state.passives);
+  // Only ones the book still knows about. A key that has been taken out of the game can still be
+  // sitting in a state object - it was, the moment Might and Haste were removed - and reading a
+  // name off it takes the whole frame down.
+  const kept = Object.keys(state.passives).filter((k) => Passives[k]);
   let py = h - 22 * U - (kept.length - 1) * 19 * U;
   for (const key of kept) {
     write(ctx, `${say(Passives[key].name)} ${state.passives[key]}`, w - 22 * U, py, 13 * U, 600, 'right');

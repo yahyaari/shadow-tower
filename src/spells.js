@@ -32,28 +32,51 @@ export const Knobs = {
   pierce: 'how many extra it passes through',
   jumps: 'extra chain jumps',
   chill: 'extra seconds of slow',
-  wide: 'beam width, as a fraction',
   ring: 'orbit radius, as a fraction',
   whirl: 'orbit speed, as a fraction',
 };
 
-// The caps are deliberately low.
-//
-// A spell has to run out of upgrades, because a pick spent on a spell you already own multiplies
-// what that spell does while a pick spent on a second spell only adds to the total - so without a
-// ceiling, pouring everything into one spell always beats carrying five, and the loadout stops
-// meaning anything.
-const sharper = (most = 3) => ({
-  key: 'sharper', name: ['Sharper', 'Keskin'], tells: ['+18% damage', '+%18 hasar'],
-  does: { dmg: 0.18 }, most,
+/**
+ * The ordinary upgrades, and why every spell gets its own numbers.
+ *
+ * A flat "+18% damage" is not the same card on two different spells. Measured against the same
+ * crowd for ten seconds, Nova does 589 damage and Magic Bolt does 56 - ten times as much - so the
+ * same percentage hands one spell ten times the gain. (And the nominal damage-per-second is no
+ * guide at all: Orbit has the highest of the lot on paper and lands a sixth of what Nova does.)
+ *
+ * So the percentage runs the other way: the spells that are already doing the most work gain the
+ * least from a card, and the weakest gain the most. Not all the way to equal - a strong spell
+ * should still be worth feeding - but enough that putting picks into Magic Bolt is a choice
+ * rather than a mistake.
+ *
+ * They are also few and large rather than many and small, and that is the more important half.
+ * Damage, projectile count and fire rate all multiply each other, so twelve picks poured into one
+ * spell is not twelve times better - it is thirty. Measured: a bot carrying only Magic Bolt put
+ * every pick into it and reached 1872 damage a second by ninety seconds, while a bot carrying
+ * four spells spread the same picks and managed 168. Eleven times. The fix is not a smaller
+ * percentage, it is a shorter ladder: a spell runs out of upgrades in six or seven picks, so the
+ * rest have to go somewhere else.
+ *
+ * The text is built from the number, so a card can never promise a figure it does not deliver.
+ */
+const pct = (n) => Math.round(n * 100);
+
+const hit = (n, most = 2) => ({
+  key: 'sharper', name: ['Sharper', 'Keskin'],
+  tells: [`+${pct(n)}% damage`, `+%${pct(n)} hasar`],
+  does: { dmg: n }, most,
 });
-const quicker = (most = 2) => ({
-  key: 'quicker', name: ['Quicker', 'Çevik'], tells: ['-13% cooldown', '-%13 bekleme'],
-  does: { cd: -0.13 }, most,
+
+const fast = (n, most = 2) => ({
+  key: 'quicker', name: ['Quicker', 'Çevik'],
+  tells: [`-${pct(n)}% cooldown`, `-%${pct(n)} bekleme`],
+  does: { cd: -n }, most,
 });
-const wider = (most = 3) => ({
-  key: 'wider', name: ['Wider', 'Geniş'], tells: ['+22% blast', '+%22 patlama'],
-  does: { blast: 0.22 }, most,
+
+const area = (n, most = 3) => ({
+  key: 'wider', name: ['Wider', 'Geniş'],
+  tells: [`+${pct(n)}% area`, `+%${pct(n)} alan`],
+  does: { blast: n }, most,
 });
 
 export const Spells = {
@@ -62,10 +85,10 @@ export const Spells = {
     tells: ['a homing bolt at the nearest', 'en yakındakini takip eden bir ok'],
     every: 0.85, damage: 7, seeks: 'near', homing: true,
     boosts: [
-      { key: 'more', name: ['Twin Bolt', 'İkiz Ok'], tells: ['+1 bolt each cast', 'her atışta +1 ok'], does: { count: 1 }, most: 2 },
-      { key: 'flank', name: ['Flanking', 'Kanat Ateşi'], tells: ['+2 bolts, one to each side', 'sağa ve sola birer ok'], does: { count: 2, spread: 0.5 }, most: 1 },
-      { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 2 },
-      sharper(), quicker(),
+      { key: 'more', name: ['Twin Bolt', 'İkiz Ok'], tells: ['+1 bolt each cast', 'her atışta +1 ok'], does: { count: 1 }, most: 1 },
+      { key: 'flank', name: ['Flanking', 'Kanat Ateşi'], tells: ['+1 bolt, out to the side', 'yana doğru +1 ok'], does: { count: 1, spread: 0.5 }, most: 1 },
+      { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
+      hit(0.4), fast(0.25),
     ],
     evolutions: [
       { key: 'split', name: ['Splinter', 'Parçalanma'], tells: ['splits into two smaller bolts where it lands', 'düştüğü yerde iki küçük oka ayrılır'], onHit: 'split' },
@@ -81,10 +104,10 @@ export const Spells = {
     tells: ['three splinters in a fan', 'yelpaze şeklinde üç kıymık'],
     every: 1.7, damage: 5, seeks: 'near', count: 3, spread: 0.42,
     boosts: [
-      { key: 'more', name: ['More Shards', 'Daha Çok Kıymık'], tells: ['+2 shards', '+2 kıymık'], does: { count: 2 }, most: 2 },
-      { key: 'fan', name: ['Wide Fan', 'Geniş Yelpaze'], tells: ['a wider spread', 'daha geniş açılır'], does: { spread: 0.25 }, most: 2 },
-      { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 2 },
-      sharper(), quicker(),
+      { key: 'more', name: ['More Shards', 'Daha Çok Kıymık'], tells: ['+1 shard', '+1 kıymık'], does: { count: 1 }, most: 1 },
+      { key: 'fan', name: ['Wide Fan', 'Geniş Yelpaze'], tells: ['a wider spread', 'daha geniş açılır'], does: { spread: 0.25 }, most: 1 },
+      { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
+      hit(0.29), fast(0.18),
     ],
     evolutions: [
       { key: 'burst', name: ['Shrapnel', 'Şarapnel'], tells: ['every shard bursts where it lands', 'her kıymık düştüğü yerde patlar'], onHit: 'burst' },
@@ -99,9 +122,9 @@ export const Spells = {
     tells: ['hunts whatever is toughest', 'en dayanıklı olanı avlar'],
     every: 1.5, damage: 11, seeks: 'strong', homing: true,
     boosts: [
-      { key: 'more', name: ['Second Wisp', 'İkinci Ruh'], tells: ['+1 wisp', '+1 ruh ateşi'], does: { count: 1 }, most: 2 },
-      { key: 'pierce', name: ['Relentless', 'Yılmaz'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 2 },
-      sharper(), quicker(), wider(2),
+      { key: 'more', name: ['Second Wisp', 'İkinci Ruh'], tells: ['+1 wisp', '+1 ruh ateşi'], does: { count: 1 }, most: 1 },
+      { key: 'pierce', name: ['Relentless', 'Yılmaz'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
+      hit(0.29), fast(0.18),
     ],
     evolutions: [
       { key: 'burst', name: ['Burst Soul', 'Patlayan Ruh'], tells: ['bursts on its quarry', 'avının üstünde patlar'], onHit: 'burst' },
@@ -116,8 +139,8 @@ export const Spells = {
     tells: ['bursts where it lands', 'düştüğü yerde patlar'],
     every: 2.6, damage: 12, seeks: 'crowd', blast: 86,
     boosts: [
-      { key: 'more', name: ['Twin Flame', 'İkiz Alev'], tells: ['+1 fireball', '+1 ateş topu'], does: { count: 1, spread: 0.3 }, most: 2 },
-      wider(4), sharper(), quicker(),
+      { key: 'more', name: ['Twin Flame', 'İkiz Alev'], tells: ['+1 fireball', '+1 ateş topu'], does: { count: 1, spread: 0.3 }, most: 1 },
+      area(0.2, 3), hit(0.19), fast(0.13),
       { key: 'pierce', name: ['Overshoot', 'Aşırı Atış'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
     ],
     evolutions: [
@@ -133,9 +156,9 @@ export const Spells = {
     tells: ['bursts, and what it touches slows', 'patlar, değdiğini yavaşlatır'],
     every: 2.3, damage: 7, seeks: 'near', blast: 76, chill: 2.4,
     boosts: [
-      { key: 'deep', name: ['Deep Cold', 'Derin Soğuk'], tells: ['+1.4s of slow', '+1.4sn yavaşlatma'], does: { chill: 1.4 }, most: 3 },
-      { key: 'more', name: ['Second Orb', 'İkinci Küre'], tells: ['+1 orb', '+1 küre'], does: { count: 1, spread: 0.3 }, most: 2 },
-      wider(4), sharper(), quicker(),
+      { key: 'deep', name: ['Deep Cold', 'Derin Soğuk'], tells: ['+1.4s of slow', '+1.4sn yavaşlatma'], does: { chill: 1.4 }, most: 2 },
+      { key: 'more', name: ['Second Orb', 'İkinci Küre'], tells: ['+1 orb', '+1 küre'], does: { count: 1, spread: 0.3 }, most: 1 },
+      area(0.2, 3), hit(0.24), fast(0.15),
     ],
     evolutions: [
       { key: 'freeze', name: ['Deep Freeze', 'Derin Donma'], tells: ['a second freezing burst where it lands', 'düştüğü yerde ikinci bir dondurucu patlama'], onHit: 'freeze' },
@@ -150,9 +173,9 @@ export const Spells = {
     tells: ['leaps between them', 'aralarında sıçrar'],
     every: 2.5, damage: 10, instant: 'chain', jumps: 3,
     boosts: [
-      { key: 'jump', name: ['Further Leap', 'Uzun Sıçrayış'], tells: ['+1 jump', '+1 sıçrayış'], does: { jumps: 1 }, most: 3 },
+      { key: 'jump', name: ['Further Leap', 'Uzun Sıçrayış'], tells: ['+1 jump', '+1 sıçrayış'], does: { jumps: 1 }, most: 2 },
       { key: 'twice', name: ['Double Strike', 'Çifte Vuruş'], tells: ['strikes twice', 'iki kere vurur'], does: { count: 1 }, most: 1 },
-      sharper(), quicker(), wider(2),
+      hit(0.24), fast(0.15), area(0.16, 2),
     ],
     evolutions: [
       { key: 'storm', name: ['Thunderhead', 'Fırtına Bulutu'], tells: ['a storm where the chain ends', 'zincirin bittiği yerde fırtına'], onHit: 'storm' },
@@ -167,9 +190,8 @@ export const Spells = {
     tells: ['burns a line clean through', 'bir hattı boydan boya yakar'],
     every: 3.4, damage: 20, instant: 'beam', wide: 34,
     boosts: [
-      { key: 'thick', name: ['Thicker Beam', 'Kalın Işın'], tells: ['+30% width', '+%30 kalınlık'], does: { wide: 0.3 }, most: 3 },
-      { key: 'more', name: ['Second Beam', 'İkinci Işın'], tells: ['+1 beam, elsewhere', 'başka bir yöne +1 ışın'], does: { count: 1 }, most: 2 },
-      sharper(), quicker(), wider(2),
+      { key: 'more', name: ['Second Beam', 'İkinci Işın'], tells: ['+1 beam, elsewhere', 'başka bir yöne +1 ışın'], does: { count: 1 }, most: 1 },
+      area(0.18, 3), hit(0.32), fast(0.2),
     ],
     evolutions: [
       { key: 'burst', name: ['Overload', 'Aşırı Yük'], tells: ['bursts along the line', 'hat boyunca patlar'], onHit: 'burst' },
@@ -184,8 +206,8 @@ export const Spells = {
     tells: ['everything near the wall, at once', 'duvara yakın ne varsa, hepsi birden'],
     every: 3.8, damage: 15, instant: 'nova', blast: 190,
     boosts: [
-      wider(4), sharper(), quicker(),
-      { key: 'more', name: ['Second Pulse', 'İkinci Dalga'], tells: ['pulses twice', 'iki kere dalgalanır'], does: { count: 1 }, most: 2 },
+      area(0.12, 3), hit(0.13), fast(0.08),
+      { key: 'more', name: ['Second Pulse', 'İkinci Dalga'], tells: ['pulses twice', 'iki kere dalgalanır'], does: { count: 1 }, most: 1 },
       { key: 'deep', name: ['Lingering', 'Kalıcı'], tells: ['slows what it catches', 'yakaladığını yavaşlatır'], does: { chill: 1.2 }, most: 2 },
     ],
     evolutions: [
@@ -201,8 +223,8 @@ export const Spells = {
     tells: ['falls on the thickest part of the crowd', 'kalabalığın en yoğun yerine düşer'],
     every: 5, damage: 34, seeks: 'crowd', falls: true, blast: 110,
     boosts: [
-      { key: 'more', name: ['Shower', 'Yağmur'], tells: ['+1 meteor', '+1 meteor'], does: { count: 1 }, most: 2 },
-      wider(4), sharper(), quicker(),
+      { key: 'more', name: ['Shower', 'Yağmur'], tells: ['+1 meteor', '+1 meteor'], does: { count: 1 }, most: 1 },
+      area(0.14, 3), hit(0.14), fast(0.1),
       { key: 'deep', name: ['Crushing', 'Ezici'], tells: ['slows what survives', 'sağ kalanı yavaşlatır'], does: { chill: 1.2 }, most: 2 },
     ],
     evolutions: [
@@ -218,10 +240,10 @@ export const Spells = {
     tells: ['a blade circling you, always', 'çevrende sürekli dönen bir bıçak'],
     every: 0.55, damage: 9, orbit: true,
     boosts: [
-      { key: 'more', name: ['Second Blade', 'İkinci Bıçak'], tells: ['+1 blade', '+1 bıçak'], does: { count: 1 }, most: 2 },
-      { key: 'whirl', name: ['Faster', 'Daha Hızlı'], tells: ['+25% orbit speed', '+%25 dönüş hızı'], does: { whirl: 0.25 }, most: 3 },
-      { key: 'ring', name: ['Wider Orbit', 'Geniş Yörünge'], tells: ['+20% orbit radius', '+%20 yörünge yarıçapı'], does: { ring: 0.2 }, most: 3 },
-      sharper(), quicker(),
+      { key: 'more', name: ['Second Blade', 'İkinci Bıçak'], tells: ['+1 blade', '+1 bıçak'], does: { count: 1 }, most: 1 },
+      { key: 'whirl', name: ['Faster', 'Daha Hızlı'], tells: ['+25% orbit speed', '+%25 dönüş hızı'], does: { whirl: 0.25 }, most: 2 },
+      { key: 'ring', name: ['Wider Orbit', 'Geniş Yörünge'], tells: ['+20% orbit radius', '+%20 yörünge yarıçapı'], does: { ring: 0.2 }, most: 2 },
+      hit(0.29), fast(0.18),
     ],
     evolutions: [
       { key: 'burst', name: ['Cleave', 'Yarma'], tells: ['bursts on everything it touches', 'değdiği her şeyde patlar'], onHit: 'burst' },
@@ -234,12 +256,20 @@ export const Spells = {
 
 export const spellKeys = Object.keys(Spells);
 
-/** What you can take instead of a spell upgrade. Each one helps everything you own. */
+/**
+ * The one thing left that is not a spell.
+ *
+ * Might, Haste and Reach used to sit here as global multipliers, and they were the three cards
+ * nobody could place: they looked the same on every run, they made every spell better by the same
+ * amount, and whether one was good depended on a loadout the card never mentioned. Everything they
+ * did now lives on the spells themselves, where a card can say which spell it is talking about and
+ * by how much.
+ *
+ * Mend stays because it is the only card that answers a different question. The rest say "kill
+ * faster"; this one says "last longer", and a run needs both to be a choice.
+ */
 export const Passives = {
-  might: { name: ['Might', 'Kudret'], tells: ['+15% damage, everything', 'her şeye +%15 hasar'] },
-  haste: { name: ['Haste', 'Çeviklik'], tells: ['+13% cast speed, everything', 'her şeye +%13 atış hızı'] },
-  reach: { name: ['Reach', 'Erim'], tells: ['+18% blast and beam size', '+%18 patlama ve ışın boyu'] },
-  mend:  { name: ['Mend', 'Onarım'], tells: ['the wall rebuilds itself', 'duvar kendini onarır'] },
+  mend: { name: ['Mend', 'Onarım'], tells: ['the wall rebuilds itself', 'duvar kendini onarır'] },
 };
 
 export const passiveKeys = Object.keys(Passives);

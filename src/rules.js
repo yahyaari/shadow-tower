@@ -44,7 +44,19 @@ export const Kinds = {
 
 export const SprintAt = 210;
 
-export const pressure = (s) => 1 + s.t / 72;
+/**
+ * How hard it is right now.
+ *
+ * Flat for the first `Grace` seconds. A run opens with one spell and builds the rest out of
+ * cards, so the opening minute is the weakest the player ever is - and with a ramp that started
+ * climbing immediately, fewer cleared the first stage than the second, which is the wrong way
+ * round for the stage everybody sees.
+ *
+ * After that it climbs, and the exponent on health is steep, because by the fourth stage the
+ * player has four spells with tiers on them and the wave has to have grown into that.
+ */
+export const Grace = 25;
+export const pressure = (s) => 1 + Math.max(0, s.t - Grace) / 56;
 export const spawnEvery = (s) => Math.max(0.05, 0.85 / Math.pow(pressure(s), 1.3));
 
 export function seeded(seed) {
@@ -116,9 +128,15 @@ export function begin(seed = Date.now(), loadout = [Always]) {
   };
 }
 
-export const might = (s) => 1 + (s.passives.might || 0) * 0.15;
-export const haste = (s) => (1 + (s.passives.haste || 0) * 0.13) * (1 + s.heat * Heat.lift);
-export const reach = (s) => 1 + (s.passives.reach || 0) * 0.18;
+/**
+ * The only thing left that speeds up everything at once, and it is not a card - it is the tapping.
+ *
+ * Might, Haste and Reach used to multiply every spell from the outside. They are gone: a card that
+ * makes everything better by the same amount cannot say which spell it is for, and how good it was
+ * depended on a loadout it never mentioned. All of it moved onto the spells, with its own number
+ * on each.
+ */
+export const haste = (s) => 1 + s.heat * Heat.lift;
 
 export const carries = (s, key) => !!s.kit[key];
 
@@ -140,7 +158,7 @@ export function statsOf(s, key) {
   const kit = s.kit[key];
   if (!sp || !kit) return null;
 
-  const add = { dmg: 0, cd: 0, count: 0, spread: 0, blast: 0, pierce: 0, jumps: 0, chill: 0, wide: 0, ring: 0, whirl: 0 };
+  const add = { dmg: 0, cd: 0, count: 0, spread: 0, blast: 0, pierce: 0, jumps: 0, chill: 0, ring: 0, whirl: 0 };
   for (const [bk, n] of Object.entries(kit.boosts)) {
     const b = sp.boosts.find((x) => x.key === bk);
     if (!b) continue;
@@ -148,13 +166,21 @@ export function statsOf(s, key) {
   }
 
   const tierLift = Math.min(0.9, (kit.tier - 1) * 0.3);
-  const size = reach(s) * (1 + add.blast);
+  // Each spell's own area, from its own Wider cards. There is no global one any more, so this is
+  // also what the spell's evolutions are sized by - a wider Fireball leaves a wider fire.
+  const size = 1 + add.blast;
 
   return {
     tier: kit.tier,
-    damage: sp.damage * (1 + add.dmg + tierLift) * might(s),
-    // clamped, or four Quickers together with Haste would make the cooldown nothing at all
-    every: (sp.every * Math.max(0.5, 1 + add.cd)) / haste(s),
+    size,
+    damage: sp.damage * (1 + add.dmg + tierLift),
+    // Two floors, and the absolute one is the important half.
+    //
+    // Damage, projectile count and fire rate multiply each other, so a spell that can halve its
+    // own cooldown AND quadruple its projectiles is not four times better, it is eight - which is
+    // how a bot carrying one spell reached 831 damage a second while a bot carrying four managed
+    // 262. No spell may cast faster than three times a second however much is poured into it.
+    every: Math.max(0.3, (sp.every * Math.max(0.6, 1 + add.cd)) / haste(s)),
     count: (sp.count || 1) + add.count,
     spread: (sp.spread || 0.34) + add.spread,
     blast: (sp.blast || 0) * size,
@@ -173,7 +199,7 @@ export function spawn(s, kindKey = null, angle = null) {
   const p = pressure(s);
   const key = kindKey || (p > 1.5 && r < 0.12 ? 'brute' : r < 0.2 + Math.min(0.25, p * 0.1) ? 'runner' : 'walker');
   const k = Kinds[key];
-  const tough = Math.pow(p, 1.35);
+  const tough = Math.pow(p, 1.4);
   const foe = {
     id: s.id++,
     key,
@@ -267,7 +293,7 @@ function splash(s, x, y, radius, amount, chill = 0) {
 function evoke(s, key, x, y, damage) {
   const kit = s.kit[key];
   if (!kit || !kit.evos.length) return;
-  const size = reach(s);
+  const size = statsOf(s, key).size;
 
   for (const evo of kit.evos) {
     if (evo === 'burst') {
@@ -364,7 +390,7 @@ function castSpell(s, key) {
           if (f.hp <= 0 || hit.has(f.id)) continue;
           const q = placeOf(f);
           const d = Math.hypot(q.x - p.x, q.y - p.y);
-          if (d < best && d < 190 * reach(s)) { best = d; next = f; }
+          if (d < best && d < 190 * st.size) { best = d; next = f; }
         }
         from = next;
       }
@@ -476,8 +502,13 @@ export function offer(s) {
       pool.push({ what: 'boost', key, boost: boosts[Math.floor(s.roll() * boosts.length)].key });
     }
   }
+  // Mend only turns up once the wall has actually been hit. Offering to repair something at full
+  // height is a wasted card, and with only one passive left it would otherwise be a third of
+  // every choice in the opening minute, when nothing has reached the wall yet.
   for (const k of passiveKeys) {
-    if ((s.passives[k] || 0) < MostPassive) pool.push({ what: 'passive', key: k });
+    if ((s.passives[k] || 0) >= MostPassive) continue;
+    if (k === 'mend' && s.wall >= s.maxWall && !s.passives.mend) continue;
+    pool.push({ what: 'passive', key: k });
   }
 
   // A tier that has been earned is shown, not rolled for. "Pick it five times and it levels up"

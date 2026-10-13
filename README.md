@@ -16,13 +16,20 @@ Black and white, silhouettes only. No engine, no build step, no dependencies: th
 unlock spells — Magic Bolt from the start, Shards at 2, Fireball at 3, and so on to Meteor at 16.
 That is what you take into the next run, and it is the only reason to open the game tomorrow.
 
-**The loadout.** Up to five of the ten, chosen on the opening screen. Which five you bring decides
-what the cards can offer you, so it is a real decision rather than a menu.
+**The loadout.** Four slots. The first is always Magic Bolt; you choose the other three. It is a
+pool rather than a starting hand — what you bring decides what the cards can offer you.
 
-**The run.** Everything you own casts from the first second. Levelling up offers three cards: most
-are ordinary boosts — one more bolt, a wider blast, a shorter cooldown — and **every fifth boost
-on a spell turns it into the next tier**, which is a card that changes what the spell *does*
-rather than how much of it there is.
+**The run.** It opens with Magic Bolt and nothing else. The three spells you brought arrive as
+**NEW SPELL** cards as you level, and only cast once taken. Every other card belongs to a spell
+you are carrying — more projectiles, a wider blast, a shorter cooldown — and **every fifth boost
+on a spell turns it into the next tier**, a card that changes what the spell *does* rather than
+how much of it there is.
+
+There are no global upgrades. A flat "+18% damage" is not the same card on two spells: measured
+against the same crowd, Nova does ten times the work Magic Bolt does, so the same percentage hands
+it ten times the gain. Every spell has its own numbers, and the ones already doing the most work
+gain the least — Magic Bolt's damage card is +40%, Nova's is +13%. The only card that is not a
+spell is **Mend**, and it is only offered once the wall has actually been hit.
 
 ## The combinations
 
@@ -30,9 +37,9 @@ A tier card can borrow from another spell, and those only exist if you are carry
 
 > **Conduct** — an electric storm where it lands.
 
-Magic Bolt can only be offered that if **Lightning** is in your loadout. Not rarely: never. Of the
-41 tier cards in the game, 24 are locked behind another spell, so what you bring decides what your
-spells can become. Fireball lets things leave fire behind; Frost Orb lets them freeze; Lightning
+Magic Bolt can only be offered that if you have **taken** Lightning in this run — not merely
+brought it. Not rarely: never. Of the 41 tier cards in the game, 24 are locked behind another
+spell, so what you bring decides what your spells can become. Fireball lets things leave fire behind; Frost Orb lets them freeze; Lightning
 lets them arc.
 
 ## Controls
@@ -51,7 +58,7 @@ toughest · **Fireball** bursts where it lands · **Frost Orb** bursts and slows
 leaps between them · **Beam** burns a line clean through · **Nova** hits everything near the wall ·
 **Meteor** falls on the thickest part of the crowd · **Orbit** is a blade circling you, always.
 
-And four powers that help everything: **Might**, **Haste**, **Reach**, **Mend**.
+Plus **Mend**, the one card that is not a spell: the wall rebuilds itself.
 
 ## Running it
 

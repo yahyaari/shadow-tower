@@ -151,10 +151,10 @@ for (const key of all) {
 }
 
 {
-  // Bekleme süresi sıfıra inemez: dört Quicker ve Haste birlikte sonsuz atış demek olurdu
+  // Bekleme süresi sıfıra inemez: bir yığın Çevik kartı ve kızgın bir tetik birlikte sonsuz
+  // atış demek olurdu
   const s = begin(3, ['bolt']);
   s.kit.bolt.boosts.quicker = 20;
-  s.passives.haste = MostPassive;
   s.heat = 1;
   check('bekleme süresinin bir tabanı var', statsOf(s, 'bolt').every > 0.02,
     `${statsOf(s, 'bolt').every.toFixed(4)}`);
@@ -303,6 +303,111 @@ for (const key of all) {
   const s = begin(13, ['bolt']);
   s.kit.bolt.boosts.pierce = 2;
   check('delme yükseltmesi sayılıyor', statsOf(s, 'bolt').pierce === 2);
+}
+
+// --- pasifler: artik tek tane -----------------------------------------------------------------
+
+check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'mend', passiveKeys.join(','));
+
+{
+  // Duvar tamken Onarım sunulmamalı: dolu bir duvarı onarmayı teklif eden kart boşa giden karttır,
+  // ve tek pasif kaldığı için ilk dakikanın her üç kartından biri o olurdu.
+  const s = begin(31, ['bolt', 'fireball', 'frost', 'lightning']);
+  for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+  s.phase = 'picking';
+  let seen = false;
+  for (let i = 0; i < 60 && !seen; i++) seen = offer(s).some((c) => c.what === 'passive');
+  check('duvar tamken onarım kartı çıkmıyor', !seen);
+
+  s.wall = s.maxWall - 1;
+  let now = false;
+  for (let i = 0; i < 60 && !now; i++) now = offer(s).some((c) => c.key === 'mend');
+  check('duvar hasar alınca onarım kartı çıkıyor', now);
+}
+
+// --- yükseltme oranları: güçlü büyü az, zayıf büyü çok kazanmalı ------------------------------
+
+{
+  // Sabit bir "+%18 hasar" iki ayrı büyüde aynı kart değil. Aynı kalabalığa karşı on saniyede
+  // Nova 589, Sihirli Ok 56 hasar veriyor - on katı - yani aynı yüzde birine on kat fazla
+  // kazandırır. Oranlar bu yüzden tersine: en çok iş yapan en az kazanır.
+  const dmgOf = (k) => {
+    const b = Spells[k].boosts.find((x) => x.key === 'sharper');
+    return b ? b.does.dmg : 0;
+  };
+  check('her büyünün bir hasar yükseltmesi var', all.every((k) => dmgOf(k) > 0),
+    all.filter((k) => !dmgOf(k)).join(','));
+
+  const strong = ['nova', 'meteor', 'fireball'];
+  const weak = ['bolt', 'laser'];
+  const worstStrong = Math.max(...strong.map(dmgOf));
+  const bestWeak = Math.min(...weak.map(dmgOf));
+  check('güçlü büyüler hasar kartından az kazanıyor', worstStrong < bestWeak,
+    `en güçlüsü %${(worstStrong * 100).toFixed(0)}, en zayıfı %${(bestWeak * 100).toFixed(0)}`);
+
+  const cdOf = (k) => {
+    const b = Spells[k].boosts.find((x) => x.key === 'quicker');
+    return b ? -b.does.cd : 0;
+  };
+  check('bekleme kartı da aynı sırayı izliyor',
+    Math.max(...strong.map(cdOf)) < Math.min(...weak.map(cdOf)));
+
+  // Hiçbir yükseltme ölü olmamalı: alan kartı sadece alanı olan büyülerde bulunmalı
+  const dead = all.filter((k) => {
+    const sp = Spells[k];
+    const hasArea = sp.blast || sp.wide || sp.instant === 'chain';
+    return sp.boosts.some((b) => b.key === 'wider') && !hasArea;
+  });
+  check('alan kartı sadece alanı olan büyülerde', dead.length === 0, dead.join(','));
+
+  // Kart yazısı sayıdan üretiliyor, yani vaat ile gerçek ayrılamaz
+  check('hasar kartının yazısı gerçek oranı söylüyor',
+    all.every((k) => {
+      const b = Spells[k].boosts.find((x) => x.key === 'sharper');
+      return b.tells[0].includes(`${Math.round(b.does.dmg * 100)}%`);
+    }));
+}
+
+// --- alan kartı gerçekten alanı büyütüyor mu ---------------------------------------------------
+
+{
+  const s = begin(32, ['bolt', 'fireball', 'laser', 'lightning']);
+  for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+
+  const wasBlast = statsOf(s, 'fireball').blast;
+  s.kit.fireball.boosts.wider = 4;
+  check('alan kartı patlama yarıçapını büyütüyor', statsOf(s, 'fireball').blast > wasBlast * 1.5,
+    `${wasBlast.toFixed(0)} -> ${statsOf(s, 'fireball').blast.toFixed(0)}`);
+
+  const wasWide = statsOf(s, 'laser').wide;
+  s.kit.laser.boosts.wider = 3;
+  check('alan kartı ışının kalınlığını büyütüyor', statsOf(s, 'laser').wide > wasWide * 1.4,
+    `${wasWide.toFixed(0)} -> ${statsOf(s, 'laser').wide.toFixed(0)}`);
+
+  // Ve dönüşümlerin etkisini de: artık küresel bir Erim yok, her büyü kendi alanını taşıyor.
+  //
+  // İlk yazdığımda bunu bolt üzerinde denedim ve sayı hiç değişmedi: bolt'un ALAN KARTI YOK,
+  // yani `boosts.wider = 4` yazmak olmayan bir yükseltmeyi vermek demekti ve `statsOf` onu
+  // sessizce atlıyordu. Ölçtüğüm şey oyun değil, kendi kurulumumun hatasıydı.
+  const burn = (seed, widerLevels) => {
+    const st = begin(seed, ['bolt', 'fireball']);
+    // begin() artık sadece sabit büyüyü kit'e koyuyor; fireball beklemede, elle almamız lazım
+    st.kit.fireball = { tier: 1, boosts: {}, evos: ['fire'], taken: 0 };
+    st.cools.fireball = 0;
+    if (widerLevels) st.kit.fireball.boosts.wider = widerLevels;
+    for (let i = 0; i < 6; i++) spawn(st, 'walker', (i / 6) * Math.PI * 2);
+    for (const f of st.foes) f.r = 150;
+    let widest = 0;
+    for (let i = 0; i < 180; i++) {
+      step(st, 1 / 60);
+      for (const g of st.grounds) if (g.kind === 'fire') widest = Math.max(widest, g.r);
+    }
+    return widest;
+  };
+  const plain = burn(33, 0);
+  const wide = burn(33, 4);
+  check('dönüşümün boyutu da büyünün kendi alanından geliyor', wide > plain * 1.4,
+    `${plain.toFixed(0)} -> ${wide.toFixed(0)}`);
 }
 
 // --- kartlar --------------------------------------------------------------------------------------
@@ -556,7 +661,7 @@ function botRun(seed, loadout, clicksPerSecond = 6) {
         let score;
         if (c.what === 'spell') score = 120;        // getirdiğin büyüyü almazsan tek büyüyle kalırsın
         else if (c.what === 'evolution') score = 100;
-        else if (c.what === 'passive') score = 30 - (s.passives[c.key] || 0) * 9;
+        else if (c.what === 'passive') score = 34 - (s.passives[c.key] || 0) * 8;
         else score = 18 + (s.kit[c.key] ? s.kit[c.key].taken * 4 : 0);
         if (score > bestScore) { bestScore = score; best = j; }
       });
