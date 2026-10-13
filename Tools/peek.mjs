@@ -84,6 +84,25 @@ const deadline = Date.now() + 20000;
 while (Date.now() < deadline && !log.some((l) => l.includes("[ShadowTower] ready"))) await sleep(200);
 await sleep(400);
 
+
+// Kosunun ilk saniyeleri: tek buyuyle basliyor, ilk kart ekraninda YENI BUYU cikiyor
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.lang = 'en'; window.ShadowTower.setLanguage('en');
+  d.level = 13; d.loadout = ['bolt', 'fireball', 'frost', 'lightning'];
+  window.ShadowTower.start();
+  const s = window.ShadowTower.state;
+  s.xp = s.need;
+  return true;
+})()`);
+for (let i = 0; i < 60; i++) {
+  if (await evaluate(`window.ShadowTower.state.phase === 'picking'`)) break;
+  await sleep(100);
+}
+await sleep(500);
+console.log('  acilista atesleyen: ' + await evaluate(`Object.keys(window.ShadowTower.state.kit).join('+')`));
+await screenshot('ilk_kartlar');
+
 // Donanımlı bir büyücü kur: altı büyü, birkaç pasif, ve bölümün sonuna gel
 // Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
 await screenshot('loadout_yeni_hesap');

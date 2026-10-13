@@ -4,7 +4,7 @@
 // data or a full quota all throw rather than return nothing, and none of those is a reason for
 // the game to refuse to run.
 
-import { LoadoutSize, UnlockAt, unlocked, spellKeys } from './spells.js';
+import { LoadoutSize, Always, UnlockAt, unlocked, spellKeys } from './spells.js';
 import { Languages } from './text.js';
 
 const Key = 'shadowtower';
@@ -65,11 +65,15 @@ export function tidy(data) {
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
-    .filter((k, i, all) => spellKeys.includes(k) && open.includes(k) && all.indexOf(k) === i)
-    .slice(0, LoadoutSize);
-  // A fresh account gets a full hand rather than one spell: five are unlocked from the start and
-  // the loadout holds five, so there is nothing to choose on the first run and nothing missing.
-  if (!kit.length) kit = open.slice(0, LoadoutSize);
+    .filter((k, i, all) => spellKeys.includes(k) && open.includes(k) && all.indexOf(k) === i && k !== Always);
+  // The fixed slot is always first and is never stored as a choice, so a saved loadout from an
+  // older build - or one hand-edited - cannot end up without it.
+  kit = [Always, ...kit].slice(0, LoadoutSize);
+  while (kit.length < LoadoutSize) {
+    const next = open.find((k) => !kit.includes(k));
+    if (!next) break;
+    kit.push(next);
+  }
   data.loadout = kit;
   return data;
 }
@@ -123,10 +127,10 @@ export function record(data, stage, kills) {
 
 /** Puts a spell in or out of the loadout. Returns whether anything changed. */
 export function toggle(data, key) {
+  if (key === Always) return false;                 // the fixed slot is not a choice
   if (!unlocked(data.level).includes(key)) return false;
   const at = data.loadout.indexOf(key);
   if (at >= 0) {
-    if (data.loadout.length === 1) return false;    // never leave for a run with nothing to cast
     data.loadout.splice(at, 1);
   } else {
     if (data.loadout.length >= LoadoutSize) return false;

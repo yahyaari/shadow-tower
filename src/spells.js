@@ -245,8 +245,18 @@ export const Passives = {
 export const passiveKeys = Object.keys(Passives);
 export const MostPassive = 5;
 
-/** How many you may carry. */
-export const LoadoutSize = 5;
+/**
+ * The loadout: four slots, and the first one is not a choice.
+ *
+ * Magic Bolt is always carried and is the only thing firing when a run opens. The other three are
+ * chosen before the run but are *not* cast at the start - they are what the cards can offer you,
+ * and each one has to be taken in the run before it fires.
+ *
+ * That is what makes the opening a run rather than a loadout screen with the volume up: you begin
+ * with one spell and build the rest, and what you can build is what you brought.
+ */
+export const LoadoutSize = 4;
+export const Always = 'bolt';
 
 /**
  * When each spell becomes available to put in a loadout.

@@ -3,9 +3,21 @@
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
 - **Hesap.** Koşu bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
-- **Loadout.** On büyüden en fazla beşi koşuya götürülür. **Beşi baştan açık** — ilk koşu dolu
-  bir elle oynanır. Hangi beşi götürdüğün, kartların sana ne önerebileceğini belirler.
-- **Koşu.** Taşıdığın her büyü ilk saniyeden ateşler. Seviye atladıkça üç karttan biri seçilir.
+- **Loadout.** Dört slot, ilki **sabit: Magic Bolt**. Diğer üçünü sen seçersin. Ama bu bir
+  "başlangıç eli" değil, bir **havuz**: loadout, kartların sana ne önerebileceğini belirler.
+- **Koşu.** Açılışta **sadece Magic Bolt ateşler.** Getirdiğin diğer üç büyü, seviye atladıkça
+  "YENİ BÜYÜ" kartı olarak çıkar ve ancak alınca ateşlemeye başlar.
+
+Yani her koşu tek büyüyle açılır ve sen onu kurarsın; ne kurabileceğini ise ne getirdiğin
+belirler. Kart ekranındaki tipik bir seçim şöyle görünür:
+
+```
+NEW POWER        NEW SPELL              MAGIC BOLT
+Haste            Lightning              Sharper
++13% cast speed  leaps between them     +18% damage
+                 not cast until you      5 more to tier 2
+                 take it
+```
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
@@ -23,7 +35,11 @@ fazla **üç** dönüşüm alabilir (yani T4).
 ## Kombo kuralı — bu oyunun kalbi
 
 41 dönüşümün **24'ü başka bir büyüye kilitli**. "Çarptığı yerde elektrik fırtınası" seçeneği,
-**Lightning loadout'unda yoksa asla çıkmaz**. Nadir değil — yok.
+**Lightning o koşuda ALINMAMIŞSA asla çıkmaz**. Nadir değil — yok.
+
+Dikkat: loadout'ta olması yetmez, karttan alınmış olması gerekir. `carries()` "kit'te var mı"
+diye bakıyor, kit de koşu içinde dolan şey. Bu, loadout havuza dönüşünce kendiliğinden doğru
+oldu ve testte ayrı bir kontrol olarak duruyor.
 
 Kod tarafında tek bir yerde: `evolutionsFor()` içindeki `!e.needs || carries(s, e.needs)`.
 Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
@@ -55,17 +71,20 @@ node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
 ## Şu anki denge
 
 ```
-beş büyüyle, saniyede 6 tıklayan oyuncu, 60 koşu:
-  dayanma   en kısa 1:52   ortanca 3:55   en uzun 6:59
-  bölüm     ortanca 2   en yüksek 5
-  seviye    ortanca 28   dönüşüm ortanca 2, en çok 5
-  1. bölümü geçen %92   2'yi %43   3'ü %28
-  tek büyüyle (sadece Magic Bolt): ortanca 0:40
-  neredeyse hiç tıklamayan (1/sn): ortanca 1:24
+loadout: bolt, fireball, frost, lightning — saniyede 6 tıklayan oyuncu, 60 koşu:
+  dayanma   en kısa 1:55   ortanca 5:36   en uzun 6:59
+  bölüm     ortanca 3   en yüksek 5
+  seviye    ortanca 34   dönüşüm ortanca 2, en çok 5
+  1. bölümü geçen %98   2'yi %52   3'ü %45
+  sadece sabit büyüyle (hiç kart alınmadan): ortanca 0:45
+  neredeyse hiç tıklamayan (1/sn): ortanca 1:13
 ```
 
-Beş büyü tek büyüden **altı kat** iyi. Bu, loadout'un ve hesap ilerlemesinin anlamlı olduğunun
-tek kanıtı ve testte ayrı bir kontrol olarak duruyor.
+Dolu loadout, kart almayan bir koşudan **yedi kat** iyi. Bu, loadout'un ve hesap ilerlemesinin
+anlamlı olduğunun tek kanıtı ve testte ayrı bir kontrol olarak duruyor.
+
+Ortanca koşu 5:36 — CrazyGames'in 10 dakikalık oturum eşiği için bilerek böyle: iki koşu o eşiği
+geçiyor.
 
 ## Dil
 
@@ -79,6 +98,13 @@ Test 265 yazının hepsinin iki dilde olduğunu ve (Nova/Meteor gibi özel adlar
 üstünde koşarsa ekran boş kalmaz, İngilizcesi görünür.
 
 Dil açılış ekranından değiştiriliyor ve kaydediliyor. Varsayılan İngilizce.
+
+## Kartlar her ekranda yan yana
+
+Üçü de her zaman yan yana. Dar ekranda alt alta diziyordum ve bu, üç kartı **tartılacak üç şey**
+değil **kaydırılacak bir liste** gibi gösteriyordu — seviye atlamanın tamamı o tartı. Karttaki her
+şey (yazı boyu, işaret, noktalar) ekranın değil **kartın kendi genişliğinin** oranı: böylece yarı
+genişlikte bir kart hâlâ bir kart oluyor, etikete dönüşmüyor.
 
 ## Oyun hızı
 
@@ -132,6 +158,13 @@ Bunların ortak dersi: **bir ölçüm beklenmedik bir şey söylediğinde, önce
 - **`mend` pasifi açıkken duvar düşmüyor**; bitiş ekranını test ederken önce onu kapatmak gerekti.
 - **Telefonda kutu yazıları taşar.** `fitWrite()` sığmıyorsa küçültüyor.
 - **Denge tarayıcıda ölçülmez.** `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
+- **Koşu tek büyüyle açılınca erken baskı yeniden ayarlanmalı.** Loadout havuza dönüşünce
+  açılış çok zayıfladı ve 1. bölümü geçen oranı %93'ten %55'e düştü; baskı böleni 58'den 72'ye
+  çıkarıldı.
+- **Fonksiyon bloğunu toptan değiştirirken aradakileri silme.** Kart yerleşimini yeniden yazarken
+  `speedBox`, `hitSpeed`, `settings`, `hitSettings` fonksiyonları da gitti — `look.mjs` konsolda
+  "does not provide an export named hitSettings" diye yakaladı. Bu hatayı bu projede ikinci kez
+  yaptım.
 
 ## Yapılmadı
 

@@ -9,7 +9,7 @@ import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
   tierDue, evolutionsFor, boostsFor,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
-  spellKeys, passiveKeys, haste, describe, advance,
+  spellKeys, passiveKeys, haste, describe, advance, waiting, Always,
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
@@ -74,19 +74,51 @@ check('hiçbir dönüşüm kendi büyüsüne bağlı değil',
 // --- loadout -----------------------------------------------------------------------------------
 
 {
-  const s = begin(1, ['bolt', 'fireball', 'frost']);
-  check('loadout taşınıyor', carrying(s).join() === 'bolt,fireball,frost');
-  check('loadout dışındaki büyü taşınmıyor', !carries(s, 'meteor'));
+  // Loadout dört kişilik ama koşu TEK büyüyle açılıyor: kalan üçü kartlardan alınacak.
+  const s = begin(1, ['bolt', 'fireball', 'frost', 'lightning']);
+  check('koşu sadece sabit büyüyle açılıyor', carrying(s).join() === Always, carrying(s).join());
+  check('geri kalanı sırada bekliyor', waiting(s).join() === 'fireball,frost,lightning', waiting(s).join());
+  check('bekleyen büyü henüz taşınmıyor', !carries(s, 'fireball'));
 }
 
 {
   const s = begin(1, [...all]);
-  check('loadout beşten fazla olamıyor', carrying(s).length === LoadoutSize, `${carrying(s).length}`);
+  check('loadout dörtten fazla olamıyor', s.loadout.length === LoadoutSize, `${s.loadout.length}`);
+  check('loadout dört kişilik', LoadoutSize === 4, `${LoadoutSize}`);
 }
 
 {
-  const s = begin(1, ['yok-boyle-bir-sey']);
-  check('olmayan büyü loadouta girmiyor, oyun da boş kalmıyor', carrying(s).length === 1 && carries(s, 'bolt'));
+  const s = begin(1, ['frost', 'nova']);
+  check('sabit büyü loadoutta olmasa da eklenir', s.loadout[0] === Always, s.loadout.join());
+  check('sabit büyü her koşuda ateşler', carries(s, Always));
+}
+
+{
+  // Bekleyen bir büyü kart olarak sunulmalı, yoksa koşu boyunca tek büyüyle kalırsın
+  const s = begin(3, ['bolt', 'fireball', 'frost', 'lightning']);
+  s.phase = 'picking';
+  let sawSpell = false;
+  for (let i = 0; i < 40 && !sawSpell; i++) {
+    s.choices = offer(s);
+    sawSpell = s.choices.some((c) => c.what === 'spell');
+  }
+  check('bekleyen büyü kart olarak çıkıyor', sawSpell);
+
+  const card = s.choices.find((c) => c.what === 'spell');
+  if (card) {
+    const was = carrying(s).length;
+    take(s, s.choices.indexOf(card));
+    check('alınan büyü ateşlemeye başlıyor', carrying(s).length === was + 1 && carries(s, card.key));
+    check('alınan büyü artık beklemiyor', !waiting(s).includes(card.key));
+  }
+}
+
+{
+  // Hepsi alındıktan sonra bir daha büyü kartı çıkmamalı
+  const s = begin(4, ['bolt', 'fireball', 'frost', 'lightning']);
+  for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+  check('hepsi alınınca büyü kartı kalmıyor',
+    !offer(s).some((c) => c.what === 'spell') && waiting(s).length === 0);
 }
 
 // --- her büyü gerçekten bir şey yapıyor mu ----------------------------------------------------
@@ -170,6 +202,7 @@ for (const key of all) {
 {
   // Elektrik yoksa "elektrik fırtınası" seçeneği ASLA çıkmamalı - nadir değil, yok.
   const s = begin(7, ['bolt', 'fireball']);
+  s.kit.fireball = { tier: 1, boosts: {}, evos: [], taken: 0 };
   const open = evolutionsFor(s, 'bolt');
   check('elektrik taşımıyorken fırtına dönüşümü yok',
     !open.some((e) => e.needs === 'lightning'),
@@ -178,10 +211,17 @@ for (const key of all) {
 }
 
 {
-  const s = begin(8, ['bolt', 'lightning']);
-  check('elektrik taşırken fırtına dönüşümü var',
+  // Bu artık daha ince bir kural: elektrik LOADOUTTA olması yetmez, koşuda ALINMIŞ olmalı.
+  // Kullanıcının söylediği de buydu - "eğer alınmadıysa o seçenek kesinlikle çıkmaz".
+  const s = begin(8, ['bolt', 'lightning', 'fireball', 'frost']);
+  check('loadoutta olup alınmamış elektrik dönüşümü açmıyor',
+    !evolutionsFor(s, 'bolt').some((e) => e.needs === 'lightning'),
+    evolutionsFor(s, 'bolt').filter((e) => e.needs).map((e) => e.needs).join(','));
+
+  s.kit.lightning = { tier: 1, boosts: {}, evos: [], taken: 0 };
+  check('elektrik alınınca fırtına dönüşümü açılıyor',
     evolutionsFor(s, 'bolt').some((e) => e.needs === 'lightning'));
-  check('ateş topu taşımıyorken yangın dönüşümü yok',
+  check('alınmamış ateş topu hâlâ yangın dönüşümü açmıyor',
     !evolutionsFor(s, 'bolt').some((e) => e.needs === 'fireball'));
 }
 
@@ -190,6 +230,7 @@ for (const key of all) {
   let leaks = 0, cards = 0;
   for (let seed = 1; seed <= 400; seed++) {
     const s = begin(seed * 131, ['bolt', 'shards', 'wisp']);
+    for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
     for (const k of carrying(s)) s.kit[k].taken = BoostsPerTier;
     s.phase = 'picking';
     for (const c of offer(s)) {
@@ -203,9 +244,10 @@ for (const key of all) {
 }
 
 {
-  const s = begin(9, ['bolt', 'fireball', 'frost', 'lightning', 'blade']);
+  const s = begin(9, ['bolt', 'fireball', 'frost', 'lightning']);
+  for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
   const combos = carrying(s).flatMap((k) => evolutionsFor(s, k).filter((e) => e.needs));
-  check('dolu bir loadout kombo dönüşümleri açıyor', combos.length >= 8, `${combos.length} tane`);
+  check('dolu bir loadout kombo dönüşümleri açıyor', combos.length >= 6, `${combos.length} tane`);
 }
 
 // --- dönüşümlerin etkileri ------------------------------------------------------------------------
@@ -382,7 +424,7 @@ check('ana seviye maliyeti hep artıyor', [1, 2, 3, 5, 9, 14].every((n) => needF
 
 // Birinci seviyede TAM BİR LOADOUT açık olmalı. Tek büyüyle açılan bir oyun, ilk koşusu en zayıf
 // koşu olan bir oyundur - ve açılış ekranı dolu değil, ödev gibi görünür.
-check('1. seviyede tam bir loadout açık', unlocked(1).length === Carry,
+check('1. seviyede tam bir loadout kuracak kadar büyü açık', unlocked(1).length >= Carry,
   `${unlocked(1).length} tane: ${unlocked(1).join(',')}`);
 check('her şey 13. seviyede açılıyor', unlocked(13).length === all.length);
 check('sıradaki kilit söylenebiliyor', !!nextUnlock(1) && nextUnlock(1).at > 1);
@@ -392,6 +434,7 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
   const d = tidy({ level: 1, xp: 0, loadout: ['meteor', 'nova'] });
   check('açılmamış büyü loadouttan atılıyor', !d.loadout.includes('meteor') && !d.loadout.includes('nova'));
   check('yeni hesap dolu loadoutla başlıyor', d.loadout.length === Carry, d.loadout.join(','));
+  check('sabit büyü her zaman loadoutta', d.loadout[0] === Always);
 }
 
 {
@@ -465,19 +508,20 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
 
 {
   const d = tidy({ level: 13, xp: 0, loadout: ['bolt', 'bolt', 'bolt', 'nova', 'frost', 'meteor', 'laser'] });
-  check('loadout tekrarsız ve beşle sınırlı',
+  check('loadout tekrarsız ve dörtle sınırlı',
     d.loadout.length === LoadoutSize && new Set(d.loadout).size === LoadoutSize, d.loadout.join());
+  check('sabit büyü hep başta', d.loadout[0] === Always, d.loadout.join());
 }
 
 {
   const e = tidy({ level: 13, xp: 0, loadout: ['bolt'] });
-  check('son büyü loadouttan çıkarılamıyor', toggle(e, 'bolt') === false && e.loadout.length === 1);
-  const f = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost', 'nova', 'laser', 'meteor'] });
-  check('dolu loadouta altıncı eklenemiyor', toggle(f, 'shards') === false);
+  check('sabit büyü loadouttan çıkarılamıyor', toggle(e, Always) === false && e.loadout.includes(Always));
+  const f = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost', 'nova', 'laser'] });
+  check('dolu loadouta beşincisi eklenemiyor', toggle(f, 'shards') === false, f.loadout.join(','));
   const g = tidy({ level: 1, xp: 0, loadout: ['bolt'] });
   check('açılmamış büyü loadouta eklenemiyor', toggle(g, 'meteor') === false);
-  const h = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost'] });
-  check('loadouttan çıkarma çalışıyor', toggle(h, 'frost') === true && h.loadout.join() === 'bolt');
+  const h = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost', 'nova', 'laser'] });
+  check('loadouttan çıkarma çalışıyor', toggle(h, 'frost') === true && !h.loadout.includes('frost'));
 }
 
 {
@@ -485,8 +529,9 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
   const r = record(d, 3, 500);
   check('koşu deneyim kazandırıyor', r.earned === worth(3, 500) && r.earned > 500);
   check('hesap seviye atlıyor', r.levelled && d.level > 1);
-  check('açılan büyü boş yere kendi giriyor',
-    !r.opened.length || r.opened.every((k) => d.loadout.includes(k)), r.opened.join());
+  // Loadout doluysa yeni açılan büyü kendi giremez - oyuncunun seçimini ezmek doğru olmaz.
+  check('açılan büyü yer varsa kendi giriyor, yoksa loadout dolu kalıyor',
+    d.loadout.length === Carry, d.loadout.join(','));
   check('en iyi bölüm kaydediliyor', d.best === 3);
 }
 
@@ -509,7 +554,8 @@ function botRun(seed, loadout, clicksPerSecond = 6) {
       let best = 0, bestScore = -1e9;
       s.choices.forEach((c, j) => {
         let score;
-        if (c.what === 'evolution') score = 100;
+        if (c.what === 'spell') score = 120;        // getirdiğin büyüyü almazsan tek büyüyle kalırsın
+        else if (c.what === 'evolution') score = 100;
         else if (c.what === 'passive') score = 30 - (s.passives[c.key] || 0) * 9;
         else score = 18 + (s.kit[c.key] ? s.kit[c.key].taken * 4 : 0);
         if (score > bestScore) { bestScore = score; best = j; }
@@ -526,7 +572,7 @@ function botRun(seed, loadout, clicksPerSecond = 6) {
   return { t: s.t, stage: s.stage, level: s.level, kills: s.kills, evos };
 }
 
-const Five = ['bolt', 'fireball', 'frost', 'lightning', 'blade'];
+const Five = ['bolt', 'fireball', 'frost', 'lightning'];
 const runs = [];
 for (let i = 1; i <= 60; i++) runs.push(botRun(i * 7919, Five));
 const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
@@ -537,7 +583,7 @@ const evos = runs.map((r) => r.evos).sort((a, b) => a - b);
 const reached = (n) => runs.filter((r) => r.stage > n).length / runs.length;
 
 console.log('');
-console.log(`beş büyüyle (${Five.join(', ')}), saniyede 6 tıklayan oyuncu, 60 koşu:`);
+console.log(`loadout: ${Five.join(', ')} — saniyede 6 tıklayan oyuncu, 60 koşu:`);
 console.log(`  dayanma   en kısa ${fmt(lived[0])}   ortanca ${fmt(lived[30])}   en uzun ${fmt(lived[59])}`);
 console.log(`  bölüm     ortanca ${stages[30]}   en yüksek ${stages[59]}`);
 console.log(`  seviye    ortanca ${levels[30]}   dönüşüm ortanca ${evos[30]}, en çok ${evos[59]}`);
@@ -546,7 +592,7 @@ console.log(`  1. bölümü geçen %${(reached(1) * 100).toFixed(0)}   2'yi %${(
 const solo = [];
 for (let i = 1; i <= 40; i++) solo.push(botRun(i * 104729, ['bolt']).t);
 solo.sort((a, b) => a - b);
-console.log(`  tek büyüyle (sadece Magic Bolt): ortanca ${fmt(solo[20])}`);
+console.log(`  sadece sabit büyüyle (hiç kart alınmadan): ortanca ${fmt(solo[20])}`);
 
 const lazy = [];
 for (let i = 1; i <= 40; i++) lazy.push(botRun(i * 104729, Five, 1).t);
@@ -561,7 +607,7 @@ check('koşu bir yerde bitiyor', stages[59] < 25, `en yüksek bölüm ${stages[5
 check('bölümler zorlaşıyor', reached(3) < reached(1) * 0.95);
 check('oyuncu bir sürü seçim yapıyor', levels[30] >= 12, `ortanca seviye ${levels[30]}`);
 check('bir koşuda birkaç dönüşüm alınıyor', evos[30] >= 2, `ortanca ${evos[30]}`);
-check('beş büyü tek büyüden iyi', lived[30] > solo[20] * 1.15, `${fmt(lived[30])} vs ${fmt(solo[20])}`);
+check('dolu loadout tek büyüden iyi', lived[30] > solo[20] * 1.15, `${fmt(lived[30])} vs ${fmt(solo[20])}`);
 check('tıklamak işe yarıyor', lived[30] > lazy[20] * 1.08, `${fmt(lived[30])} vs ${fmt(lazy[20])}`);
 
 console.log('');

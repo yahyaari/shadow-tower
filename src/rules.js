@@ -10,10 +10,10 @@
 // cards, most of them ordinary boosts, and every fifth boost on a spell turns into a tier - a
 // card that changes what the spell does rather than how much of it there is.
 
-import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize } from './spells.js';
+import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always } from './spells.js';
 import { say, UI } from './text.js';
 
-export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize };
+export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always };
 export const spellKeys = Object.keys(Spells);
 
 export const Arena = 560;
@@ -44,7 +44,7 @@ export const Kinds = {
 
 export const SprintAt = 210;
 
-export const pressure = (s) => 1 + s.t / 58;
+export const pressure = (s) => 1 + s.t / 72;
 export const spawnEvery = (s) => Math.max(0.05, 0.85 / Math.pow(pressure(s), 1.3));
 
 export function seeded(seed) {
@@ -67,20 +67,24 @@ export function seeded(seed) {
  * Thirty picks is five spells at six each: everything tiers once, and what you favour tiers twice.
  */
 export function xpFor(level) {
-  return Math.round(2 * Math.pow(1.15, level - 1) + (level - 1) * 1.2);
+  return Math.round(2 * Math.pow(1.14, level - 1) + (level - 1) * 1.0);
 }
 
 // --- a run --------------------------------------------------------------------------------------
 
-export function begin(seed = Date.now(), loadout = ['bolt']) {
-  const kit = {};
-  const cools = {};
+/**
+ * A run.
+ *
+ * `loadout` is what you *may* end up with; `kit` is what is actually casting. Only the fixed
+ * spell is in the kit when a run opens - the other three sit in the loadout waiting to be offered
+ * as cards. That is the difference between a loadout and a starting hand: you begin a run with
+ * one spell every time and build the rest, and what you brought decides what you can build.
+ */
+export function begin(seed = Date.now(), loadout = [Always]) {
   const carried = loadout.filter((k) => Spells[k]).slice(0, LoadoutSize);
-  if (!carried.length) carried.push('bolt');
-  for (const [i, k] of carried.entries()) {
-    kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
-    cools[k] = 0.25 + i * 0.18;     // staggered, so the opening is not one loud chord
-  }
+  if (!carried.includes(Always)) carried.unshift(Always);
+  const kit = { [Always]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
+  const cools = { [Always]: 0.25 };
   return {
     roll: seeded(seed),
     t: 0,
@@ -118,8 +122,11 @@ export const reach = (s) => 1 + (s.passives.reach || 0) * 0.18;
 
 export const carries = (s, key) => !!s.kit[key];
 
-/** Every spell carried, in loadout order. */
+/** Every spell actually casting, in loadout order. */
 export const carrying = (s) => s.loadout.filter((k) => s.kit[k]);
+
+/** Brought, but not taken yet - the ones the cards can still hand you. */
+export const waiting = (s) => s.loadout.filter((k) => !s.kit[k]);
 
 /**
  * What a spell actually does right now.
@@ -449,6 +456,11 @@ export function offer(s) {
   // one, so tiers almost never came up: the bot finished a whole run having taken none.
   const pool = [];
   const due = [];
+
+  // A spell you brought but have not taken yet. These are the cards that turn one spell into
+  // four, so they go in the pool in their own right rather than competing with a boost.
+  for (const key of waiting(s)) pool.push({ what: 'spell', key });
+
   for (const key of carrying(s)) {
     if (tierDue(s, key)) {
       const evos = evolutionsFor(s, key);
@@ -501,6 +513,16 @@ export function describe(s, pick) {
     };
   }
   const sp = Spells[pick.key];
+  if (pick.what === 'spell') {
+    return {
+      badge: say(UI.newSpell),
+      title: say(sp.name),
+      text: say(sp.tells),
+      mark: pick.key,
+      fresh: true,
+      have: 0, most: 0,
+    };
+  }
   const kit = s.kit[pick.key];
   if (pick.what === 'evolution') {
     const evo = sp.evolutions.find((e) => e.onHit === pick.evo);
@@ -533,6 +555,9 @@ export function take(s, index) {
     if (pick.what === 'passive') {
       s.passives[pick.key] = (s.passives[pick.key] || 0) + 1;
       if (pick.key === 'mend') { s.maxWall += 20; s.wall += 20; }
+    } else if (pick.what === 'spell') {
+      s.kit[pick.key] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+      s.cools[pick.key] = 0.15;
     } else if (pick.what === 'boost') {
       const kit = s.kit[pick.key];
       kit.boosts[pick.boost] = (kit.boosts[pick.boost] || 0) + 1;

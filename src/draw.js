@@ -17,7 +17,7 @@
 
 import {
   Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives,
-  BoostsPerTier, MostEvos, LoadoutSize, spellKeys, statsOf, carrying, describe,
+  BoostsPerTier, MostEvos, LoadoutSize, Always, spellKeys, statsOf, carrying, describe,
 } from './rules.js';
 import { UnlockAt, nextUnlock } from './spells.js';
 import { say, UI, LanguageNames, Languages, language } from './text.js';
@@ -595,29 +595,19 @@ function sigil(ctx, key, x, y, s, colour) {
 /**
  * Where the three cards sit. Shared with the mouse, so one can never be drawn out of reach.
  *
- * On a phone held upright three cards across would be the width of a thumb each, so below a
- * certain width they stack instead. Same three rectangles either way, and the hit test reads
- * the same list, so neither layout can disagree with where the finger lands.
+ * Always across, on every screen. They were stacked on a narrow one, which read as a list to
+ * scroll rather than three things to weigh against each other - and weighing them against each
+ * other is the whole of what a level up is. Everything on a card is sized from the card's own
+ * width instead of the screen, so three narrow ones stay three cards.
  */
 export function cards(w, h, dpr = 1) {
   const U = Math.max(1, Math.min(2.4, dpr));
-  const tall = h > w * 1.1;
-  if (tall) {
-    const cw = Math.min(520 * U, w - 48 * U);
-    const ch = 118 * U;
-    const gap = 16 * U;
-    const top = h / 2 - (3 * ch + 2 * gap) / 2 + 30 * U;
-    return [0, 1, 2].map((i) => ({ i, x: w / 2 - cw / 2, y: top + i * (ch + gap), w: cw, h: ch, flat: true }));
-  }
-  const cw = Math.min(252 * U, (w - 90 * U) / 3 - 20 * U);
-  const ch = 268 * U;
-  const total = 3 * cw + 2 * 20 * U;
-  let x = w / 2 - total / 2;
-  return [0, 1, 2].map((i) => {
-    const r = { i, x, y: h / 2 - ch / 2 + 20 * U, w: cw, h: ch, flat: false };
-    x += cw + 20 * U;
-    return r;
-  });
+  const pad = 16 * U, gap = 10 * U;
+  const cw = Math.min(252 * U, (w - pad * 2 - gap * 2) / 3);
+  const ch = Math.min(h * 0.6, cw * 1.3);
+  const x0 = w / 2 - (3 * cw + 2 * gap) / 2;
+  const y = h / 2 - ch / 2 + 14 * U;
+  return [0, 1, 2].map((i) => ({ i, x: x0 + i * (cw + gap), y, w: cw, h: ch }));
 }
 
 /**
@@ -780,65 +770,57 @@ function picking(ctx, state, w, h, show, U) {
   ctx.fillRect(0, 0, w, h);
 
   const list = cards(w, h, U);
-  const header = list[0].y - (list[0].flat ? 56 * U : 46 * U);
+  const top0 = list[0].y;
   write(ctx, state.cleared ? say(UI.cleared, state.stage - 1) : say(UI.level, state.level),
-    w / 2, header - 24 * U, 36 * U, 800, 'center');
+    w / 2, top0 - 52 * U, 32 * U, 800, 'center');
   write(ctx, state.cleared ? say(UI.mended) : say(UI.takeOne),
-    w / 2, header + 8 * U, 14 * U, 600, 'center');
+    w / 2, top0 - 24 * U, 13 * U, 600, 'center');
 
   for (const r of list) {
     const card = describe(state, state.choices[r.i]);
     if (!card) continue;
     const lit = show.overCard === r.i;
-    const big = !!card.tier;              // a tier card is the one that changes the spell
+    const big = !!card.tier || !!card.fresh;     // a tier or a new spell: the cards that change a run
     const top = r.y - (lit ? 8 : 0);
     const cx = r.x + r.w / 2;
+    // Everything is a fraction of the card, so a card half the width is a card and not a label.
+    const f = r.w;
 
     if (lit) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.fill();
     }
     ctx.strokeStyle = Black;
     ctx.lineWidth = (lit ? 3 : big ? 4 : 2) * U;
-    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 10 * U); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.stroke();
 
     const ink = lit ? Pale : Black;
+    const room = r.w - 0.1 * f;
 
-    /** The pips under a card: how many of this you have, out of how many you may. */
-    const pips = (px, py) => {
-      if (!card.most) return;
+    fitWrite(ctx, card.badge.toUpperCase(), cx, top + 0.1 * f, 0.052 * f, 800, 'center', ink, room);
+    fitWrite(ctx, card.title, cx, top + 0.215 * f, 0.105 * f, 800, 'center', ink, room);
+    sigil(ctx, card.mark, cx, top + 0.46 * f, big ? 0.23 * f : 0.19 * f, ink);
+    wrap(ctx, card.text, cx, top + 0.77 * f, room, 0.062 * f, 0.085 * f, ink);
+
+    const foot = card.borrows ? say(UI.withSpell, card.borrows)
+      : card.fresh ? say(UI.notYet)
+      : card.toTier > 0 ? say(UI.moreToTier, card.toTier, (state.kit[card.mark] || {}).tier + 1)
+      : '';
+    if (foot) fitWrite(ctx, foot, cx, top + 1.0 * f, 0.048 * f, 600, 'center', ink, room);
+
+    if (card.most) {
+      const dot = 0.028 * f, step = 0.075 * f;
       for (let i = 0; i < card.most; i++) {
         ctx.fillStyle = ink;
         ctx.globalAlpha = i < card.have + 1 ? 1 : 0.22;
-        ctx.beginPath(); ctx.arc(px - (card.most - 1) * 7 * U + i * 14 * U, py, 5 * U, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx - (card.most - 1) * step / 2 + i * step, top + 1.14 * f, dot, 0, Math.PI * 2);
+        ctx.fill();
         ctx.globalAlpha = 1;
       }
-    };
-
-    // A tier card says what it borrowed. "An electric storm where it lands" only exists because
-    // lightning is in the loadout, and a player who is not told that will never go looking for
-    // the next combination.
-    const foot = card.borrows ? say(UI.withSpell, card.borrows)
-      : card.toTier > 0 ? say(UI.moreToTier, card.toTier, (state.kit[card.mark] || {}).tier + 1)
-      : '';
-
-    if (r.flat) {
-      sigil(ctx, card.mark, r.x + 58 * U, top + r.h / 2, 38 * U, ink);
-      write(ctx, card.badge.toUpperCase(), r.x + 110 * U, top + 26 * U, 10 * U, 800, 'left', ink);
-      write(ctx, card.title, r.x + 110 * U, top + 54 * U, 21 * U, 800, 'left', ink);
-      write(ctx, card.text, r.x + 110 * U, top + 80 * U, 12 * U, 500, 'left', ink);
-      if (foot) write(ctx, foot, r.x + 110 * U, top + 100 * U, 10 * U, 600, 'left', ink);
-      pips(r.x + r.w - 60 * U, top + r.h / 2);
-    } else {
-      write(ctx, card.badge.toUpperCase(), cx, top + 26 * U, 10 * U, 800, 'center', ink);
-      write(ctx, card.title, cx, top + 56 * U, 22 * U, 800, 'center', ink);
-      sigil(ctx, card.mark, cx, top + 120 * U, big ? 46 * U : 38 * U, ink);
-      wrap(ctx, card.text, cx, top + 190 * U, r.w - 30 * U, 13 * U, 18 * U, ink);
-      if (foot) write(ctx, foot, cx, top + 222 * U, 10 * U, 600, 'center', ink);
-      pips(cx, top + 246 * U);
     }
   }
-  write(ctx, say(UI.tapCard), w / 2, list[2].y + list[2].h + 32 * U, 13 * U, 500, 'center');
+  write(ctx, say(UI.tapCard), w / 2, list[0].y + list[0].h + 26 * U, 13 * U, 500, 'center');
 }
 
 // --- the loadout screen ------------------------------------------------------------------------
@@ -922,12 +904,15 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
     bx + bw, by + 24 * U, 13 * U, 600, 'right', Black, bw * 0.45);
   if (meta.best) write(ctx, say(UI.bestStage, meta.best), w / 2, by + 24 * U, 13 * U, 600, 'center');
 
-  write(ctx, say(UI.chooseUpTo, LoadoutSize), w / 2, list[0].y - 24 * U, 12 * U, 800, 'center');
+  const room = LoadoutSize - meta.loadout.length;
+  write(ctx, room > 0 ? say(UI.chooseMore, room) : say(UI.chooseUpTo, LoadoutSize),
+    w / 2, list[0].y - 24 * U, 12 * U, 800, 'center');
 
   for (const t of list) {
     const open = UnlockAt[t.key] <= meta.level;
-    const taken = meta.loadout.includes(t.key);
-    const lit = show.overTile === t.key && open;
+    const fixed = t.key === Always;
+    const taken = fixed || meta.loadout.includes(t.key);
+    const lit = show.overTile === t.key && open && !fixed;
     const sp = Spells[t.key];
 
     if (taken) {
@@ -940,17 +925,22 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
     ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
 
     const ink = taken ? Pale : Black;
+    // The fixed slot says so rather than looking like a choice somebody already made for you.
+    const under = fixed ? say(UI.always)
+      : open ? say(sp.tells)
+      : say(UI.opensAt, UnlockAt[t.key]);
+
     if (t.tall) {
-      const room = t.w - 92 * U;
+      const fits = t.w - 92 * U;
       sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 30 * U, ink);
-      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 76 * U, t.y + 28 * U, 17 * U, 800, 'left', ink, room);
-      fitWrite(ctx, open ? say(sp.tells) : say(UI.opensAt, UnlockAt[t.key]),
-        t.x + 76 * U, t.y + 50 * U, 11 * U, 500, 'left', ink, room);
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 76 * U, t.y + 28 * U, 17 * U, 800, 'left', ink, fits);
+      fitWrite(ctx, under, t.x + 76 * U, t.y + 50 * U, 11 * U, fixed ? 800 : 500, 'left', ink, fits);
     } else {
-      const room = t.w - 16 * U;
-      sigil(ctx, t.key, t.x + t.w / 2, t.y + 32 * U, 30 * U, ink);
-      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 64 * U, 14 * U, 800, 'center', ink, room);
-      write(ctx, open ? '' : say(UI.levelledPlain, UnlockAt[t.key]), t.x + t.w / 2, t.y + 81 * U, 10 * U, 600, 'center', ink);
+      const fits = t.w - 16 * U;
+      sigil(ctx, t.key, t.x + t.w / 2, t.y + 30 * U, 30 * U, ink);
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 62 * U, 14 * U, 800, 'center', ink, fits);
+      fitWrite(ctx, fixed ? say(UI.always) : open ? '' : say(UI.levelledPlain, UnlockAt[t.key]),
+        t.x + t.w / 2, t.y + 80 * U, 10 * U, fixed ? 800 : 600, 'center', ink, fits);
     }
     ctx.globalAlpha = 1;
   }
