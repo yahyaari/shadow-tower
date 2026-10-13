@@ -34,7 +34,10 @@ Bir sekme hâlâ iskelet (Ödüller) — reklam kısmı CrazyGames SDK'sı isted
 
 ### Kahraman
 
-Elli basamaklı bir merdiven, aşağıdan yukarı, kaydırmalı. Her basamak **küçük ve genel**: +%2.5
+Elli hücreli bir **bal peteği**, aşağıdan yukarı, kaydırmalı. İki şerit arasında zikzak yapıyor;
+alınanlar dolu siyah, sıradaki halkalı, yukarısı soluk. Her hücrede yazı değil **bir işaret** var
+(hasar yıldızı, duvar mazgalı, kum saati, iç içe halkalar, artı, açık kitap) — elli hücreye birer
+cümle koymak bir yazı duvarı demek. Sıradakinin ne verdiği, ekranın altında bir kere yazıyor. Her basamak **küçük ve genel**: +%2.5
 hasar, +10 duvar, -%0.5 bekleme, +%1.5 alan, onarım, deneyim kazancı. **Hiçbiri bir büyüye özel
 değil** ve test bunu kontrol ediyor — olsaydı, kart hiç bahsetmeden hangi büyüyü getireceğine
 karar verirdi.
@@ -275,8 +278,10 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - **Kaydırılan bir listede dokunuş ile sürükleme ayrılmalı.** Kahraman merdiveninde basma
   anında değil, BIRAKMA anında karar veriliyor: az kımıldadıysa dokunuş, çok kımıldadıysa
   sürükleme. Yoksa her kaydırma denemesi bir basamak satın alırdı.
-- **Ekran dışındaki bir şey satın alınamamalı.** Dokunma testi, sıradaki basamağın gerçekten
+- **Ekran dışındaki bir şey satın alınamamalı.** Dokunma testi, sıradaki hücrenin gerçekten
   görünür olup olmadığına da bakıyor.
+- **Alt bilgi çubuğu peteğin üstünü örter.** Hücreler o çubuğun üstünde kesiliyor, yoksa
+  parmağına en yakın olanlar — yani yeni aldıkların — gizlenenler oluyordu.
 - **Siluetleri iki yerde çizme.** Menünün yaratık listesi için `body()` `figure()`'dan ayrıldı:
   iki kopya, biri değişince eşleşmeyi bırakan iki kopyadır — külliyat da tam bunun için var.
 - **Aynı koşuyu tekrar bitirirken `show.booked` sıfırlanmazsa** bitiş ekranı eski sonucu gösterir

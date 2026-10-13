@@ -218,40 +218,51 @@ export function codexPanel(w, h, dpr = 1, key = null) {
 }
 
 /**
- * The hero ladder, drawn from the bottom up.
+ * The hero ladder, drawn from the bottom up as a honeycomb.
  *
- * Step one is at the foot and fifty is at the head, because that is the direction a ladder goes
- * and because the thing you are about to buy should be near your thumb. It is taller than any
- * screen, so it scrolls; `heroReach` is how far it can be pushed.
+ * Hexagons rather than a list, and two lanes rather than one, so the path zigzags up the screen
+ * the way a route does. Step one is at the foot and fifty is at the head: the thing you are about
+ * to buy sits nearest your thumb, and everything above it is the road.
+ *
+ * Taller than any screen, so it scrolls; `heroReach` is how far it can be pushed.
  */
-export function heroRow(w, h, dpr = 1) {
+export function heroCell(w, h, dpr = 1) {
   const U = unit(dpr);
-  return { height: 66 * U, left: Math.max(16 * U, w / 2 - 240 * U), width: Math.min(480 * U, w - 32 * U) };
+  const b = band(w, h, dpr);
+  return {
+    r: 34 * U,              // hexagon radius
+    step: 88 * U,           // how far apart two of them are, up the screen
+    lane: 76 * U,           // how far each lane sits off the middle
+    // The line of words at the foot sits over the comb, so the comb has to stop above it -
+    // otherwise the cells nearest your thumb, the ones you just bought, are the hidden ones.
+    skirt: 54 * U,
+    top: b.top + 56 * U,
+    foot: b.bottom - 54 * U,
+  };
 }
 
 export function heroReach(w, h, dpr = 1) {
   const U = unit(dpr);
-  const b = band(w, h, dpr);
-  const r = heroRow(w, h, dpr);
-  return Math.max(0, HeroSteps * r.height + 70 * U - b.height);
+  const c = heroCell(w, h, dpr);
+  return Math.max(0, (HeroSteps - 1) * c.step + c.r * 2 + 34 * U - (c.foot - c.top));
 }
 
-/** Where step `n` lands on the screen for a given scroll. */
+/** Where step `n` sits on the screen for a given scroll. Odd steps lean left, even steps right. */
 export function heroAt(n, w, h, dpr, scroll) {
-  const U = unit(dpr);
-  const b = band(w, h, dpr);
-  const r = heroRow(w, h, dpr);
-  const top = b.top + 62 * U + (HeroSteps - n) * r.height - scroll;
-  return { x: r.left, y: top, w: r.width, h: r.height - 8 * U };
+  const c = heroCell(w, h, dpr);
+  return {
+    x: w / 2 + (n % 2 ? -c.lane : c.lane),
+    y: c.foot - c.r - (n - 1) * c.step + scroll,
+    r: c.r,
+  };
 }
 
-/** Where the ladder should sit when it is first opened: the next step, in the middle. */
 export function heroHome(data, w, h, dpr = 1) {
-  const U = unit(dpr);
-  const b = band(w, h, dpr);
-  const r = heroRow(w, h, dpr);
+  const c = heroCell(w, h, dpr);
   const next = Math.min(HeroSteps, (data.hero || 0) + 1);
-  const want = 62 * U + (HeroSteps - next) * r.height - b.height * 0.55;
+  // the next cell about a third up, so the road ahead and the road behind are both in sight
+  const room = (c.foot - c.top) / c.step;
+  const want = Math.max(0, (next - 1 - Math.floor(room * 0.55)) * c.step);
   return Math.max(0, Math.min(heroReach(w, h, dpr), want));
 }
 
@@ -283,10 +294,12 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
   if (data.tab === 'hero') {
     const next = heroNext(data);
     if (next) {
-      const r = heroAt(next.n, w, h, dpr, show.heroScroll || 0);
+      const c = heroAt(next.n, w, h, dpr, show.heroScroll || 0);
       const b = band(w, h, dpr);
       // only if it is actually on screen - a tap must not buy something scrolled out of sight
-      if (r.y > b.top - r.h && r.y < b.bottom && inside(r, px, py)) return { what: 'heroBuy' };
+      const cell = heroCell(w, h, dpr);
+      const near = Math.hypot(px - c.x, py - c.y) <= c.r * 1.15;
+      if (c.y > cell.top && c.y < cell.foot && near) return { what: 'heroBuy' };
     }
   }
   if (data.tab === 'codex') {
@@ -757,110 +770,201 @@ function codexTab(ctx, data, w, h, U, show) {
   }
 }
 
+/** One cell of the comb. Flat top and bottom, points to left and right. */
+function hex(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+}
+
 /**
- * The hero ladder.
+ * The mark inside a cell: one per kind of upgrade.
  *
- * Fifty steps, bottom to top, one bought at a time. Everything above the next one is drawn faint
- * - you can read what is coming, which is the point of a ladder, but there is only ever one
- * thing you can press.
+ * Shapes rather than words, because a comb of fifty cells with a sentence in each is a wall of
+ * text. What each one means is said once, beside the cell you are about to buy.
+ */
+function heroMark(ctx, key, x, y, s, colour) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = s * 0.14;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (key === 'dmg') {
+    // the same four-pointed star the bolt uses
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      const o = (i % 2 ? s * 0.16 : s * 0.56);
+      i ? ctx.lineTo(Math.cos(a) * o, Math.sin(a) * o) : ctx.moveTo(Math.cos(a) * o, Math.sin(a) * o);
+    }
+    ctx.closePath(); ctx.fill();
+
+  } else if (key === 'wall') {
+    ctx.beginPath();
+    ctx.rect(-s * 0.5, -s * 0.12, s, s * 0.52);
+    ctx.fill();
+    for (let i = -1; i <= 1; i++) ctx.fillRect(i * s * 0.34 - s * 0.12, -s * 0.46, s * 0.24, s * 0.36);
+
+  } else if (key === 'cd') {
+    // an hourglass: less waiting
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.4, -s * 0.5); ctx.lineTo(s * 0.4, -s * 0.5);
+    ctx.lineTo(-s * 0.4, s * 0.5); ctx.lineTo(s * 0.4, s * 0.5);
+    ctx.closePath();
+    ctx.lineWidth = s * 0.17;
+    ctx.stroke();
+
+  } else if (key === 'area') {
+    for (const o of [0.2, 0.38, 0.56]) {
+      ctx.beginPath(); ctx.arc(0, 0, s * o, 0, Math.PI * 2); ctx.stroke();
+    }
+
+  } else if (key === 'mend') {
+    ctx.beginPath();
+    ctx.rect(-s * 0.16, -s * 0.52, s * 0.32, s * 1.04);
+    ctx.rect(-s * 0.52, -s * 0.16, s * 1.04, s * 0.32);
+    ctx.fill();
+
+  } else {
+    // learning: an open book
+    ctx.lineWidth = s * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.34); ctx.lineTo(0, s * 0.42);
+    ctx.moveTo(0, -s * 0.34);
+    ctx.quadraticCurveTo(-s * 0.3, -s * 0.5, -s * 0.54, -s * 0.34);
+    ctx.lineTo(-s * 0.54, s * 0.3);
+    ctx.quadraticCurveTo(-s * 0.3, s * 0.16, 0, s * 0.42);
+    ctx.moveTo(0, -s * 0.34);
+    ctx.quadraticCurveTo(s * 0.3, -s * 0.5, s * 0.54, -s * 0.34);
+    ctx.lineTo(s * 0.54, s * 0.3);
+    ctx.quadraticCurveTo(s * 0.3, s * 0.16, 0, s * 0.42);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * The hero comb.
+ *
+ * Fifty cells, bottom to top, one bought at a time. Everything above the next one is drawn faint
+ * - you can read the road, which is the point of having one, but there is only ever one cell you
+ * can press.
  */
 function heroTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
-  const row = heroRow(w, h, U);
+  const c = heroCell(w, h, U);
   const have = data.hero || 0;
   const next = heroNext(data);
   const scroll = show.heroScroll || 0;
+  const left = Math.max(16 * U, w / 2 - 240 * U);
+  const width = Math.min(480 * U, w - 32 * U);
 
-  // --- what is in the purse, and what the next step wants
-  write(ctx, say(UI.heroBank), row.left, b.top + 18 * U, 10 * U, 700, 'left');
-  write(ctx, String(Math.round(data.bank || 0)), row.left, b.top + 38 * U, 22 * U, 800, 'left');
-  write(ctx, say(UI.heroStep, have, HeroSteps), row.left + row.width, b.top + 38 * U, 13 * U, 700, 'right');
+  write(ctx, say(UI.heroBank), left, b.top + 18 * U, 10 * U, 700, 'left');
+  write(ctx, String(Math.round(data.bank || 0)), left, b.top + 38 * U, 22 * U, 800, 'left');
+  write(ctx, say(UI.heroStep, have, HeroSteps), left + width, b.top + 38 * U, 13 * U, 700, 'right');
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, b.top + 56 * U, w, b.bottom - b.top - 56 * U);
+  ctx.rect(0, c.top, w, c.foot + 16 * U - c.top);
   ctx.clip();
 
-  const spineX = row.left + 26 * U;
+  const seen = (n) => {
+    const p = heroAt(n, w, h, U, scroll);
+    return p.y > c.top - c.step && p.y < c.foot + c.step;
+  };
 
-  // --- the spine, drawn once behind everything
-  {
-    const top = heroAt(HeroSteps, w, h, U, scroll);
-    const foot = heroAt(1, w, h, U, scroll);
+  // --- the path between the cells, drawn behind them
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (let n = 1; n < HeroSteps; n++) {
+    if (!seen(n) && !seen(n + 1)) continue;
+    const a = heroAt(n, w, h, U, scroll);
+    const z = heroAt(n + 1, w, h, U, scroll);
+    const climbed = n < have;
     ctx.strokeStyle = Black;
-    ctx.lineWidth = 3 * U;
-    ctx.globalAlpha = 0.18;
+    ctx.lineWidth = (climbed ? 5 : 3.5) * U;
+    ctx.globalAlpha = climbed ? 1 : n + 1 <= have + 1 ? 0.5 : 0.18;
+    // out of the top of one, a slant across, into the bottom of the next
     ctx.beginPath();
-    ctx.moveTo(spineX, top.y + top.h / 2);
-    ctx.lineTo(spineX, foot.y + foot.h / 2);
+    ctx.moveTo(a.x, a.y - c.r);
+    ctx.lineTo(a.x, a.y - c.r - 10 * U);
+    ctx.lineTo(z.x, z.y + c.r + 10 * U);
+    ctx.lineTo(z.x, z.y + c.r);
     ctx.stroke();
-    // the part already climbed is solid
-    ctx.globalAlpha = 1;
-    if (have > 0) {
-      const done = heroAt(have, w, h, U, scroll);
-      ctx.beginPath();
-      ctx.moveTo(spineX, done.y + done.h / 2);
-      ctx.lineTo(spineX, foot.y + foot.h / 2);
-      ctx.stroke();
-    }
   }
+  ctx.globalAlpha = 1;
 
+  // --- the cells
   for (const step of Ladder) {
-    const r = heroAt(step.n, w, h, U, scroll);
-    if (r.y + r.h < b.top || r.y > b.bottom) continue;      // off screen, not drawn
-
+    if (!seen(step.n)) continue;
+    const p = heroAt(step.n, w, h, U, scroll);
     const owned = step.n <= have;
     const isNext = next && step.n === next.n;
     const canBuy = isNext && (data.bank || 0) >= step.cost;
     const lit = isNext && show.overMenu === 'heroBuy';
-    const bon = Bonus[step.key];
-    const cy = r.y + r.h / 2;
 
-    ctx.globalAlpha = owned ? 1 : isNext ? 1 : 0.34;
+    ctx.globalAlpha = owned || isNext ? 1 : 0.3;
 
-    // the node on the spine
-    ctx.fillStyle = owned ? Black : Pale;
-    ctx.beginPath(); ctx.arc(spineX, cy, 13 * U, 0, Math.PI * 2); ctx.fill();
+    hex(ctx, p.x, p.y, p.r);
+    ctx.fillStyle = owned || (lit && canBuy) ? Black : Pale;
+    ctx.fill();
     ctx.strokeStyle = Black;
-    ctx.lineWidth = (isNext ? 3 : 2) * U;
-    ctx.beginPath(); ctx.arc(spineX, cy, 13 * U, 0, Math.PI * 2); ctx.stroke();
-    if (owned) {
-      ctx.strokeStyle = Pale;
-      ctx.lineWidth = 2.6 * U;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(spineX - 5 * U, cy); ctx.lineTo(spineX - 1 * U, cy + 4 * U); ctx.lineTo(spineX + 5 * U, cy - 4 * U);
-      ctx.stroke();
-    }
+    ctx.lineWidth = (isNext ? 3.6 : 2) * U;
+    ctx.stroke();
 
-    // the card beside it
-    const cx = spineX + 24 * U;
-    const cw = row.left + row.width - cx;
+    const ink = owned || (lit && canBuy) ? Pale : Black;
+    heroMark(ctx, step.key, p.x, p.y, p.r * 0.86, ink);
+
+    // a ring around the one you can take next, so it is found without reading
     if (isNext) {
-      ctx.fillStyle = lit && canBuy ? Black : 'rgba(13,12,11,0)';
-      ctx.beginPath(); ctx.roundRect(cx, r.y, cw, r.h, 9 * U); ctx.fill();
+      ctx.globalAlpha = canBuy ? 1 : 0.45;
       ctx.strokeStyle = Black;
-      ctx.lineWidth = 2.4 * U;
-      ctx.beginPath(); ctx.roundRect(cx, r.y, cw, r.h, 9 * U); ctx.stroke();
+      ctx.lineWidth = 2 * U;
+      hex(ctx, p.x, p.y, p.r + 7 * U);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
-    const ink = lit && canBuy ? Pale : Black;
 
-    write(ctx, say(bon.name), cx + 14 * U, cy - 10 * U, 13 * U, 800, 'left', ink);
-    fitWrite(ctx, say(bon.tells, amountText(step.key, step.amount)),
-      cx + 14 * U, cy + 10 * U, 11 * U, 500, 'left', ink, cw - 110 * U);
-
+    // the price, under the ones not yet bought
     if (!owned) {
-      const short = !canBuy && isNext;
-      ctx.globalAlpha = isNext ? (short ? 0.45 : 1) : 0.34;
-      write(ctx, String(step.cost), cx + cw - 14 * U, cy, 14 * U, 800, 'right', ink);
-      ctx.globalAlpha = owned ? 1 : isNext ? 1 : 0.34;
+      ctx.globalAlpha = isNext ? 1 : 0.4;
+      write(ctx, String(step.cost), p.x, p.y + p.r + 13 * U, 11 * U, 800, 'center');
+      ctx.globalAlpha = 1;
     }
     ctx.globalAlpha = 1;
   }
 
   ctx.restore();
 
-  if (!next) write(ctx, say(UI.heroDone), w / 2, b.bottom - 16 * U, 12 * U, 700, 'center');
+  // --- what the next cell actually gives, said once, in words
+  if (next) {
+    const bon = Bonus[next.key];
+    const barY = b.bottom - 4 * U;
+    ctx.fillStyle = Pale;
+    ctx.fillRect(0, barY - 46 * U, w, 50 * U);
+    ctx.strokeStyle = 'rgba(13,12,11,0.25)';
+    ctx.lineWidth = 1.5 * U;
+    ctx.beginPath();
+    ctx.moveTo(0, barY - 46 * U); ctx.lineTo(w, barY - 46 * U);
+    ctx.stroke();
+
+    write(ctx, say(bon.name), left, barY - 28 * U, 13 * U, 800, 'left');
+    fitWrite(ctx, say(bon.tells, amountText(next.key, next.amount)),
+      left, barY - 11 * U, 11 * U, 500, 'left', Black, width - 90 * U);
+    const short = (data.bank || 0) < next.cost;
+    ctx.globalAlpha = short ? 0.45 : 1;
+    write(ctx, String(next.cost), left + width, barY - 19 * U, 17 * U, 800, 'right');
+    ctx.globalAlpha = 1;
+  } else {
+    write(ctx, say(UI.heroDone), w / 2, b.bottom - 16 * U, 12 * U, 700, 'center');
+  }
 }
 
 // --- the whole screen ---------------------------------------------------------------------------
