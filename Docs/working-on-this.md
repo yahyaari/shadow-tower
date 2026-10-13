@@ -1,5 +1,28 @@
 # Shadow Tower — bu projede çalışırken
 
+> **NEREDE KALDIK** — 2026-10-13
+>
+> Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
+> Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
+> `node Tools/test.mjs` → **167 kontrol geçiyor**.
+>
+> **Bitmiş olanlar:** oyun döngüsü, bölüm seçimi + yıldızlar, 10 büyü / 48 yükseltme / 41
+> dönüşüm (24'ü kombo kilitli), hesap seviyesi + büyü kilitleri, 50 hücreli kahraman peteği,
+> beş sekmeli menü, Harita / Büyüler / Külliyat sekmeleri, ayarlar paneli, iki dil (EN/TR),
+> 1x-1.5x-2x oyun hızı, dosyasız ses.
+>
+> **Sıradaki iş: ÖDÜLLER sekmesi.** Tek iskelet kalan sekme. Kullanıcının tarifi: şans çarkı,
+> sandık, reklam izleyip ödül kazanma. Reklam kısmı CrazyGames SDK'sı gerektirdiği için önce
+> reklamsız kurulup SDK en sona bırakılacak. **Henüz konuşulmadı:** çarkta ne çıkacak,
+> sandıktan ne çıkacak, günde kaç reklam.
+>
+> **Kullanıcının cevaplamadığı sorular:** kahraman basamak boyutları ve fiyatları doğru mu;
+> bölüm uzunluğu (~1:45) ve yıldız eşikleri (%60/%95/%100) doğru mu; hangi büyüler zayıf
+> hissettiriyor. **Gerçek parmakla hiç oynanmadı** — bütün denge bot ölçümü.
+>
+> **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
+> birleşip yeni bir büyü doğurması, Büyüler sekmesindeki koşular arası büyü geliştirme.
+
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
 - **Hesap.** Bölüm bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
