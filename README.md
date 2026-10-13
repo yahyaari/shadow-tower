@@ -13,8 +13,9 @@ Black and white, silhouettes only. No engine, no build step, no dependencies: th
 ## Three layers
 
 **The account.** Finishing a run earns experience that keeps between runs, and account levels
-unlock spells — Magic Bolt from the start, Shards at 2, Fireball at 3, and so on to Meteor at 16.
-That is what you take into the next run, and it is the only reason to open the game tomorrow.
+unlock spells. Five are open from the first minute — enough to fill a loadout — and the other five
+arrive at levels 3, 5, 7, 10 and 13. Each one is not only a new spell but a new set of tier cards
+for the ones you already had, so it is the reason to open the game tomorrow.
 
 **The loadout.** Four slots. The first is always Magic Bolt; you choose the other three. It is a
 pool rather than a starting hand — what you bring decides what the cards can offer you.
