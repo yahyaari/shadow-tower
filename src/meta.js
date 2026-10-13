@@ -21,7 +21,10 @@ const blank = {
   speed: 1,
   stars: null,      // stage number -> best stars ever earned there
   stage: 1,         // the one showing on the menu
+  tab: 'map',       // which menu tab was last open
 };
+
+export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
 
 /**
  * What finishing a stage is worth, in stars.
@@ -108,6 +111,7 @@ export function tidy(data) {
     if (!Number.isInteger(n) || n < 1 || !Number.isInteger(v) || v < 0 || v > 3) delete data.stars[k];
   }
   data.stage = Math.max(1, Math.min(furthestStage(data), Math.floor(data.stage || 1)));
+  if (!TabKeys.includes(data.tab)) data.tab = 'map';
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])

@@ -11,6 +11,28 @@ Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
+## Menü — beş sekme
+
+Alt barda beş yuva: **Ödüller · Kahraman · Harita · Büyüler · Külliyat**. Seçili olan büyüyüp
+yukarı çıkıyor ve dolu siyah bir daireye oturuyor, yani hangisinde olduğun okumadan anlaşılıyor.
+
+| sekme | durum |
+| --- | --- |
+| Harita | **çalışıyor** — bölüm seçimi, bölüm resmi, yıldızlar, düşman listesi, OYNA |
+| Büyüler | **çalışıyor** — loadout seçimi. Büyü geliştirme buraya gelecek. |
+| Ödüller | iskelet — şans çarkı, sandık, reklam izleyip ödül |
+| Kahraman | iskelet — tek sıra beceri ağacı, yıldızlarla alınır |
+| Külliyat | iskelet — düşman ve büyü ansiklopedisi |
+
+Üç sekme bilerek iskelet: önce menünün şekli üstünde anlaşılacak, içleri sekme sekme konuşulacak.
+
+**Bölüm resmi çizilerek üretiliyor**, yüklenmiyor. Aynı iki mürekkep, bölüm numarasından
+tohumlanmış — kırkıncı bölümün de kendi ufku var ve her açılışta aynı. `stages.js` içinde altı
+isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralanarak dönüyor.
+
+**Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
+(`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
 ## Bölümler ve yıldızlar
 
 Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca bölüm **1:45** sürüyor.
@@ -74,6 +96,8 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | yol | ne yapar |
 | --- | --- |
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
+| `src/stages.js` | Bölüm adları, görünümleri ve hangi düşmanların geldiği. Saf veri. |
+| `src/menu.js` | Beş sekmeli menü. Çizim ilkelerini `draw.js`'ten alır. |
 | `src/spells.js` | Büyü kitabı. Saf veri: 10 büyü, 50 yükseltme, 41 dönüşüm, kilit seviyeleri. |
 | `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
 | `src/rules.js` | Oyun. DOM yok. `statsOf()` tek hesap yeri, `evoke()` dönüşüm etkileri. |
@@ -193,6 +217,12 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - **Telefonda kutu yazıları taşar.** `fitWrite()` sığmıyorsa küçültüyor.
 - **Denge tarayıcıda ölçülmez.** `Tools/test.mjs` aynı koşuyu milisaniyelerde bitiriyor.
 - **Ok yönü: uç, gösterdiği yöne gider.** Ters yazınca sol ok ">" çizdi.
+- **Siyah zeminin üstüne siyah yazı yazma.** Bölüm adı resmin alt şeridine oturuyordu ve o şerit
+  tam siyah; isim görünmüyordu. Artık resmin altında.
+- **Dar ekranda üst bar tek satıra sığmaz.** Seviye, yıldız sayısı ve iki ayar pili üst üste
+  bindi; telefonda iki satıra ayrıldı.
+- **Siluetleri iki yerde çizme.** Menünün yaratık listesi için `body()` `figure()`'dan ayrıldı:
+  iki kopya, biri değişince eşleşmeyi bırakan iki kopyadır — külliyat da tam bunun için var.
 - **Aynı koşuyu tekrar bitirirken `show.booked` sıfırlanmazsa** bitiş ekranı eski sonucu gösterir
   — %70 duvarla üç yıldız yazdı. Gerçek akışta `start()` sıfırlıyor, ama `peek.mjs` sıfırlamıyordu
   ve ekran görüntüsü yalan söylüyordu.

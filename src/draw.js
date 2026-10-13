@@ -25,7 +25,7 @@ import { needFor, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsA
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
-const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 /**
  * Where the arena sits and how flat it is drawn.
@@ -45,7 +45,7 @@ export function stage(w, h) {
 const place = (S, x, y) => [S.cx + x * S.scale, S.cy + y * S.scale * S.squash];
 const depth = (y) => 0.66 + ((y + Arena) / (Arena * 2)) * 0.62;
 
-function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
+export function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
   ctx.fillStyle = colour;
   ctx.font = `${weight} ${size}px ${Face}`;
   ctx.textAlign = align;
@@ -59,13 +59,13 @@ function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Bla
  * A phone tile is a third the width of a desktop one and the words in it are the same words, so
  * a size chosen for one runs off the other - "Magic Bolt" came out through the side of its box.
  */
-function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
+export function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
   ctx.font = `${weight} ${Math.round(px)}px ${Face}`;
   const wide = ctx.measureText(text).width;
   write(ctx, text, x, y, wide > room ? Math.max(8, px * room / wide) : px, weight, align, colour);
 }
 
-function wrap(ctx, text, x, y, width, size, lead, colour) {
+export function wrap(ctx, text, x, y, width, size, lead, colour) {
   ctx.fillStyle = colour;
   ctx.font = `500 ${size}px ${Face}`;
   ctx.textAlign = 'center';
@@ -255,6 +255,102 @@ function wizard(ctx, S, state) {
 
 // --- the creatures ----------------------------------------------------------------------------
 
+/**
+ * One creature's outline, drawn at the origin at unit scale.
+ *
+ * Pulled out of `figure` so the menu can draw the same shapes without a fight running behind
+ * them. Two copies of a silhouette is two copies that stop matching the first time one is
+ * changed, and the codex exists precisely to show you what you are about to meet.
+ */
+export function body(ctx, key, swing = 0, colour = Black) {
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = colour;
+  ctx.lineCap = 'round';
+
+if (key === 'warden') {
+  // Bigger than everything, and built so you can tell at a glance it is not one of the crowd:
+  // horns, a stoop, and arms that reach the floor.
+  ctx.lineWidth = 11;
+  ctx.beginPath();
+  ctx.moveTo(-9, -30); ctx.lineTo(-13 + swing * 8, 0);
+  ctx.moveTo(9, -30); ctx.lineTo(13 - swing * 8, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-20, -28); ctx.lineTo(-34, -58); ctx.lineTo(-22, -70);
+  ctx.lineTo(22, -70); ctx.lineTo(34, -58); ctx.lineTo(20, -28);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -70, 11, 0, Math.PI * 2); ctx.fill();
+  for (const hx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(hx * 8, -78); ctx.lineTo(hx * 30, -104); ctx.lineTo(hx * 13, -82);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.moveTo(-30, -58); ctx.lineTo(-36 - swing * 5, -14);
+  ctx.moveTo(30, -58); ctx.lineTo(36 + swing * 5, -14);
+  ctx.stroke();
+} else if (key === 'brute') {
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(-7, -26); ctx.lineTo(-9 + swing * 7, 0);
+  ctx.moveTo(7, -26); ctx.lineTo(9 - swing * 7, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-15, -26); ctx.lineTo(-24, -52); ctx.lineTo(-17, -62);
+  ctx.lineTo(17, -62); ctx.lineTo(24, -52); ctx.lineTo(15, -26);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -58, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(-21, -54); ctx.lineTo(-26 - swing * 4, -24);
+  ctx.moveTo(21, -54); ctx.lineTo(26 + swing * 4, -24);
+  ctx.stroke();
+} else if (key === 'runner') {
+  ctx.rotate(-0.16);
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -22); ctx.lineTo(swing * 13, 0);
+  ctx.moveTo(0, -22); ctx.lineTo(-swing * 13, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-5, -22); ctx.lineTo(-6, -43); ctx.lineTo(6, -43); ctx.lineTo(5, -22);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -48, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, -40); ctx.lineTo(-swing * 12, -28);
+  ctx.moveTo(0, -40); ctx.lineTo(swing * 12, -28);
+  ctx.stroke();
+} else {
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(0, -24); ctx.lineTo(swing * 9, 0);
+  ctx.moveTo(0, -24); ctx.lineTo(-swing * 9, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-7, -24); ctx.lineTo(-8, -48); ctx.lineTo(8, -48); ctx.lineTo(7, -24);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -54, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(-6, -44); ctx.lineTo(-10 - swing * 6, -22);
+  ctx.moveTo(6, -44); ctx.lineTo(10 + swing * 6, -22);
+  ctx.stroke();
+}
+
+}
+
+/** A creature standing still, for a list or a card. */
+export function creatureMark(ctx, key, x, y, size, colour = Black) {
+  ctx.save();
+  ctx.translate(x, y);
+  const k = size / 70;
+  ctx.scale(k, k);
+  body(ctx, key, 0.35, colour);
+  ctx.restore();
+}
+
 function figure(ctx, S, f) {
   const p = placeOf(f);
   const [px, py] = place(S, p.x, p.y);
@@ -284,77 +380,7 @@ function figure(ctx, S, f) {
   ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
 
-  if (f.boss) {
-    // Bigger than everything, and built so you can tell at a glance it is not one of the crowd:
-    // horns, a stoop, and arms that reach the floor.
-    ctx.lineWidth = 11;
-    ctx.beginPath();
-    ctx.moveTo(-9, -30); ctx.lineTo(-13 + swing * 8, 0);
-    ctx.moveTo(9, -30); ctx.lineTo(13 - swing * 8, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-20, -28); ctx.lineTo(-34, -58); ctx.lineTo(-22, -70);
-    ctx.lineTo(22, -70); ctx.lineTo(34, -58); ctx.lineTo(20, -28);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -70, 11, 0, Math.PI * 2); ctx.fill();
-    for (const hx of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(hx * 8, -78); ctx.lineTo(hx * 30, -104); ctx.lineTo(hx * 13, -82);
-      ctx.closePath(); ctx.fill();
-    }
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.moveTo(-30, -58); ctx.lineTo(-36 - swing * 5, -14);
-    ctx.moveTo(30, -58); ctx.lineTo(36 + swing * 5, -14);
-    ctx.stroke();
-  } else if (f.key === 'brute') {
-    ctx.lineWidth = 9;
-    ctx.beginPath();
-    ctx.moveTo(-7, -26); ctx.lineTo(-9 + swing * 7, 0);
-    ctx.moveTo(7, -26); ctx.lineTo(9 - swing * 7, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-15, -26); ctx.lineTo(-24, -52); ctx.lineTo(-17, -62);
-    ctx.lineTo(17, -62); ctx.lineTo(24, -52); ctx.lineTo(15, -26);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -58, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(-21, -54); ctx.lineTo(-26 - swing * 4, -24);
-    ctx.moveTo(21, -54); ctx.lineTo(26 + swing * 4, -24);
-    ctx.stroke();
-  } else if (f.key === 'runner') {
-    ctx.rotate(-0.16);
-    ctx.lineWidth = 4.5;
-    ctx.beginPath();
-    ctx.moveTo(0, -22); ctx.lineTo(swing * 13, 0);
-    ctx.moveTo(0, -22); ctx.lineTo(-swing * 13, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-5, -22); ctx.lineTo(-6, -43); ctx.lineTo(6, -43); ctx.lineTo(5, -22);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -48, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(0, -40); ctx.lineTo(-swing * 12, -28);
-    ctx.moveTo(0, -40); ctx.lineTo(swing * 12, -28);
-    ctx.stroke();
-  } else {
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(0, -24); ctx.lineTo(swing * 9, 0);
-    ctx.moveTo(0, -24); ctx.lineTo(-swing * 9, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-7, -24); ctx.lineTo(-8, -48); ctx.lineTo(8, -48); ctx.lineTo(7, -24);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -54, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 4.5;
-    ctx.beginPath();
-    ctx.moveTo(-6, -44); ctx.lineTo(-10 - swing * 6, -22);
-    ctx.moveTo(6, -44); ctx.lineTo(10 + swing * 6, -22);
-    ctx.stroke();
-  }
+  body(ctx, f.key === "warden" || f.boss ? "warden" : f.key, swing);
 
   ctx.restore();
 }
@@ -524,7 +550,7 @@ function spellFx(ctx, S, state) {
  * In two inks there is no gold, so what carries it is solid against hollow - which also means a
  * row of them reads at a glance from across a phone.
  */
-function star(ctx, x, y, r, filled, colour) {
+export function star(ctx, x, y, r, filled, colour) {
   ctx.save();
   ctx.translate(x, y);
   ctx.beginPath();
@@ -548,13 +574,13 @@ function star(ctx, x, y, r, filled, colour) {
 }
 
 /** A row of three, for a stage. */
-function stars(ctx, x, y, r, got, colour) {
+export function stars(ctx, x, y, r, got, colour) {
   const gap = r * 2.5;
   for (let i = 0; i < 3; i++) star(ctx, x - gap + i * gap, y, r, i < got, colour);
 }
 
 /** A small mark for each spell. The same vocabulary of shapes as the field uses. */
-function sigil(ctx, key, x, y, s, colour) {
+export function sigil(ctx, key, x, y, s, colour) {
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = colour;

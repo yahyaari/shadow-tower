@@ -90,24 +90,29 @@ await sleep(400);
 // Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
 await screenshot('menu_yeni_hesap');
 
-// Ayni ekran Turkce
-await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
-await sleep(400);
-await screenshot('menu_tr');
-
-// Ilerlemis bir hesap: bolum 3 secili, onceki bolumlerin yildizlari var
+// Ilerlemis bir hesap
 await evaluate(`(() => {
   const d = window.ShadowTower.meta;
-  d.lang = 'en'; window.ShadowTower.setLanguage('en');
-  d.level = 8;
-  d.xp = 700;
+  d.level = 8; d.xp = 700;
   d.stars = { 1: 3, 2: 2, 3: 1 };
   d.stage = 3;
   d.loadout = ['bolt', 'fireball', 'lightning', 'frost'];
   return true;
 })()`);
 await sleep(400);
-await screenshot('menu');
+await screenshot('menu_map');
+
+for (const tab of ['wheel', 'hero', 'spells', 'codex']) {
+  await evaluate(`(() => { window.ShadowTower.meta.tab = '${tab}'; return true; })()`);
+  await sleep(350);
+  await screenshot('menu_' + tab);
+}
+
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'map'; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
+await sleep(350);
+await screenshot('menu_tr');
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'en'; window.ShadowTower.setLanguage('en'); return true; })()`);
+await sleep(300);
 
 // Kosunun ilk kart ekrani: tek buyuyle basliyor
 await evaluate(`(() => {

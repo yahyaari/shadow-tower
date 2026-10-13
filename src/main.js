@@ -4,7 +4,8 @@
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
 import { begin, advance, click, take } from './rules.js';
-import { frame, hitCard, cards, loadout, hitLoadout, hitSpeed, hitSettings, hitStage } from './draw.js';
+import { frame, hitCard, cards, hitSpeed } from './draw.js';
+import { menu, menuHit } from './menu.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
@@ -16,7 +17,7 @@ let data = meta.load();
 sound.setMuted(!!data.muted);
 setLanguage(data.lang);
 
-let screen = 'loadout';           // 'loadout' | 'run'
+let screen = 'menu';              // 'menu' | 'run'
 let state = null;
 let show = fresh();
 let last = performance.now();
@@ -24,7 +25,7 @@ let dpr = 1;
 
 function fresh() {
   return {
-    bits: [], floats: [], overCard: null, overTile: null, overBegin: false, overSetting: null,
+    bits: [], floats: [], overCard: null, overMenu: null,
     hint: true, shake: 0, booked: false, won: null, speed: data.speed,
   };
 }
@@ -101,8 +102,8 @@ function tick(now) {
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-  if (screen === 'loadout') {
-    loadout(ctx, data, canvas.width, canvas.height, show, dpr);
+  if (screen === 'menu') {
+    menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
     return;
   }
@@ -157,12 +158,13 @@ function spot(e) {
 
 addEventListener('pointermove', (e) => {
   const p = spot(e);
-  if (screen === 'loadout') {
-    const over = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
-    show.overTile = over === '@begin' ? null : over;
-    show.overBegin = over === '@begin';
-    show.overSetting = hitSettings(canvas.width, canvas.height, p.x, p.y, dpr);
-    canvas.style.cursor = over || show.overSetting ? 'pointer' : 'default';
+  if (screen === 'menu') {
+    const hit = menuHit(data, canvas.width, canvas.height, p.x, p.y, dpr);
+    show.overMenu = !hit ? null
+      : hit.what === 'tile' ? 'tile:' + hit.key
+      : hit.what === 'tab' ? 'tab:' + hit.key
+      : hit.what;
+    canvas.style.cursor = hit ? 'pointer' : 'default';
     return;
   }
   show.overCard = state.phase === 'picking'
@@ -175,31 +177,31 @@ addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const p = spot(e);
 
-  if (screen === 'loadout') {
-    const step = hitStage(canvas.width, canvas.height, p.x, p.y, dpr);
-    if (step) {
-      const far = meta.furthestStage(data);
-      const want = data.stage + (step === 'next' ? 1 : -1);
-      if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
-      return;
-    }
-    const knob = hitSettings(canvas.width, canvas.height, p.x, p.y, dpr);
-    if (knob === 'lang') {
+  if (screen === 'menu') {
+    const hit = menuHit(data, canvas.width, canvas.height, p.x, p.y, dpr);
+    if (!hit) return;
+    if (hit.what === 'tab') { data.tab = hit.key; meta.save(data); return; }
+    if (hit.what === 'lang') {
       const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
       setLanguage(next);
       data.lang = next;
       meta.save(data);
       return;
     }
-    if (knob === 'sound') {
+    if (hit.what === 'sound') {
       sound.setMuted(!sound.isMuted());
       data.muted = sound.isMuted();
       meta.save(data);
       return;
     }
-    const hit = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
-    if (hit === '@begin') { start(); return; }
-    if (hit) { meta.toggle(data, hit); show.overTile = hit; }
+    if (hit.what === 'stage') {
+      const far = meta.furthestStage(data);
+      const want = data.stage + hit.step;
+      if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
+      return;
+    }
+    if (hit.what === 'play') { start(); return; }
+    if (hit.what === 'tile') { meta.toggle(data, hit.key); return; }
     return;
   }
 
@@ -211,7 +213,7 @@ addEventListener('pointerdown', (e) => {
 
   if (state.phase === 'done') {
     // Back to the menu, which has already moved on to the stage this one opened.
-    screen = 'loadout';
+    screen = 'menu';
     show = fresh();
     return;
   }
@@ -239,8 +241,8 @@ addEventListener('keydown', (e) => {
     meta.save(data);
     return;
   }
-  if (screen === 'loadout') {
-    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); start(); }
+  if (screen === 'menu') {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (data.tab === 'map') start(); }
     return;
   }
   if (state.phase === 'picking') {
@@ -248,7 +250,7 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
-  if (state.phase === 'done') { screen = 'loadout'; show = fresh(); return; }
+  if (state.phase === 'done') { screen = 'menu'; show = fresh(); return; }
   if (state.phase === 'lost') { start(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
 });
