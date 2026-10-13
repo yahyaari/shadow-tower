@@ -26,7 +26,7 @@ let dpr = 1;
 function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
-    hint: true, shake: 0, booked: false, won: null, speed: data.speed,
+    hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false,
   };
 }
 
@@ -159,7 +159,7 @@ function spot(e) {
 addEventListener('pointermove', (e) => {
   const p = spot(e);
   if (screen === 'menu') {
-    const hit = menuHit(data, canvas.width, canvas.height, p.x, p.y, dpr);
+    const hit = menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr);
     show.overMenu = !hit ? null
       : hit.what === 'tile' ? 'tile:' + hit.key
       : hit.what === 'tab' ? 'tab:' + hit.key
@@ -178,8 +178,10 @@ addEventListener('pointerdown', (e) => {
   const p = spot(e);
 
   if (screen === 'menu') {
-    const hit = menuHit(data, canvas.width, canvas.height, p.x, p.y, dpr);
+    const hit = menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr);
     if (!hit) return;
+    if (hit.what === 'openSettings') { show.settings = true; return; }
+    if (hit.what === 'closeSettings') { show.settings = false; return; }
     if (hit.what === 'tab') { data.tab = hit.key; meta.save(data); return; }
     if (hit.what === 'lang') {
       const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];

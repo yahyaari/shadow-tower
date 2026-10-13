@@ -106,6 +106,7 @@ export const UI = {
   foe_brute:    ['Brute', 'Gladyatör'],
   foe_warden:   ['Warden', 'Gardiyan'],
 
+  settings:     ['SETTINGS', 'AYARLAR'],
   language:     ['LANGUAGE', 'DİL'],
   sound:        ['SOUND', 'SES'],
   on:           ['ON', 'AÇIK'],

@@ -111,6 +111,13 @@ for (const tab of ['wheel', 'hero', 'spells', 'codex']) {
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'map'; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
 await sleep(350);
 await screenshot('menu_tr');
+
+// Ayarlar paneli
+await evaluate(`(() => { window.ShadowTower.show.settings = true; return true; })()`);
+await sleep(350);
+await screenshot('ayarlar');
+await evaluate(`(() => { window.ShadowTower.show.settings = false; return true; })()`);
+await sleep(250);
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'en'; window.ShadowTower.setLanguage('en'); return true; })()`);
 await sleep(300);
 

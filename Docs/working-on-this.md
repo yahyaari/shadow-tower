@@ -13,8 +13,14 @@ Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io
 
 ## Menü — beş sekme
 
-Alt barda beş yuva: **Ödüller · Kahraman · Harita · Büyüler · Külliyat**. Seçili olan büyüyüp
-yukarı çıkıyor ve dolu siyah bir daireye oturuyor, yani hangisinde olduğun okumadan anlaşılıyor.
+Alt barda beş **ayrı kart**: Ödüller · Kahraman · Harita · Büyüler · Külliyat. Altlarında yazı
+yok, sadece işaretler — telefonun altına beş küçük etiket koymak, kimsenin iki kere okumadığı beş
+küçük yazı koymaktır. Seçili kart sıradan yukarı kalkıp doluyor; hangisinde olduğun hiçbir şey
+okumadan anlaşılıyor.
+
+Ses ve dil **ayarlar panelinde**, sağ üstteki dişliden açılıyor. Önce iki pil olarak menünün
+köşesinde duruyorlardı; iki tane varken sorun değildi ama üçüncü bir ayar isteyen hiçbir şey için
+yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 
 | sekme | durum |
 | --- | --- |

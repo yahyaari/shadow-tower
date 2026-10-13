@@ -31,14 +31,26 @@ const unit = (dpr) => Math.max(1, Math.min(2.4, dpr));
 
 // --- where everything is ------------------------------------------------------------------------
 
+/**
+ * The five tabs, as separate cards.
+ *
+ * Cards rather than one continuous bar, and marks rather than words. Five labels across the foot
+ * of a phone are five pieces of small text nobody reads twice; the shapes are distinct enough to
+ * be learnt once, and the chosen one lifts clear of the row and fills in, which says which it is
+ * without saying anything.
+ */
 export function navBar(w, h, dpr = 1) {
   const U = unit(dpr);
-  const bh = 92 * U;
-  const slot = w / Tabs.length;
+  const gap = 10 * U;
+  const cw = Math.min(84 * U, (w - 24 * U - gap * (Tabs.length - 1)) / Tabs.length);
+  const ch = 64 * U;
+  const total = Tabs.length * cw + (Tabs.length - 1) * gap;
+  const left = w / 2 - total / 2;
+  const y = h - ch - 16 * U;
   return Tabs.map((t, i) => ({
     ...t, i,
-    x: i * slot, y: h - bh, w: slot, h: bh,
-    cx: i * slot + slot / 2, cy: h - bh / 2,
+    x: left + i * (cw + gap), y, w: cw, h: ch,
+    cx: left + i * (cw + gap) + cw / 2, cy: y + ch / 2,
   }));
 }
 
@@ -52,8 +64,8 @@ const narrow = (w, h) => h > w * 1.1;
  */
 export function band(w, h, dpr = 1) {
   const U = unit(dpr);
-  const top = (narrow(w, h) ? 128 : 84) * U;
-  const bottom = h - 92 * U - 12 * U;
+  const top = (narrow(w, h) ? 96 : 84) * U;
+  const bottom = h - 96 * U;
   return { top, bottom, mid: (top + bottom) / 2, height: bottom - top };
 }
 
@@ -104,31 +116,52 @@ export function spellTiles(w, h, dpr = 1) {
   }));
 }
 
-export function settingsPills(w, h, dpr = 1) {
+/** The one button that opens the settings. */
+export function gearBox(w, h, dpr = 1) {
   const U = unit(dpr);
-  const gap = 8 * U;
-  if (narrow(w, h)) {
-    const pw = Math.min(170 * U, (w - 40 * U - gap) / 2);
-    return {
-      lang: { x: w / 2 - pw - gap / 2, y: 82 * U, w: pw, h: 30 * U },
-      sound: { x: w / 2 + gap / 2, y: 82 * U, w: pw, h: 30 * U },
-    };
-  }
-  const pw = 134 * U, ph = 28 * U;
+  const r = 34 * U;
+  return { x: w - 18 * U - r, y: 16 * U, w: r, h: r };
+}
+
+/**
+ * The settings panel.
+ *
+ * A panel rather than two pills parked in the corner of the menu. Pills were fine while there
+ * were two of them; the moment anything else wants a switch there is nowhere to put it, and on a
+ * phone they were already fighting the account bar for the same row.
+ */
+export function settingsPanel(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const pw = Math.min(420 * U, w - 48 * U);
+  const rowH = 52 * U;
+  const rows = 2;
+  const ph = 86 * U + rows * rowH + 20 * U;
+  const x = w / 2 - pw / 2;
+  const y = h / 2 - ph / 2;
+  const row = (i) => ({ x: x + 16 * U, y: y + 76 * U + i * rowH, w: pw - 32 * U, h: rowH - 8 * U });
   return {
-    lang: { x: w - 20 * U - pw * 2 - gap, y: 16 * U, w: pw, h: ph },
-    sound: { x: w - 20 * U - pw, y: 16 * U, w: pw, h: ph },
+    box: { x, y, w: pw, h: ph },
+    lang: row(0),
+    sound: row(1),
+    close: { x: x + pw - 54 * U, y: y + 12 * U, w: 40 * U, h: 40 * U },
   };
 }
 
 const inside = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-export function menuHit(data, w, h, px, py, dpr = 1) {
-  for (const t of navBar(w, h, dpr)) if (inside(t, px, py)) return { what: 'tab', key: t.key };
+export function menuHit(data, show, w, h, px, py, dpr = 1) {
+  // While the settings are open they are the only thing that can be touched, bar the way out.
+  if (show.settings) {
+    const sp = settingsPanel(w, h, dpr);
+    if (inside(sp.close, px, py)) return { what: 'closeSettings' };
+    if (inside(sp.lang, px, py)) return { what: 'lang' };
+    if (inside(sp.sound, px, py)) return { what: 'sound' };
+    if (!inside(sp.box, px, py)) return { what: 'closeSettings' };
+    return null;
+  }
 
-  const set = settingsPills(w, h, dpr);
-  if (inside(set.lang, px, py)) return { what: 'lang' };
-  if (inside(set.sound, px, py)) return { what: 'sound' };
+  if (inside(gearBox(w, h, dpr), px, py)) return { what: 'openSettings' };
+  for (const t of navBar(w, h, dpr)) if (inside(t, px, py)) return { what: 'tab', key: t.key };
 
   if (data.tab === 'map') {
     const a = arrows(w, h, dpr);
@@ -468,17 +501,17 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   // --- the account, along the top
   {
     const need = needFor(data.level);
-    const tight = narrow(w, h);
-    const bw = tight ? w - 40 * U : Math.min(300 * U, w * 0.34);
+    const bw = Math.min(narrow(w, h) ? w - 150 * U : 300 * U, w * (narrow(w, h) ? 1 : 0.34));
 
     write(ctx, say(UI.level, data.level), 20 * U, 26 * U, 15 * U, 800, 'left');
 
     // the stars go on the right of the same line, where nothing else is
     const count = String(totalStars(data));
+    const right = w - 72 * U;                 // clear of the gear
     ctx.font = `800 ${16 * U}px ${Face}`;
     const cw = ctx.measureText(count).width;
-    write(ctx, count, w - 20 * U, 26 * U, 16 * U, 800, 'right');
-    star(ctx, w - 26 * U - cw - 11 * U, 26 * U, 9 * U, true, Black);
+    write(ctx, count, right, 30 * U, 16 * U, 800, 'right');
+    star(ctx, right - cw - 11 * U, 30 * U, 9 * U, true, Black);
 
     ctx.fillStyle = 'rgba(13,12,11,0.14)';
     ctx.fillRect(20 * U, 42 * U, bw, 7 * U);
@@ -487,24 +520,29 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
 
     const next = nextUnlock(data.level);
     fitWrite(ctx, next ? say(UI.unlockSoon, say(Spells[next.key].name), next.at) : say(UI.allYours),
-      20 * U + bw, 62 * U, 11 * U, 600, 'right', Black, bw * 0.8);
+      20 * U + bw, 64 * U, 11 * U, 600, 'right', Black, bw * 0.8);
   }
 
-  // --- language and sound
+  // --- the way into the settings
   {
-    const set = settingsPills(w, h, U);
-    const pill = (box, label, value, lit) => {
-      ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
-      ctx.strokeStyle = Black;
-      ctx.lineWidth = 1.4 * U;
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
-      const ink = lit ? Pale : Black;
-      write(ctx, label, box.x + 11 * U, box.y + box.h / 2, 8 * U, 700, 'left', ink);
-      write(ctx, value, box.x + box.w - 11 * U, box.y + box.h / 2, 11 * U, 800, 'right', ink);
-    };
-    pill(set.lang, say(UI.language), LanguageNames[language()], show.overMenu === 'lang');
-    pill(set.sound, say(UI.sound), say(data.muted ? UI.off : UI.on), show.overMenu === 'sound');
+    const g = gearBox(w, h, U);
+    const cx = g.x + g.w / 2, cy = g.y + g.h / 2, r = g.w * 0.34;
+    const lit = show.overMenu === 'openSettings';
+    ctx.globalAlpha = lit ? 1 : 0.75;
+    ctx.strokeStyle = Black;
+    ctx.fillStyle = Black;
+    ctx.lineWidth = 2.4 * U;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
+      ctx.lineTo(cx + Math.cos(a) * r * 1.34, cy + Math.sin(a) * r * 1.34);
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   // --- the chosen tab
@@ -514,35 +552,70 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   else if (data.tab === 'hero') soon(ctx, w, h, U, say(UI.tabHero), [say(UI.heroSoon)]);
   else soon(ctx, w, h, U, say(UI.tabCodex), [say(UI.codexSoon)]);
 
-  // --- the tabs themselves
+  // --- the tabs, as cards
   {
-    const slots = navBar(w, h, U);
-    ctx.fillStyle = Pale;
-    ctx.fillRect(0, slots[0].y, w, slots[0].h);
-    ctx.strokeStyle = 'rgba(13,12,11,0.2)';
-    ctx.lineWidth = 1.5 * U;
-    ctx.beginPath();
-    ctx.moveTo(0, slots[0].y); ctx.lineTo(w, slots[0].y);
-    ctx.stroke();
-
-    for (const t of slots) {
+    for (const t of navBar(w, h, U)) {
       const on = data.tab === t.key;
-      // The chosen one grows and lifts clear of the bar, so which one you are in is read
-      // without reading anything.
-      const lift = on ? 14 * U : 0;
-      const grow = on ? 1.22 : 1;
-      const cy = t.cy - lift;
+      const over = show.overMenu === 'tab:' + t.key;
+      // the chosen one lifts clear of the row and fills in
+      const lift = on ? 12 * U : over ? 3 * U : 0;
+      const y = t.y - lift;
+      const grow = on ? 1.18 : 1;
 
-      if (on) {
-        ctx.fillStyle = Black;
-        ctx.beginPath();
-        ctx.arc(t.cx, cy - 6 * U, 28 * U, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillStyle = on ? Black : Pale;
+      ctx.beginPath(); ctx.roundRect(t.x, y, t.w, t.h, 14 * U); ctx.fill();
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = (on ? 3 : 1.6) * U;
       ctx.globalAlpha = on ? 1 : 0.55;
-      tabMark(ctx, t.key, t.cx, cy - 6 * U, 30 * U * grow, on ? Pale : Black);
-      write(ctx, say(t.name).toUpperCase(), t.cx, cy + 26 * U, (on ? 11 : 10) * U, on ? 800 : 600, 'center', Black);
+      ctx.beginPath(); ctx.roundRect(t.x, y, t.w, t.h, 14 * U); ctx.stroke();
+      ctx.globalAlpha = on ? 1 : 0.7;
+      tabMark(ctx, t.key, t.cx, y + t.h / 2, 32 * U * grow, on ? Pale : Black);
       ctx.globalAlpha = 1;
     }
+  }
+
+  // --- the settings, over everything
+  if (show.settings) {
+    ctx.fillStyle = 'rgba(236,231,220,0.86)';
+    ctx.fillRect(0, 0, w, h);
+
+    const sp = settingsPanel(w, h, U);
+    ctx.fillStyle = Pale;
+    ctx.beginPath(); ctx.roundRect(sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 3 * U;
+    ctx.beginPath(); ctx.roundRect(sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.stroke();
+
+    write(ctx, say(UI.settings), sp.box.x + 22 * U, sp.box.y + 34 * U, 20 * U, 800, 'left');
+
+    // the way out
+    {
+      const c = sp.close;
+      const cx = c.x + c.w / 2, cy = c.y + c.h / 2, r = c.w * 0.26;
+      ctx.globalAlpha = show.overMenu === 'closeSettings' ? 1 : 0.6;
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 3 * U;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+      ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    const row = (box, label, value, lit) => {
+      ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
+      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 1.6 * U;
+      ctx.globalAlpha = lit ? 1 : 0.4;
+      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
+      ctx.globalAlpha = 1;
+      const ink = lit ? Pale : Black;
+      write(ctx, label, box.x + 16 * U, box.y + box.h / 2, 12 * U, 700, 'left', ink);
+      write(ctx, value, box.x + box.w - 16 * U, box.y + box.h / 2, 15 * U, 800, 'right', ink);
+    };
+    row(sp.lang, say(UI.language), LanguageNames[language()], show.overMenu === 'lang');
+    row(sp.sound, say(UI.sound), say(data.muted ? UI.off : UI.on), show.overMenu === 'sound');
   }
 }
