@@ -11,6 +11,7 @@
 // card that changes what the spell does rather than how much of it there is.
 
 import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize } from './spells.js';
+import { say, UI } from './text.js';
 
 export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize };
 export const spellKeys = Object.keys(Spells);
@@ -480,37 +481,44 @@ export function offer(s) {
 }
 
 /**
- * What a card says.
+ * What a card says, in the language that is on.
  *
  * Here rather than in the view, because a card that promises one thing and does another is the
- * worst bug this game can have and a test can only catch it if it can read the promise.
+ * worst bug this game can have, and a test can only catch it if it can read the promise. That
+ * means this one function knows about language - `text.js` has no DOM in it, so the rules stay
+ * runnable in Node either way.
  */
 export function describe(s, pick) {
   if (!pick) return null;
   if (pick.what === 'passive') {
     const p = Passives[pick.key];
     const have = s.passives[pick.key] || 0;
-    return { badge: have ? 'POWER' : 'NEW POWER', title: p.name, text: p.tells, mark: pick.key, have, most: MostPassive };
+    return {
+      badge: say(have ? UI.power : UI.newPower),
+      title: say(p.name),
+      text: say(p.tells),
+      mark: pick.key, have, most: MostPassive,
+    };
   }
   const sp = Spells[pick.key];
   const kit = s.kit[pick.key];
   if (pick.what === 'evolution') {
     const evo = sp.evolutions.find((e) => e.onHit === pick.evo);
     return {
-      badge: `${sp.name} — TIER ${kit.tier + 1}`,
-      title: evo.name,
-      text: evo.tells,
+      badge: say(UI.tierCard, say(sp.name), kit.tier + 1),
+      title: say(evo.name),
+      text: say(evo.tells),
       mark: pick.key,
       tier: kit.tier + 1,
       have: kit.tier, most: 0,
-      borrows: evo.needs ? Spells[evo.needs].name : null,
+      borrows: evo.needs ? say(Spells[evo.needs].name) : null,
     };
   }
   const b = sp.boosts.find((x) => x.key === pick.boost);
   return {
-    badge: sp.name,
-    title: b.name,
-    text: b.tells,
+    badge: say(sp.name),
+    title: say(b.name),
+    text: say(b.tells),
     mark: pick.key,
     have: kit.boosts[b.key] || 0,
     most: b.most || 3,
@@ -540,6 +548,28 @@ export function take(s, index) {
   s.cleared = false;
   s.phase = 'playing';
   return true;
+}
+
+/**
+ * Advances the fight by one frame of wall clock, at `speed` times normal.
+ *
+ * More steps, never one longer one. A single step of twice the length walks a projectile straight
+ * past what it should have hit - collisions are checked where things are, not where they were, so
+ * the longer the step the more it misses. 1.5x is three half-steps for the same reason.
+ *
+ * Lives here rather than in the loop so it can be tested without a canvas. Measuring it through
+ * the browser does not work: the headless software renderer is already the bottleneck, so asking
+ * it for twice the simulation just halves the frame rate and the game clock ends up no further on.
+ */
+export function advance(s, dt, speed = 1, after = null) {
+  const times = speed === 1.5 ? 3 : speed === 2 ? 2 : 1;
+  const slice = (dt * speed) / times;
+  for (let i = 0; i < times; i++) {
+    step(s, slice);
+    if (after) after();
+    if (s.phase !== 'playing') break;
+  }
+  return dt * speed;
 }
 
 export function click(s) {

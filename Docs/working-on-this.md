@@ -3,8 +3,8 @@
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
 - **Hesap.** Koşu bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
-- **Loadout.** On büyüden en fazla beşi koşuya götürülür. Hangi beşi götürdüğün, kartların sana
-  ne önerebileceğini belirler.
+- **Loadout.** On büyüden en fazla beşi koşuya götürülür. **Beşi baştan açık** — ilk koşu dolu
+  bir elle oynanır. Hangi beşi götürdüğün, kartların sana ne önerebileceğini belirler.
 - **Koşu.** Taşıdığın her büyü ilk saniyeden ateşler. Seviye atladıkça üç karttan biri seçilir.
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
@@ -32,6 +32,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 
 | yol | ne yapar |
 | --- | --- |
+| `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
 | `src/spells.js` | Büyü kitabı. Saf veri: 10 büyü, 50 yükseltme, 41 dönüşüm, kilit seviyeleri. |
 | `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
 | `src/rules.js` | Oyun. DOM yok. `statsOf()` tek hesap yeri, `evoke()` dönüşüm etkileri. |
@@ -65,6 +66,30 @@ beş büyüyle, saniyede 6 tıklayan oyuncu, 60 koşu:
 
 Beş büyü tek büyüden **altı kat** iyi. Bu, loadout'un ve hesap ilerlemesinin anlamlı olduğunun
 tek kanıtı ve testte ayrı bir kontrol olarak duruyor.
+
+## Dil
+
+Her yazı bir çift, **İngilizce önce, Türkçe sonra**, ve çeviri adlandırdığı şeyin yanında duruyor
+(`spells.js` içinde büyünün yanında, `text.js` içinde düğmenin yanında) — ayrı bir anahtar
+tablosunda değil. Böylece bir metin ile çevirisi birbirinden kopamaz veya sessizce kaybolamaz.
+Test 265 yazının hepsinin iki dilde olduğunu ve (Nova/Meteor gibi özel adlar dışında) gerçekten
+çevrildiğini kontrol ediyor.
+
+`say()` çift değil de düz bir metin alırsa onu olduğu gibi döndürüyor: yarım çevrilmiş bir şeyin
+üstünde koşarsa ekran boş kalmaz, İngilizcesi görünür.
+
+Dil açılış ekranından değiştiriliyor ve kaydediliyor. Varsayılan İngilizce.
+
+## Oyun hızı
+
+Sağ üstte 1x / 1.5x / 2x. **Hızlanmak tek büyük adım değil, çok adım:** 2x iki adım, 1.5x üç
+yarım adım. Tek uzun adım mermiyi vuracağı şeyin içinden geçirir, çünkü çarpışma nerede olduğuna
+bakılarak kontrol ediliyor, nerede olduğuna değil.
+
+**Bunu tarayıcıda ölçemezsin.** Denedim ve 2x, 1x'ten yavaş çıktı: yazılımsal çizim zaten
+darboğaz olduğu için iki kat simülasyon istemek kare hızını yarıya indiriyor ve oyun saati hiç
+ilerlememiş gibi görünüyor. Bu yüzden adımlama `advance()` içine taşındı ve tuvalsiz test
+ediliyor — 2 saniyelik duvar saatinde 1x→2.0sn, 1.5x→3.0sn, 2x→4.0sn.
 
 ## Üç kere ölçüm aletini oyun sandım
 

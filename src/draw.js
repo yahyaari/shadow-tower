@@ -20,7 +20,8 @@ import {
   BoostsPerTier, MostEvos, LoadoutSize, spellKeys, statsOf, carrying, describe,
 } from './rules.js';
 import { UnlockAt, nextUnlock } from './spells.js';
-import { needFor } from './meta.js';
+import { say, UI, LanguageNames, Languages, language } from './text.js';
+import { needFor, Speeds } from './meta.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
@@ -619,6 +620,46 @@ export function cards(w, h, dpr = 1) {
   });
 }
 
+/**
+ * The speed control, top right of a run.
+ *
+ * Three pills in one outline rather than a single button that cycles, because a cycling button
+ * does not say what the other settings are and a player on a phone should not have to tap three
+ * times to find out.
+ */
+export function speedBox(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const bw = 112 * U;
+  return { x: w - 22 * U - bw, y: 20 * U, w: bw, h: 30 * U };
+}
+
+export function hitSpeed(w, h, px, py, dpr = 1) {
+  const b = speedBox(w, h, dpr);
+  if (px < b.x || px > b.x + b.w || py < b.y || py > b.y + b.h) return null;
+  const i = Math.floor(((px - b.x) / b.w) * Speeds.length);
+  return Speeds[Math.max(0, Math.min(Speeds.length - 1, i))];
+}
+
+/** Language and sound, on the opening screen, under the button that starts a run. */
+export function settings(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const b = begins(w, h, dpr);
+  const bw = 150 * U, bh = 34 * U, gap = 12 * U;
+  const y = Math.min(h - bh - 14 * U, b.y + b.h + 16 * U);
+  return {
+    lang:  { x: w / 2 - bw - gap / 2, y, w: bw, h: bh },
+    sound: { x: w / 2 + gap / 2, y, w: bw, h: bh },
+  };
+}
+
+export function hitSettings(w, h, px, py, dpr = 1) {
+  const r = settings(w, h, dpr);
+  for (const [what, box] of Object.entries(r)) {
+    if (px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h) return what;
+  }
+  return null;
+}
+
 export function hitCard(w, h, px, py, dpr = 1) {
   for (const c of cards(w, h, dpr)) {
     if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) return c.i;
@@ -634,19 +675,19 @@ export function hitCard(w, h, px, py, dpr = 1) {
  * conversion back, and it is 1 on an ordinary monitor, which is why none of this changes the
  * look there.
  */
-function panel(ctx, state, w, h, U) {
+function panel(ctx, state, w, h, U, show) {
   // --- experience, right across the top, where it cannot be missed
   const part = Math.max(0, Math.min(1, state.xp / state.need));
   ctx.fillStyle = 'rgba(13,12,11,0.14)';
   ctx.fillRect(0, 0, w, 11 * U);
   ctx.fillStyle = Black;
   ctx.fillRect(0, 0, w * part, 11 * U);
-  write(ctx, `LV ${state.level}`, 22 * U, 34 * U, 20 * U, 800);
+  write(ctx, say(UI.lv, state.level), 22 * U, 34 * U, 20 * U, 800);
 
   // The stage, and how far through its waves you are. The boss replaces both when it arrives,
   // because at that point there is only one thing worth knowing.
   if (state.boss) {
-    write(ctx, 'THE WARDEN', w / 2, 30 * U, 15 * U, 800, 'center');
+    write(ctx, say(UI.warden), w / 2, 30 * U, 15 * U, 800, 'center');
     const bossW = Math.min(460 * U, w * 0.46);
     ctx.fillStyle = 'rgba(13,12,11,0.15)';
     ctx.fillRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
@@ -656,17 +697,36 @@ function panel(ctx, state, w, h, U) {
     ctx.lineWidth = 2 * U;
     ctx.strokeRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
   } else {
-    write(ctx, `STAGE ${state.stage}`, w / 2, 32 * U, 24 * U, 800, 'center');
+    write(ctx, say(UI.stage, state.stage), w / 2, 32 * U, 24 * U, 800, 'center');
     const onW = Math.min(300 * U, w * 0.3);
     ctx.fillStyle = 'rgba(13,12,11,0.15)';
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW, 5 * U);
     ctx.fillStyle = Black;
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW * Math.min(1, state.stageT / StageWaves), 5 * U);
   }
-  write(ctx, `${state.kills} DOWN`, w - 22 * U, 34 * U, 13 * U, 700, 'right');
+  write(ctx, say(UI.down, state.kills), w - 22 * U, 70 * U, 13 * U, 700, 'right');
+
+  // --- how fast the whole thing runs, in the corner where nothing else is
+  {
+    const b = speedBox(w, h, U);
+    const pills = Speeds.length;
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 2 * U;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, b.h / 2); ctx.stroke();
+    for (let i = 0; i < pills; i++) {
+      const pw = b.w / pills;
+      const px = b.x + i * pw;
+      const on = Speeds[i] === show.speed;
+      if (on) {
+        ctx.fillStyle = Black;
+        ctx.beginPath(); ctx.roundRect(px + 2 * U, b.y + 2 * U, pw - 4 * U, b.h - 4 * U, (b.h - 4 * U) / 2); ctx.fill();
+      }
+      write(ctx, `${Speeds[i]}x`, px + pw / 2, b.y + b.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
+    }
+  }
 
   const bw = Math.min(240 * U, w * 0.22);
-  write(ctx, 'WALL', 22 * U, 62 * U, 11 * U, 700);
+  write(ctx, say(UI.wall), 22 * U, 62 * U, 11 * U, 700);
   ctx.lineWidth = 2 * U;
   ctx.strokeStyle = Black;
   ctx.strokeRect(22 * U, 72 * U, bw, 13 * U);
@@ -676,7 +736,7 @@ function panel(ctx, state, w, h, U) {
   // Heat lives under the wall, not under the clock. Stacked in the middle it was a second
   // nameless bar directly below the stage bar, and two anonymous bars one above the other are
   // two bars nobody reads.
-  write(ctx, 'SPEED', 22 * U, 100 * U, 11 * U, 700);
+  write(ctx, say(UI.cast), 22 * U, 100 * U, 11 * U, 700);
   ctx.fillStyle = 'rgba(13,12,11,0.16)';
   ctx.fillRect(22 * U, 110 * U, bw, 7 * U);
   ctx.fillStyle = Black;
@@ -685,10 +745,10 @@ function panel(ctx, state, w, h, U) {
   // --- what you are carrying: the name, what tier it has reached, and how near the next one
   const owned = carrying(state);
   let y = h - 22 * U - (owned.length - 1) * 23 * U;
-  write(ctx, 'SPELLS', 22 * U, y - 26 * U, 11 * U, 700);
+  write(ctx, say(UI.spells), 22 * U, y - 26 * U, 11 * U, 700);
   for (const key of owned) {
     const kit = state.kit[key];
-    write(ctx, Spells[key].name, 22 * U, y, 14 * U, 600);
+    write(ctx, say(Spells[key].name), 22 * U, y, 14 * U, 600);
     if (kit.tier > 1) {
       // a filled tag, so a spell that has become something reads differently at a glance
       ctx.fillStyle = Black;
@@ -710,7 +770,7 @@ function panel(ctx, state, w, h, U) {
   const kept = Object.keys(state.passives);
   let py = h - 22 * U - (kept.length - 1) * 19 * U;
   for (const key of kept) {
-    write(ctx, `${Passives[key].name} ${state.passives[key]}`, w - 22 * U, py, 13 * U, 600, 'right');
+    write(ctx, `${say(Passives[key].name)} ${state.passives[key]}`, w - 22 * U, py, 13 * U, 600, 'right');
     py += 19 * U;
   }
 }
@@ -721,9 +781,9 @@ function picking(ctx, state, w, h, show, U) {
 
   const list = cards(w, h, U);
   const header = list[0].y - (list[0].flat ? 56 * U : 46 * U);
-  write(ctx, state.cleared ? `STAGE ${state.stage - 1} CLEARED` : `LEVEL ${state.level}`,
+  write(ctx, state.cleared ? say(UI.cleared, state.stage - 1) : say(UI.level, state.level),
     w / 2, header - 24 * U, 36 * U, 800, 'center');
-  write(ctx, state.cleared ? 'the wall is mended — take one' : 'TAKE ONE',
+  write(ctx, state.cleared ? say(UI.mended) : say(UI.takeOne),
     w / 2, header + 8 * U, 14 * U, 600, 'center');
 
   for (const r of list) {
@@ -758,8 +818,8 @@ function picking(ctx, state, w, h, show, U) {
     // A tier card says what it borrowed. "An electric storm where it lands" only exists because
     // lightning is in the loadout, and a player who is not told that will never go looking for
     // the next combination.
-    const foot = card.borrows ? `with ${card.borrows}`
-      : card.toTier > 0 ? `${card.toTier} more to tier ${(state.kit[card.mark] || {}).tier + 1}`
+    const foot = card.borrows ? say(UI.withSpell, card.borrows)
+      : card.toTier > 0 ? say(UI.moreToTier, card.toTier, (state.kit[card.mark] || {}).tier + 1)
       : '';
 
     if (r.flat) {
@@ -778,7 +838,7 @@ function picking(ctx, state, w, h, show, U) {
       pips(cx, top + 246 * U);
     }
   }
-  write(ctx, 'tap a card  ·  or press 1, 2, 3', w / 2, list[2].y + list[2].h + 32 * U, 13 * U, 500, 'center');
+  write(ctx, say(UI.tapCard), w / 2, list[2].y + list[2].h + 32 * U, 13 * U, 500, 'center');
 }
 
 // --- the loadout screen ------------------------------------------------------------------------
@@ -845,7 +905,7 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   const list = tiles(w, h, dpr);
   const headTop = list[0].y - (list[0].tall ? 128 * U : 104 * U);
 
-  write(ctx, 'SHADOW TOWER', w / 2, headTop, 34 * U, 800, 'center');
+  fitWrite(ctx, say(UI.title), w / 2, headTop, 34 * U, 800, 'center', Black, w - 48 * U);
 
   // the account: level, the climb to the next one, and what that one opens
   const need = needFor(meta.level);
@@ -857,12 +917,12 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   ctx.fillStyle = Black;
   ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, meta.xp / need)), 9 * U);
   const soon = nextUnlock(meta.level);
-  write(ctx, `LEVEL ${meta.level}`, bx, by + 24 * U, 13 * U, 800, 'left');
-  fitWrite(ctx, soon ? `${Spells[soon.key].name} at level ${soon.at}` : 'every spell is yours',
+  write(ctx, say(UI.level, meta.level), bx, by + 24 * U, 13 * U, 800, 'left');
+  fitWrite(ctx, soon ? say(UI.unlockSoon, say(Spells[soon.key].name), soon.at) : say(UI.allYours),
     bx + bw, by + 24 * U, 13 * U, 600, 'right', Black, bw * 0.45);
-  if (meta.best) write(ctx, `best: stage ${meta.best}`, w / 2, by + 24 * U, 13 * U, 600, 'center');
+  if (meta.best) write(ctx, say(UI.bestStage, meta.best), w / 2, by + 24 * U, 13 * U, 600, 'center');
 
-  write(ctx, `CHOOSE UP TO ${LoadoutSize}`, w / 2, list[0].y - 24 * U, 12 * U, 800, 'center');
+  write(ctx, say(UI.chooseUpTo, LoadoutSize), w / 2, list[0].y - 24 * U, 12 * U, 800, 'center');
 
   for (const t of list) {
     const open = UnlockAt[t.key] <= meta.level;
@@ -883,14 +943,14 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
     if (t.tall) {
       const room = t.w - 92 * U;
       sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 30 * U, ink);
-      fitWrite(ctx, open ? sp.name : 'LOCKED', t.x + 76 * U, t.y + 28 * U, 17 * U, 800, 'left', ink, room);
-      fitWrite(ctx, open ? sp.tells : `opens at level ${UnlockAt[t.key]}`,
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 76 * U, t.y + 28 * U, 17 * U, 800, 'left', ink, room);
+      fitWrite(ctx, open ? say(sp.tells) : say(UI.opensAt, UnlockAt[t.key]),
         t.x + 76 * U, t.y + 50 * U, 11 * U, 500, 'left', ink, room);
     } else {
       const room = t.w - 16 * U;
       sigil(ctx, t.key, t.x + t.w / 2, t.y + 32 * U, 30 * U, ink);
-      fitWrite(ctx, open ? sp.name : 'LOCKED', t.x + t.w / 2, t.y + 64 * U, 14 * U, 800, 'center', ink, room);
-      write(ctx, open ? '' : `level ${UnlockAt[t.key]}`, t.x + t.w / 2, t.y + 81 * U, 10 * U, 600, 'center', ink);
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 64 * U, 14 * U, 800, 'center', ink, room);
+      write(ctx, open ? '' : say(UI.levelledPlain, UnlockAt[t.key]), t.x + t.w / 2, t.y + 81 * U, 10 * U, 600, 'center', ink);
     }
     ctx.globalAlpha = 1;
   }
@@ -902,8 +962,23 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   ctx.strokeStyle = Black;
   ctx.lineWidth = 3 * U;
   ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.stroke();
-  write(ctx, `BEGIN  ·  ${meta.loadout.length}/${LoadoutSize}`, b.x + b.w / 2, b.y + b.h / 2,
+  write(ctx, say(UI.begin, meta.loadout.length, LoadoutSize), b.x + b.w / 2, b.y + b.h / 2,
     19 * U, 800, 'center', ready ? Pale : Black);
+
+  // --- language and sound, under the button that starts a run
+  const set = settings(w, h, dpr);
+  const pill = (box, label, value, lit) => {
+    ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 1.6 * U;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
+    const ink = lit ? Pale : Black;
+    write(ctx, label, box.x + 14 * U, box.y + box.h / 2, 10 * U, 700, 'left', ink);
+    write(ctx, value, box.x + box.w - 14 * U, box.y + box.h / 2, 13 * U, 800, 'right', ink);
+  };
+  pill(set.lang, say(UI.language), LanguageNames[language()], show.overSetting === 'lang');
+  pill(set.sound, say(UI.sound), say(meta.muted ? UI.off : UI.on), show.overSetting === 'sound');
 }
 
 // --- the frame --------------------------------------------------------------------------------
@@ -966,12 +1041,11 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     ctx.globalAlpha = 1;
   }
 
-  panel(ctx, state, w, h, U);
+  panel(ctx, state, w, h, U, show);
 
   if (show.hint && state.t < 9 && state.phase === 'playing') {
     ctx.globalAlpha = Math.min(1, 9 - state.t);
-    write(ctx, 'YOUR SPELLS CAST THEMSELVES  —  TAP TO MAKE THEM CAST FASTER',
-      w / 2, h - 118 * U, 14 * U, 700, 'center');
+    fitWrite(ctx, say(UI.hint), w / 2, h - 118 * U, 14 * U, 700, 'center', Black, w - 48 * U);
     ctx.globalAlpha = 1;
   }
 
@@ -983,31 +1057,31 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     const won = show.won;
     const row = (n) => h / 2 + (n - 2.2) * 34 * U;
 
-    write(ctx, 'THE WALL FELL', w / 2, row(0) - 22 * U, 42 * U, 800, 'center');
-    write(ctx, `STAGE ${state.stage}`, w / 2, row(1), 30 * U, 800, 'center');
+    write(ctx, say(UI.fell), w / 2, row(0) - 22 * U, 42 * U, 800, 'center');
+    write(ctx, say(UI.stage, state.stage), w / 2, row(1), 30 * U, 800, 'center');
     const secs = Math.floor(state.t);
-    write(ctx, `level ${state.level}  ·  ${state.kills} down  ·  ${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`,
-      w / 2, row(2), 16 * U, 600, 'center');
+    const clock = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+    write(ctx, say(UI.runLine, state.level, state.kills, clock), w / 2, row(2), 16 * U, 600, 'center');
 
     if (won) {
       // The account is the reason to go again, so it is said here rather than left on a screen
       // the player has to go back to before they find out anything happened.
-      write(ctx, `+${won.earned} EXPERIENCE`, w / 2, row(3.1), 17 * U, 800, 'center');
+      write(ctx, say(UI.earned, won.earned), w / 2, row(3.1), 17 * U, 800, 'center');
+      let line;
       if (won.opened.length) {
-        const names = won.opened.map((k) => Spells[k].name).join(' and ');
-        write(ctx, `LEVEL ${won.level} — ${names.toUpperCase()} UNLOCKED`, w / 2, row(4.1), 15 * U, 800, 'center');
+        line = say(UI.unlocked, won.level, won.opened.map((k) => say(Spells[k].name)).join(' + ').toUpperCase());
       } else if (won.levelled) {
         const soon = nextUnlock(won.level);
-        write(ctx, soon ? `level ${won.level} — ${Spells[soon.key].name} at level ${soon.at}` : `level ${won.level}`,
-          w / 2, row(4.1), 14 * U, 600, 'center');
+        line = soon ? say(UI.levelledTo, won.level, say(Spells[soon.key].name), soon.at)
+          : say(UI.levelledPlain, won.level);
       } else if (won.beatBest) {
-        write(ctx, won.wasBest ? `a new best — you had only reached stage ${won.wasBest}` : 'a new best',
-          w / 2, row(4.1), 14 * U, 600, 'center');
+        line = won.wasBest ? say(UI.newBestWas, won.wasBest) : say(UI.newBest);
       } else {
-        write(ctx, `your best is stage ${won.best}`, w / 2, row(4.1), 14 * U, 600, 'center');
+        line = say(UI.yourBest, won.best);
       }
+      fitWrite(ctx, line, w / 2, row(4.1), 15 * U, 700, 'center', Black, w - 48 * U);
     }
-    write(ctx, 'TAP TO CHOOSE AGAIN', w / 2, row(5.6), 15 * U, 700, 'center');
+    write(ctx, say(UI.tapAgain), w / 2, row(5.6), 15 * U, 700, 'center');
   }
 }
 

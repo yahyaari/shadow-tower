@@ -8,11 +8,12 @@
 import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
   tierDue, evolutionsFor, boostsFor,
-  Spells, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
-  spellKeys, passiveKeys, haste,
+  Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
+  spellKeys, passiveKeys, haste, describe, advance,
 } from '../src/rules.js';
-import { UnlockAt, unlocked, nextUnlock } from '../src/spells.js';
-import { needFor, worth, record, toggle, tidy } from '../src/meta.js';
+import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
+import { say, setLanguage, language, Languages, UI } from '../src/text.js';
+import { needFor, worth, record, toggle, tidy, Speeds } from '../src/meta.js';
 
 let passed = 0;
 const failures = [];
@@ -343,44 +344,149 @@ for (const key of all) {
   check('ısı kendiliğinden soğuyor', s.heat === 0);
 }
 
+// --- oyun hızı -----------------------------------------------------------------------------
+
+{
+  // 1x, 1.5x, 2x gerçekten o kadar hızlandırmalı. Tarayıcıda ölçülemez: yazılımsal çizim zaten
+  // darboğaz olduğu için iki kat simülasyon istemek kare hızını yarıya indiriyor ve oyun saati
+  // hiç ilerlememiş gibi görünüyor. Bu yüzden adımlama `advance()` içinde, tuvalsiz ölçülebilir.
+  const ran = {};
+  for (const sp of Speeds) {
+    const s = begin(5, ['bolt']);
+    for (let i = 0; i < 120; i++) advance(s, 1 / 60, sp);
+    ran[sp] = s.t;
+  }
+  check('1x normal hızda koşuyor', Math.abs(ran[1] - 2) < 0.01, `${ran[1].toFixed(3)}`);
+  for (const sp of Speeds) {
+    check(`${sp}x gerçekten ${sp} kat hızlı`, Math.abs(ran[sp] / ran[1] - sp) < 0.01,
+      `${(ran[sp] / ran[1]).toFixed(3)} kat`);
+  }
+
+  // Ve hızlanmak tek büyük adımla değil, çok adımla olmalı: tek uzun adım mermiyi vuracağı
+  // şeyin içinden geçirir, çünkü çarpışma nerede olduğuna bakılarak kontrol ediliyor.
+  const fast = begin(6, ['bolt']);
+  for (let i = 0; i < 6; i++) spawn(fast, 'walker', (i / 6) * Math.PI * 2);
+  for (const f of fast.foes) f.r = 200;
+  const mine = new Set(fast.foes.map((f) => f.id));
+  const before = fast.foes.reduce((a, f) => a + f.hp, 0);
+  for (let i = 0; i < 240; i++) advance(fast, 1 / 60, 2);
+  const after = fast.foes.filter((f) => mine.has(f.id)).reduce((a, f) => a + f.hp, 0);
+  check('hızlıyken de mermiler isabet ediyor', after < before * 0.9 || fast.kills > 0);
+}
+
 // --- hesap: ana seviye ve kilitler --------------------------------------------------------------
 
 check('ilk büyü baştan açık', UnlockAt.bolt === 1);
 check('her büyünün bir açılma seviyesi var', all.every((k) => UnlockAt[k] >= 1));
 check('ana seviye maliyeti hep artıyor', [1, 2, 3, 5, 9, 14].every((n) => needFor(n + 1) > needFor(n)));
-check('1. seviyede sadece bir büyü açık', unlocked(1).length === 1, unlocked(1).join(','));
-check('16. seviyede hepsi açık', unlocked(16).length === all.length);
-check('sıradaki kilit söylenebiliyor', !!nextUnlock(1) && nextUnlock(1).at === 2);
+
+// Birinci seviyede TAM BİR LOADOUT açık olmalı. Tek büyüyle açılan bir oyun, ilk koşusu en zayıf
+// koşu olan bir oyundur - ve açılış ekranı dolu değil, ödev gibi görünür.
+check('1. seviyede tam bir loadout açık', unlocked(1).length === Carry,
+  `${unlocked(1).length} tane: ${unlocked(1).join(',')}`);
+check('her şey 13. seviyede açılıyor', unlocked(13).length === all.length);
+check('sıradaki kilit söylenebiliyor', !!nextUnlock(1) && nextUnlock(1).at > 1);
 check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
 
 {
   const d = tidy({ level: 1, xp: 0, loadout: ['meteor', 'nova'] });
-  check('açılmamış büyü loadouttan atılıyor', d.loadout.join() === 'bolt', d.loadout.join());
+  check('açılmamış büyü loadouttan atılıyor', !d.loadout.includes('meteor') && !d.loadout.includes('nova'));
+  check('yeni hesap dolu loadoutla başlıyor', d.loadout.length === Carry, d.loadout.join(','));
 }
 
 {
-  const d = tidy({ level: 16, xp: 0, loadout: ['bolt', 'bolt', 'bolt', 'nova', 'frost', 'meteor', 'laser'] });
+  const d = tidy({});
+  check('boş kayıt dolu loadout veriyor', d.loadout.length === Carry, d.loadout.join(','));
+  check('varsayılan dil İngilizce', d.lang === 'en');
+  check('varsayılan hız 1x', d.speed === 1);
+  const bad = tidy({ lang: 'klingon', speed: 7, loadout: ['bolt'] });
+  check('tanınmayan dil ve hız düzeltiliyor', bad.lang === 'en' && bad.speed === 1);
+}
+
+// --- diller -------------------------------------------------------------------------------------
+
+{
+  // Her yazı bir çift: İngilizce, Türkçe. Biri eksikse ekranda boşluk ya da yanlış dil çıkar.
+  const pairs = [];
+  const add = (where, v) => pairs.push([where, v]);
+  for (const [k, sp] of Object.entries(Spells)) {
+    add(`${k}.name`, sp.name);
+    add(`${k}.tells`, sp.tells);
+    for (const b of sp.boosts) { add(`${k}.${b.key}.name`, b.name); add(`${k}.${b.key}.tells`, b.tells); }
+    for (const e of sp.evolutions) { add(`${k}.${e.key}.name`, e.name); add(`${k}.${e.key}.tells`, e.tells); }
+  }
+  for (const [k, pa] of Object.entries(Passives)) { add(`passive.${k}.name`, pa.name); add(`passive.${k}.tells`, pa.tells); }
+  for (const [k, v] of Object.entries(UI)) add(`UI.${k}`, v);
+
+  const broken = pairs.filter(([, v]) =>
+    !Array.isArray(v) || v.length !== Languages.length || v.some((x) => typeof x !== 'string' || !x.trim()));
+  check(`${pairs.length} yazının hepsi iki dilde`, broken.length === 0,
+    broken.slice(0, 6).map(([w]) => w).join(', '));
+
+  // Ve çevrilmiş olmalı: iki dilde aynı yazanlar sadece özel adlar olabilir
+  const sameBoth = pairs.filter(([, v]) => Array.isArray(v) && v[0] === v[1]);
+  check('neredeyse her yazı gerçekten çevrilmiş', sameBoth.length <= 3,
+    sameBoth.map(([w]) => w).join(', '));
+}
+
+{
+  const was = language();
+  setLanguage('tr');
+  check('dil değişince yazı değişiyor', say(Spells.bolt.name) === Spells.bolt.name[1]);
+  check('yer tutucular dolduruluyor', say(UI.stage, 4) === 'BÖLÜM 4', say(UI.stage, 4));
+  setLanguage('en');
+  check('İngilizceye dönülebiliyor', say(Spells.bolt.name) === Spells.bolt.name[0]);
+  setLanguage('bilinmeyen');
+  check('tanınmayan dil İngilizceye düşüyor', language() === 'en');
+  check('düz yazı olduğu gibi dönüyor', say('plain') === 'plain');
+  check('boş değer çökmüyor', say(undefined) === '');
+  setLanguage(was);
+}
+
+{
+  // Kart metinleri de dilden geçmeli - kartın vaadi oyuncunun okuduğu dilde olmalı
+  const s = begin(99, ['bolt', 'lightning']);
+  s.kit.bolt.taken = BoostsPerTier;
+  s.phase = 'picking';
+  s.choices = offer(s);
+  const card = s.choices.find((c) => c.key === 'bolt');
+  if (card) {
+    setLanguage('en');
+    const en = describe(s, card);
+    setLanguage('tr');
+    const tr = describe(s, card);
+    setLanguage('en');
+    check('kart metni dile göre değişiyor', en.title !== tr.title && en.text !== tr.text,
+      `${en.title} / ${tr.title}`);
+  } else {
+    check('kart metni dile göre değişiyor', false, 'kart bulunamadı');
+  }
+}
+
+{
+  const d = tidy({ level: 13, xp: 0, loadout: ['bolt', 'bolt', 'bolt', 'nova', 'frost', 'meteor', 'laser'] });
   check('loadout tekrarsız ve beşle sınırlı',
     d.loadout.length === LoadoutSize && new Set(d.loadout).size === LoadoutSize, d.loadout.join());
 }
 
 {
-  const e = tidy({ level: 16, xp: 0, loadout: ['bolt'] });
+  const e = tidy({ level: 13, xp: 0, loadout: ['bolt'] });
   check('son büyü loadouttan çıkarılamıyor', toggle(e, 'bolt') === false && e.loadout.length === 1);
-  const f = tidy({ level: 16, xp: 0, loadout: ['bolt', 'frost', 'nova', 'laser', 'meteor'] });
+  const f = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost', 'nova', 'laser', 'meteor'] });
   check('dolu loadouta altıncı eklenemiyor', toggle(f, 'shards') === false);
   const g = tidy({ level: 1, xp: 0, loadout: ['bolt'] });
   check('açılmamış büyü loadouta eklenemiyor', toggle(g, 'meteor') === false);
-  const h = tidy({ level: 16, xp: 0, loadout: ['bolt', 'frost'] });
+  const h = tidy({ level: 13, xp: 0, loadout: ['bolt', 'frost'] });
   check('loadouttan çıkarma çalışıyor', toggle(h, 'frost') === true && h.loadout.join() === 'bolt');
 }
 
 {
-  const d = tidy({ level: 1, xp: 0, loadout: ['bolt'], best: 0 });
+  const d = tidy({ level: 1, xp: 0, loadout: ['bolt', 'shards'], best: 0 });
   const r = record(d, 3, 500);
   check('koşu deneyim kazandırıyor', r.earned === worth(3, 500) && r.earned > 500);
   check('hesap seviye atlıyor', r.levelled && d.level > 1);
-  check('açılan büyü boş loadouta kendi giriyor', d.loadout.length > 1, d.loadout.join());
+  check('açılan büyü boş yere kendi giriyor',
+    !r.opened.length || r.opened.every((k) => d.loadout.includes(k)), r.opened.join());
   check('en iyi bölüm kaydediliyor', d.best === 3);
 }
 

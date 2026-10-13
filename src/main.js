@@ -3,16 +3,18 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, step, click, take } from './rules.js';
-import { frame, hitCard, cards, loadout, hitLoadout } from './draw.js';
+import { begin, advance, click, take } from './rules.js';
+import { frame, hitCard, cards, loadout, hitLoadout, hitSpeed, hitSettings } from './draw.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
+import { setLanguage, Languages, language } from './text.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
 let data = meta.load();
 sound.setMuted(!!data.muted);
+setLanguage(data.lang);
 
 let screen = 'loadout';           // 'loadout' | 'run'
 let state = null;
@@ -22,8 +24,8 @@ let dpr = 1;
 
 function fresh() {
   return {
-    bits: [], floats: [], overCard: null, overTile: null, overBegin: false,
-    hint: true, shake: 0, booked: false, won: null,
+    bits: [], floats: [], overCard: null, overTile: null, overBegin: false, overSetting: null,
+    hint: true, shake: 0, booked: false, won: null, speed: data.speed,
   };
 }
 
@@ -105,8 +107,11 @@ function tick(now) {
     return;
   }
 
-  step(state, dt);
-  readEvents();
+  // How fast the whole thing runs. `advance` does the stepping; it is in the rules so it can be
+  // tested without a canvas.
+  show.speed = data.speed;
+  const dts = advance(state, dt, data.speed, readEvents);
+
 
   // Booked once: `step` runs every frame and a run that ended ten frames ago is still ended.
   if (state.phase === 'lost' && !show.booked) {
@@ -115,19 +120,20 @@ function tick(now) {
     sound.over();
   }
 
-  show.shake = Math.max(0, show.shake - dt * 4);
+  // The specks run at the same speed as the fight, or they drift about behind it
+  show.shake = Math.max(0, show.shake - dts * 4);
   for (let i = show.bits.length - 1; i >= 0; i--) {
     const p = show.bits[i];
-    p.life -= dt;
+    p.life -= dts;
     if (p.life <= 0) { show.bits.splice(i, 1); continue; }
-    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-    p.vz -= 420 * dt;
+    p.x += p.vx * dts; p.y += p.vy * dts; p.z += p.vz * dts;
+    p.vz -= 420 * dts;
     if (p.z < 0) { p.z = 0; p.vz = 0; p.vx *= 0.7; p.vy *= 0.7; }
   }
   for (let i = show.floats.length - 1; i >= 0; i--) {
     const f = show.floats[i];
-    f.life -= dt;
-    f.rise += dt * 46;
+    f.life -= dts;
+    f.rise += dts * 46;
     if (f.life <= 0) show.floats.splice(i, 1);
   }
 
@@ -151,7 +157,8 @@ addEventListener('pointermove', (e) => {
     const over = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
     show.overTile = over === '@begin' ? null : over;
     show.overBegin = over === '@begin';
-    canvas.style.cursor = over ? 'pointer' : 'default';
+    show.overSetting = hitSettings(canvas.width, canvas.height, p.x, p.y, dpr);
+    canvas.style.cursor = over || show.overSetting ? 'pointer' : 'default';
     return;
   }
   show.overCard = state.phase === 'picking'
@@ -165,10 +172,30 @@ addEventListener('pointerdown', (e) => {
   const p = spot(e);
 
   if (screen === 'loadout') {
+    const knob = hitSettings(canvas.width, canvas.height, p.x, p.y, dpr);
+    if (knob === 'lang') {
+      const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
+      setLanguage(next);
+      data.lang = next;
+      meta.save(data);
+      return;
+    }
+    if (knob === 'sound') {
+      sound.setMuted(!sound.isMuted());
+      data.muted = sound.isMuted();
+      meta.save(data);
+      return;
+    }
     const hit = hitLoadout(canvas.width, canvas.height, p.x, p.y, dpr);
     if (hit === '@begin') { start(); return; }
     if (hit) { meta.toggle(data, hit); show.overTile = hit; }
     return;
+  }
+
+  // The speed control sits over the field, so it is read before a tap counts as a cast.
+  if (state.phase === 'playing') {
+    const pace = hitSpeed(canvas.width, canvas.height, p.x, p.y, dpr);
+    if (pace) { data.speed = pace; show.speed = pace; meta.save(data); return; }
   }
 
   if (state.phase === 'lost') {
@@ -216,7 +243,7 @@ window.ShadowTower = {
   get show() { return show; },
   get meta() { return data; },
   get screen() { return screen; },
-  start, click, take, sound,
+  start, click, take, sound, setLanguage,
 };
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

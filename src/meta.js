@@ -5,6 +5,7 @@
 // the game to refuse to run.
 
 import { LoadoutSize, UnlockAt, unlocked, spellKeys } from './spells.js';
+import { Languages } from './text.js';
 
 const Key = 'shadowtower';
 
@@ -14,9 +15,13 @@ const blank = {
   best: 0,          // furthest stage
   runs: 0,
   kills: 0,
-  loadout: ['bolt'],
+  loadout: null,    // filled from whatever is unlocked, so a new account starts with a full hand
   muted: false,
+  lang: 'en',       // English by default; Turkish is chosen, not detected
+  speed: 1,
 };
+
+export const Speeds = [1, 1.5, 2];
 
 /**
  * What the next account level costs.
@@ -55,11 +60,16 @@ export function load() {
 export function tidy(data) {
   data.level = Math.max(1, Math.floor(data.level || 1));
   data.xp = Math.max(0, data.xp || 0);
+  if (!Languages.includes(data.lang)) data.lang = 'en';
+  if (!Speeds.includes(data.speed)) data.speed = 1;
+
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
     .filter((k, i, all) => spellKeys.includes(k) && open.includes(k) && all.indexOf(k) === i)
     .slice(0, LoadoutSize);
-  if (!kit.length) kit = [open[0] || 'bolt'];
+  // A fresh account gets a full hand rather than one spell: five are unlocked from the start and
+  // the loadout holds five, so there is nothing to choose on the first run and nothing missing.
+  if (!kit.length) kit = open.slice(0, LoadoutSize);
   data.loadout = kit;
   return data;
 }

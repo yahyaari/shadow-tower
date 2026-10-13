@@ -87,11 +87,23 @@ await sleep(400);
 // Donanımlı bir büyücü kur: altı büyü, birkaç pasif, ve bölümün sonuna gel
 // Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
 await screenshot('loadout_yeni_hesap');
-await evaluate(`(() => { const d = window.ShadowTower.meta; d.level = 9; d.xp = 700; d.best = 3; d.loadout = ['bolt','fireball','lightning']; return true; })()`);
+
+// Ayni ekran Turkce
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); return true; })()`);
+await sleep(400);
+await screenshot('loadout_tr');
+
+// Ilerlemis bir hesap, Ingilizce
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.lang = 'en'; window.ShadowTower.setLanguage('en');
+  d.level = 8; d.xp = 700; d.best = 3;
+  d.loadout = ['bolt', 'fireball', 'lightning'];
+  return true;
+})()`);
 await sleep(400);
 await screenshot('loadout');
 
-// Donanımlı bir büyücü kur ve koşuyu başlat
 await evaluate(`(() => {
   const d = window.ShadowTower.meta;
   d.level = 16;
@@ -119,6 +131,14 @@ for (let i = 0; i < 120; i++) {
 }
 await sleep(900);
 await screenshot("patron");
+
+// Hiz kontrolu: 2x secip oyun saatinin gercekten hizlandigini olc
+await evaluate(`(() => { const d = window.ShadowTower.meta; d.lang = 'tr'; window.ShadowTower.setLanguage('tr'); d.speed = 2; return true; })()`);
+const before = await evaluate('window.ShadowTower.state.t');
+await sleep(1500);
+const after = await evaluate('window.ShadowTower.state.t');
+console.log(`  2x: 1.5sn duvar saatinde oyun ${(after - before).toFixed(2)}sn ilerledi`);
+await screenshot("hiz_2x_turkce");
 console.log('  ' + await evaluate(`(() => { const s = window.ShadowTower.state; return 'bolum ' + s.stage + ', patron can ' + Math.ceil(s.boss ? s.boss.hp : -1) + '/' + Math.ceil(s.boss ? s.boss.maxHp : -1) + ', sahada ' + s.foes.length; })()`));
 
 // Patronu indir: bölüm geçme ekranı
