@@ -1653,6 +1653,55 @@ console.log('haritanın söylediğini yapan oyuncu (40 koşu):');
     rate(wrongKit, 4) >= 15, `ters loadout ile %${rate(wrongKit, 4)}`);
 }
 
+// NEREYE KADAR GIDILEBILIYOR?
+//
+// Bolum sayisinda ust sinir yok - adlar sayiyla donuyor, zorluk ise durmadan artiyor. "Kac bolum
+// var" sorusunun anlamli cevabi bu tablo: yeni bir hesap nerede duruyor, her seyi almis bir hesap
+// nerede duruyor.
+console.log('');
+console.log('nereye kadar (24 koşu):');
+console.log('  bölüm   yeni hesap   tam donanım   yer                   aileler');
+{
+  const pcAt = (stage, hero, lvl) => {
+    const runs = [];
+    for (let i = 1; i <= 24; i++) runs.push(botRun(i * 7919, Four, stage, 6, hero, lvl).done);
+    return Math.round(runs.filter(Boolean).length / runs.length * 100);
+  };
+  const rows = [];
+  for (let n = 1; n <= 14; n++) {
+    rows.push({ n, bare: pcAt(n, 0, 1), full: pcAt(n, HeroSteps, SpellSteps) });
+    const r = rows[rows.length - 1];
+    console.log(`  ${String(r.n).padStart(5)}   ${('%' + r.bare).padStart(9)}   ${('%' + r.full).padStart(11)}   ` +
+      `${stageOf(r.n).name[1].padEnd(20)}  ${familiesOn(r.n).join('+')}`);
+  }
+  const lastBare = rows.filter((r) => r.bare > 0).slice(-1)[0];
+  const lastFull = rows.filter((r) => r.full > 0).slice(-1)[0];
+  console.log(`  → yeni hesap ${lastBare ? lastBare.n : 0}. bölüme kadar · tam donanım ${lastFull ? lastFull.n : 0}. bölüme kadar`);
+  // 24 kosuda %25 civarinda standart hata ~%9. Tabloda bu kadarlik oynamalar gurultudur ve
+  // yazmak zorundayiz: bir keresinde burada "3. bolum 4.'den zor" gorundu, 150 kosuda duzgun
+  // bir egri cikti. Sayilarin yanina ne kadarina guvenilecegi yazmazsa, yanilmak kacinilmaz.
+  console.log('  (24 koşu · bu tabloda ~%9'dan küçük farklar gürültüdür)');
+
+  const g = (a, b) => (b ? g(b, a % b) : a);
+  const lcm = (a, b) => (a * b) / g(a, b);
+  const cycle = lcm(lcm(Stages.length, StageFamilies.length), Bosses.length);
+  console.log(`  yer ${Stages.length} · aile deseni ${StageFamilies.length} · patron ${Bosses.length} → aynı birleşim ${cycle} bölümde bir`);
+
+  check('yeni bir hesap ilk birkaç bölümü geçebiliyor', lastBare && lastBare.n >= 3,
+    `${lastBare ? lastBare.n : 0}. bölüm`);
+  check('tam donanım çok daha ileri gidiyor', lastFull.n >= lastBare.n + 4,
+    `${lastBare.n} -> ${lastFull.n}`);
+  // Bir yerde durmali: her seyi almis bir oyuncunun sonsuza kadar gittigi bir oyunun sonu yok,
+  // ve sonu olmayan bir oyunun ulasilacak hicbir yeri yok.
+  check('tam donanımın da bir duvarı var', rows.some((r) => r.full === 0),
+    rows.map((r) => r.full).join('/'));
+  // Zorluk duzenli artmali: arada bir bolum kendinden sonrakinden sert olursa oyuncu "ben mi
+  // yanlis yapiyorum" diye dusunur, oysa sira yanlistir.
+  const bumps = rows.slice(0, 8).filter((r, i, all) => i > 0 && r.full > all[i - 1].full + 8);
+  check('zorluk sırası tersine dönmüyor', bumps.length === 0,
+    bumps.map((r) => `${r.n}. bölüm öncekinden kolay`).join(', '));
+}
+
 const solo = [];
 for (let i = 1; i <= 30; i++) solo.push(botRun(i * 104729, ['bolt'], 3).done);
 const lazy = [];
