@@ -4,7 +4,7 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **381 kontrol geçiyor**.
+> `node Tools/test.mjs` → **426 kontrol geçiyor**.
 >
 > **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
 > var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
@@ -364,6 +364,49 @@ Görevler hiçbir şeyi koşunun içinden saymıyor: hepsi `finish`'in zaten bil
 (öldürülen, duvar, seviye, dönüşüm, taşınan büyü) ölçülüyor. Yani yeni bir görev eklemek
 `rules.js`'te tek satır değiştirmiyor.
 
+### Yedi günlük seri
+
+Üst üste yedi gün bir şey **yapınca** 250 gem + altın. Sayfayı yedi kez açmak değil — seri
+`mark()` içinde sayılıyor, yani bir şey başarıldığında. Yedide sarıyor: sonsuza kadar giden bir
+sayı bakılmayan bir sayıdır, ve bir hafta, kaçırılan bir günden sonra yeniden başlamayı kayıp
+hissettirmeyecek kadar kısa.
+
+### Başarımlar
+
+Hayat boyu bir kez ödenen 12 kilometre taşı, hesabın kendi sayılarından ölçülüyor (koşu, öldürme,
+en derin bölüm, üç yıldızlı bölüm, sandık, petek, en yüksek büyü). Hepsi gem ödüyor — ama
+tekrarlanamadıkları için gem'in farmlanamaz olma kuralını bozmuyorlar. Test bunu ayrıca kontrol
+ediyor: sayı daha da artsa bile ikinci kez ödeme yok.
+
+### Reklam — dikiş hazır, reklam yok
+
+`ads.js` tam olarak reklamın gireceği yer. İçinde reklam yok çünkü CrazyGames SDK'sı henüz yok.
+İçinde olan her şey reklamın **etrafı**: günde kaç tane (çark 3, küçük sandık 3, büyük sandık 3),
+neyi satın aldıkları, ve beklenen tek bir `show()`.
+
+`ready()` bugün **bilerek false**. Reklamsız ödeyen bir düğme, anlamsız bir beklemenin arkasındaki
+bedava ödüldür — ve günde üç bedava çark çevirme, ekonominin dayandığı kuralı sessizce bozardı.
+Düğmeler çiziliyor ama kesik çizgili ve soluk, altında "reklamlar portal sürümüyle gelecek".
+
+Reklamla çevirme **günün bedava çevirmesini harcamıyor** (fazladan bir tur, aynı turun iki kez
+satın alınması değil), reklamla sandık açmak **gem harcamıyor** (reklam zaten ödemedir). İkisi de
+test ediliyor.
+
+### Ana ekran — kullanıcının çizdiği gibi
+
+Bölüm görseli **tam ortada**, iki yanında boşluk. Oklar görselin kendi kenarlarına bindi (dışarıda
+dururken o boşlukları yiyorlardı), üstlerine soluk birer disk kondu çünkü görselin yarısı katı
+siyah ve siyah bir ok orada ok değildir.
+
+Sol kenarda **üç pano**: görevler, başarımlar, duyurular. İkon olarak, tabların olduğu gibi —
+telefonun kenarına dizilmiş üç etiket, kimsenin iki kez okumadığı üç küçük yazıdır. Üstünde
+bekleyen bir şey varsa köşesinde bir nokta beliriyor. Dişli köşede kaldı: o her sekmede var, yanına
+koyacağı görsel ise sadece bir sekmede.
+
+Alt menü artık **tek şerit**: kartlar bitişik, aralarındaki çizgi onları ayıran şey, seçili olan
+şeritten tamamen ayrılıp yukarı kalkıyor. Aralıklı dururken ekranın dibinde savrulmuş beş nesne
+gibi duruyorlardı.
+
 ### Enerji — SDK'ya bırakıldı
 
 Enerji sistemi konuşuldu ve **bilerek ertelendi**. CrazyGames enerji/zamanlayıcı yasaklamıyor
@@ -465,7 +508,9 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
 | `src/stages.js` | 12 yerin adı, tanıtımı ve görünümü + çizilebilen `Looks` listesi. |
 | `src/foes.js` | Düşman aileleri, elementler, direnç tablosu, bölüm→aile eşlemesi. Saf veri. |
-| `src/missions.js` | Günlük ve koşu görevleri, seçim, ilerleme, ödül. Saf veri + aritmetik. |
+| `src/missions.js` | Günlük/koşu görevleri, 7 günlük seri, başarımlar. Saf veri + aritmetik. |
+| `src/ads.js` | Ödüllü reklam dikişi: günlük hak, `ready()`, `show()`. SDK gelince tek dosya değişir. |
+| `src/news.js` | Duyurular. Tarihli, kısa, oyuncu için yazılmış. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
 | `src/upgrades.js` | Büyülerin kalıcı seviye çizgisi: 10 basamak, maliyetler. Saf veri. |
@@ -476,7 +521,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 381 kontrol + bot. |
+| `Tools/test.mjs` | 426 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

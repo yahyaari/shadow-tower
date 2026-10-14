@@ -102,6 +102,26 @@ await evaluate(`(() => {
 await sleep(400);
 await screenshot('menu_map');
 
+// Uc pano: gorevler (hafta serisi dahil), basarimlar, duyurular.
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.runs = 40; d.kills = 3200; d.best = 6; d.chests = 4; d.hero = 26;
+  // Bugünün kendi tarihi, yoksa sayaç bugüne ait sayılmaz ve ilerleme sıfır görünür.
+  const p2 = (n) => String(n).padStart(2, '0');
+  const n0 = new Date();
+  const day = n0.getFullYear() + '-' + p2(n0.getMonth() + 1) + '-' + p2(n0.getDate());
+  d.streak = { last: day, run: 5 };
+  d.tally = { day, clears: 2, kills: 260, stars: 3, deepest: 4, chests: 1, raises: 1, spins: 1, hero: 0 };
+  d.paid = [];
+  return true;
+})()`);
+for (const key of ['jobs', 'feats', 'news']) {
+  await evaluate(`(() => { const s = window.ShadowTower.show; s.board = '${key}'; s.boardScroll = 0; return true; })()`);
+  await sleep(400);
+  await screenshot('pano_' + key);
+}
+await evaluate(`(() => { window.ShadowTower.show.board = null; return true; })()`);
+
 // Harita, bolum bolum: ailelerin ve zayifliklarinin OYNA'nin yaninda gorunmesi gerekiyor.
 for (const stage of [2, 4, 6, 7, 8, 9, 10, 11, 12]) {
   await evaluate(`(() => { const d = window.ShadowTower.meta; for (let i = 1; i < ${stage}; i++) d.stars[i] = 1; d.stage = ${stage}; return true; })()`);

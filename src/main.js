@@ -5,9 +5,10 @@
 
 import { begin, advance, click, take, investedIn, spawn, carrying } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
-import { menu, menuHit, heroHome, heroReach, wheelReach, restFor } from './menu.js';
+import { menu, menuHit, heroHome, heroReach, wheelReach, boardReach, boardShape, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
 import * as sound from './sound.js';
+import * as ads from './ads.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
 
@@ -31,6 +32,7 @@ function fresh() {
     // Half a wedge back, so the wheel opens with a wedge under the pointer rather than the seam
     // between two of them - which looks like a spin that landed on nothing.
     turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
+    board: null, boardScroll: 0, adMissing: 0,
   };
 }
 
@@ -119,7 +121,8 @@ function tick(now) {
     // Clamped here rather than only where it is pushed. Turning a phone sideways, or opening the
     // keyboard, changes how far the tab reaches - and a scroll left over from the taller window
     // shows an empty screen with the content somewhere above it.
-    if (scrolls(data.tab)) setScroll(data.tab, scrollOf(data.tab));
+    const what = scroller();
+    if (what) setScroll(what, scrollOf(what));
     spinOn(Math.min(0.25, raw));
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
@@ -206,22 +209,33 @@ function spinOn(dt) {
  * Both are dragged the same way and both are clamped the same way; only the measure differs, so
  * the drag below does not have to know which tab it is on.
  */
-const reachOf = (tab) => (tab === 'hero'
-  ? heroReach(canvas.width, canvas.height, dpr)
-  : wheelReach(canvas.width, canvas.height, dpr));
+/**
+ * Everything taller than the window it is in, under one name.
+ *
+ * An open board counts as its own scroller and wins over whatever tab is behind it, because the
+ * board is what the finger is on.
+ */
+const reachOf = (what) => {
+  if (what === 'board') {
+    const shape = boardShape(data, show.board);
+    return boardReach(canvas.width, canvas.height, dpr, shape.many, shape.tall);
+  }
+  return what === 'hero'
+    ? heroReach(canvas.width, canvas.height, dpr)
+    : wheelReach(canvas.width, canvas.height, dpr);
+};
 
-const scrolls = (tab) => tab === 'hero' || tab === 'wheel';
+const scroller = () => (show.board ? 'board' : (data.tab === 'hero' || data.tab === 'wheel') ? data.tab : null);
 
-function clampScroll(tab, at) {
-  return Math.max(0, Math.min(reachOf(tab), at));
+function setScroll(what, at) {
+  const to = Math.max(0, Math.min(reachOf(what), at));
+  if (what === 'board') show.boardScroll = to;
+  else if (what === 'hero') show.heroScroll = to;
+  else show.wheelScroll = to;
 }
 
-function setScroll(tab, at) {
-  if (tab === 'hero') show.heroScroll = clampScroll(tab, at);
-  else show.wheelScroll = clampScroll(tab, at);
-}
-
-const scrollOf = (tab) => (tab === 'hero' ? (show.heroScroll || 0) : (show.wheelScroll || 0));
+const scrollOf = (what) => (what === 'board' ? (show.boardScroll || 0)
+  : what === 'hero' ? (show.heroScroll || 0) : (show.wheelScroll || 0));
 
 let drag = null;
 
@@ -257,6 +271,31 @@ function doMenu(hit) {
     };
     return;
   }
+  if (hit.what === 'adSpin' || hit.what === 'adChest') {
+    // The advert is watched first and booked after. An advert the player closed costs nothing,
+    // and nothing is paid for one that never finished.
+    const kind = hit.what === 'adSpin' ? 'spin' : hit.key;
+    if (meta.adsLeft(data, kind) <= 0) return;
+    ads.show().then((watched) => {
+      if (!watched || !meta.useAd(data, kind)) { show.adMissing = performance.now(); return; }
+      if (hit.what === 'adSpin') {
+        const got = meta.spin(data, Math.random(), undefined, Math.random(), true);
+        if (!got) return;
+        const from = show.turn || 0;
+        show.spinWon = null;
+        show.chestWon = null;
+        show.spin = {
+          at: got.at, won: got,
+          was: got.kind === 'exp' ? (data.bank || 0) - got.amount : (data.bank || 0),
+          from, to: restFor(got.at, from), t: 0, dur: 3, past: 0,
+        };
+      } else {
+        const got = meta.openChest(data, hit.key, 1, true);
+        if (got) { show.chestWon = got; sound.prize(); }
+      }
+    });
+    return;
+  }
   if (hit.what === 'chest') {
     const got = meta.openChest(data, hit.key, hit.many);
     if (!got) return;
@@ -264,6 +303,16 @@ function doMenu(hit) {
     sound.prize();
     return;
   }
+  if (hit.what === 'board') { show.board = hit.key; show.boardScroll = 0; return; }
+  if (hit.what === 'week') {
+    if (meta.claimWeek(data)) sound.prize();
+    return;
+  }
+  if (hit.what === 'feat') {
+    if (meta.claimFeat(data, hit.key)) sound.prize();
+    return;
+  }
+  if (hit.what === 'boardClose') { show.board = null; return; }
   if (hit.what === 'daily') {
     if (meta.claimDaily(data, hit.key)) sound.prize();
     return;
@@ -323,6 +372,9 @@ addEventListener('pointermove', (e) => {
       : hit.what === 'buySpell' ? 'buySpell:' + hit.key
       : hit.what === 'chest' ? `chest:${hit.key}:${hit.many}`
       : hit.what === 'daily' ? 'daily:' + hit.key
+      : hit.what === 'board' ? 'board:' + hit.key
+      : hit.what === 'feat' ? 'feat:' + hit.key
+      : hit.what === 'adChest' ? 'adChest:' + hit.key
       : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';
@@ -342,8 +394,9 @@ addEventListener('pointerdown', (e) => {
     // The hero comb and the rewards tab are both taller than the screen, so a press on either
     // might be a scroll. It is settled on release: moved a little, it was a tap; moved a lot, it
     // was a drag.
-    if (scrolls(data.tab) && !show.settings) {
-      drag = { tab: data.tab, y: p.y, from: scrollOf(data.tab), moved: 0 };
+    const what = scroller();
+    if (what && !show.settings) {
+      drag = { tab: what, y: p.y, from: scrollOf(what), moved: 0 };
       return;
     }
     doMenu(menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr));
@@ -391,9 +444,11 @@ addEventListener('pointerup', (e) => {
 addEventListener('pointercancel', () => { drag = null; });
 
 addEventListener('wheel', (e) => {
-  if (screen !== 'menu' || !scrolls(data.tab) || show.settings) return;
+  if (screen !== 'menu' || show.settings) return;
+  const what = scroller();
+  if (!what) return;
   e.preventDefault();
-  setScroll(data.tab, scrollOf(data.tab) + e.deltaY);
+  setScroll(what, scrollOf(what) + e.deltaY);
 }, { passive: false });
 
 addEventListener('keydown', (e) => {

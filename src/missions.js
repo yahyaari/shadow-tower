@@ -106,6 +106,77 @@ export function pays(job, level) {
   };
 }
 
+// --- the week -----------------------------------------------------------------------------------
+
+/**
+ * Seven days in a row, and what the seventh pays.
+ *
+ * The streak counts days the game was opened and something was done, not days the player logged
+ * in and left. It wraps at seven rather than running for ever: an unbroken number that only ever
+ * goes up is a number you stop looking at, and a week is short enough to start again after one
+ * missed day without feeling like a loss.
+ */
+export const Week = 7;
+
+export const WeekPays = { gems: 250, gold: 4 };
+
+/** Where in the week a streak is. Day seven is the one that pays. */
+export const weekAt = (run) => Math.max(0, Math.min(Week, Math.floor(run || 0)));
+
+export const weekDue = (run) => weekAt(run) >= Week;
+
+export function weekPays(level) {
+  return {
+    gems: WeekPays.gems,
+    gold: Math.round((goldUnitOf(level) * WeekPays.gold) / 5) * 5,
+  };
+}
+
+/** Whether two local dates are one day apart. Both are 'YYYY-MM-DD'. */
+export function nextDay(before, after) {
+  if (!before || !after) return false;
+  const a = new Date(before + 'T00:00:00');
+  const b = new Date(after + 'T00:00:00');
+  return Math.round((b - a) / 86400000) === 1;
+}
+
+// --- the long list ------------------------------------------------------------------------------
+
+/**
+ * Achievements: one-time milestones, measured against the account rather than the day.
+ *
+ * They pay gems, and they are the one gem source that is neither a first clear nor a daily - but
+ * they cannot be farmed either, because each is paid once in the life of an account.
+ */
+export const Feats = [
+  { key: 'runs10', of: 'runs', need: 10, gems: 40,
+    name: ['Ten runs', 'On koşu'] },
+  { key: 'runs100', of: 'runs', need: 100, gems: 150,
+    name: ['A hundred runs', 'Yüz koşu'] },
+  { key: 'kills1k', of: 'kills', need: 1000, gems: 50,
+    name: ['A thousand down', 'Bin düşman'] },
+  { key: 'kills10k', of: 'kills', need: 10000, gems: 180,
+    name: ['Ten thousand down', 'On bin düşman'] },
+  { key: 'deep5', of: 'best', need: 5, gems: 60,
+    name: ['Reach stage five', 'Beşinci bölüme ulaş'] },
+  { key: 'deep10', of: 'best', need: 10, gems: 200,
+    name: ['Reach stage ten', 'Onuncu bölüme ulaş'] },
+  { key: 'clean1', of: 'cleanStages', need: 1, gems: 40,
+    name: ['Finish one with every star', 'Bir bölümü üç yıldızla bitir'] },
+  { key: 'clean5', of: 'cleanStages', need: 5, gems: 160,
+    name: ['Five stages with every star', 'Beş bölümü üç yıldızla bitir'] },
+  { key: 'spellMax', of: 'topSpell', need: 10, gems: 150,
+    name: ['Raise a spell to the top', 'Bir büyüyü sonuna kadar çıkar'] },
+  { key: 'combHalf', of: 'hero', need: 25, gems: 120,
+    name: ['Half the comb', 'Peteğin yarısı'] },
+  { key: 'combAll', of: 'hero', need: 50, gems: 300,
+    name: ['The whole comb', 'Peteğin tamamı'] },
+  { key: 'chests10', of: 'chests', need: 10, gems: 80,
+    name: ['Open ten chests', 'On sandık aç'] },
+];
+
+export const featOf = (key) => Feats.find((f) => f.key === key) || null;
+
 /**
  * What a finished run is worth measuring against.
  *

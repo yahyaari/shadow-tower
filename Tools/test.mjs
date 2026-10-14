@@ -13,7 +13,7 @@ import {
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs } from '../src/meta.js';
+import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs, week, claimWeek, feats, claimFeat, lifetime, adsLeft, useAd } from '../src/meta.js';
 import {
   Wedges, amountAt, kindAt, Jackpot, wedgeFor, spellFor, unitOf, goldUnitOf, ShardUnit,
   Chests, ChestKinds, chestPrize, costOf, canOpen, Bulk, gemsHeld,
@@ -23,7 +23,10 @@ import {
 import { restFor, wedgeUnder } from '../src/menu.js';
 import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
+  Feats, featOf, Week, weekAt, weekDue, nextDay,
 } from '../src/missions.js';
+import { Allow as AdAllow, Kinds as AdKinds, ready as adsReady } from '../src/ads.js';
+import { News } from '../src/news.js';
 import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
 import {
   Families, FamilyKeys, Elements, Roles, takes, weakness, armour, familiesOn, StageFamilies,
@@ -608,6 +611,131 @@ check('koşudan koşuya değişiyor',
   check('hiçbir şey yapılmayan koşu her görevi bitirmiyor',
     weak.jobs.some((j) => !j.done), JSON.stringify(weak.jobs.map((j) => j.done)));
 }
+
+// --- yedi günlük seri -----------------------------------------------------------------------------
+
+check('hafta yedi gün', Week === 7);
+check('ardışık günler tanınıyor',
+  nextDay('2026-10-14', '2026-10-15') && !nextDay('2026-10-14', '2026-10-16'));
+check('ay sonu da ardışık', nextDay('2026-10-31', '2026-11-01'));
+check('yıl sonu da ardışık', nextDay('2026-12-31', '2027-01-01'));
+check('geriye giden gün ardışık değil', !nextDay('2026-10-15', '2026-10-14'));
+
+{
+  const d = tidy({ level: 6, loadout: ['bolt'] });
+  const days = ['2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19'];
+  days.forEach((day) => mark(d, 'clears', 1, day));
+  check('seri gün gün artıyor', week(d).run === 6, String(week(d).run));
+  check('yedinciden önce ödül yok', !week(d).due && claimWeek(d) === null);
+
+  // Ayni gun ne kadar oynarsan oyna seri bir artar. Sayfayi yedi kez acmakla kazanilan bir odul
+  // odul degildir.
+  mark(d, 'clears', 1, '2026-10-19');
+  mark(d, 'kills', 50, '2026-10-19');
+  check('aynı gün seriyi tekrar artırmıyor', week(d).run === 6, String(week(d).run));
+
+  mark(d, 'clears', 1, '2026-10-20');
+  const w = week(d);
+  check('yedinci gün ödül hazır', w.due && w.run === Week);
+  const was = { gems: d.gems, gold: d.gold };
+  const got = claimWeek(d);
+  check('hafta ödülü gem ve altın ödüyor',
+    got && got.gems > 0 && d.gems === was.gems + got.gems && d.gold === was.gold + got.gold,
+    JSON.stringify(got));
+  check('alınınca seri başa dönüyor', week(d).run === 0);
+  check('ikinci kez alınamıyor', claimWeek(d) === null);
+
+  // bir gun atlayinca sifirdan
+  mark(d, 'clears', 1, '2026-10-23');
+  check('bir gün kaçırınca seri birden başlıyor', week(d).run === 1, String(week(d).run));
+}
+
+// --- başarımlar -----------------------------------------------------------------------------------
+
+check('başarım listesi dolu', Feats.length >= 10);
+check('her başarımın adı iki dilde ve gem ödülü var',
+  Feats.every((f) => f.name && f.name[1] && f.gems > 0));
+check('başarım anahtarları benzersiz', new Set(Feats.map((f) => f.key)).size === Feats.length);
+check('her başarım ömürlük bir sayıya bakıyor', (() => {
+  const life = lifetime(tidy({ level: 1 }));
+  return Feats.every((f) => f.of in life);
+})(), Feats.filter((f) => !(f.of in lifetime(tidy({ level: 1 })))).map((f) => f.of).join(','));
+
+{
+  const d = tidy({ level: 6, loadout: ['bolt'] });
+  check('yeni hesapta hiçbiri bitmemiş', feats(d).every((f) => !f.done || f.need === 0));
+
+  d.runs = 10;
+  const one = feats(d).find((f) => f.key === 'runs10');
+  check('koşullar sağlanınca açılıyor', one.done && !one.paid, `${one.at}/${one.need}`);
+  const was = d.gems;
+  const got = claimFeat(d, 'runs10');
+  check('başarım gem ödüyor', got && d.gems === was + got.gems, JSON.stringify(got));
+  check('ikinci kez alınamıyor', claimFeat(d, 'runs10') === null);
+
+  // BU KURAL ONEMLI: basarim hayat boyu bir kez. Tekrar tekrar alinabilseydi gem farmlanabilir
+  // hale gelirdi ve gem'in tek ozelligi tam olarak bunun olmamasi.
+  d.runs = 10000;
+  check('sayı daha da artsa bile tekrar ödemiyor', claimFeat(d, 'runs10') === null);
+  check('alınmış olarak işaretli', feats(d).find((f) => f.key === 'runs10').paid === true);
+  check('bitmemiş olan alınamıyor', claimFeat(d, 'combAll') === null);
+  check('olmayan başarım alınamıyor', claimFeat(d, 'tarla') === null);
+}
+
+// --- reklam hakları -------------------------------------------------------------------------------
+
+check('her tür için günlük hak var', AdKinds.every((k) => AdAllow[k] >= 1));
+check('çark ve iki sandık için hak var',
+  AdKinds.includes('spin') && AdKinds.includes('small') && AdKinds.includes('great'));
+
+// SDK yokken reklam hazir olmamali. Hazir sayilsaydi butonlar reklamsiz odul dagitirdi ve gunde
+// uc bedava cark cevirme, ekonominin dayandigi kurali sessizce bozardi.
+check('SDK yokken reklam hazır değil', adsReady() === false);
+
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  const day = '2026-10-14';
+  check('gün başında haklar dolu', adsLeft(d, 'spin', day) === AdAllow.spin);
+  for (let i = 0; i < AdAllow.spin; i++) {
+    check(`${i + 1}. reklam kabul ediliyor`, useAd(d, 'spin', day) === true);
+  }
+  check('hak bitince reddediyor', useAd(d, 'spin', day) === false && adsLeft(d, 'spin', day) === 0);
+  check('bir türün hakkı ötekini etkilemiyor', adsLeft(d, 'small', day) === AdAllow.small);
+  check('ertesi gün haklar yenileniyor', adsLeft(d, 'spin', '2026-10-15') === AdAllow.spin);
+  check('olmayan tür için hak yok', adsLeft(d, 'tarla', day) === 0 && useAd(d, 'tarla', day) === false);
+}
+
+// Reklamla cevirme, gunun bedava cevirmesini HARCAMAMALI: fazladan bir tur, ayni turun iki kez
+// satin alinmasi degil.
+{
+  const d = tidy({ level: 5, loadout: ['bolt', 'frost'] });
+  const day = '2026-10-14';
+  const paid = spin(d, 0.4, day, 0, true);
+  check('reklam çevirmesi ödül veriyor', paid !== null);
+  check('günün bedava çevirmesi hâlâ duruyor', canSpin(d, day));
+  const free = spin(d, 0.4, day, 0);
+  check('bedava çevirme ayrıca alınabiliyor', free !== null && !canSpin(d, day));
+}
+
+// Reklamla sandik acmak gem harcamamali - reklam zaten odemedir.
+{
+  const d = tidy({ level: 5, loadout: ['bolt', 'frost'] });
+  d.gems = 0;
+  check('gemsiz sandık normalde açılmıyor', openChest(d, 'great', 1) === null);
+  const got = openChest(d, 'great', 1, true);
+  check('reklamla açılıyor', got !== null && got.runes > 0);
+  check('ve gem harcamıyor', d.gems === 0, String(d.gems));
+}
+
+// --- duyurular ------------------------------------------------------------------------------------
+
+check('duyuru listesi dolu', News.length >= 3);
+check('her duyurunun tarihi, başlığı ve metni iki dilde',
+  News.every((n) => /^\d{4}-\d{2}-\d{2}$/.test(n.at) && n.title && n.title[1] && n.body && n.body[1]),
+  News.filter((n) => !n.body || !n.body[1]).length + ' eksik');
+check('duyurular yeniden eskiye sıralı',
+  News.every((n, i) => i === 0 || News[i - 1].at >= n.at),
+  News.map((n) => n.at).join(' '));
 
 // --- bölümler ve yerler --------------------------------------------------------------------------
 

@@ -15,7 +15,9 @@ import {
 import { Steps as SpellSteps, stepOf, canStep } from './upgrades.js';
 import {
   dailyKeys, dailyOf, runKeys, runOf, runTally, progress, doneWith, pays, DailyCount,
+  Feats, featOf, Week, weekAt, weekDue, weekPays, nextDay,
 } from './missions.js';
+import { Allow as AdAllow, Kinds as AdKinds } from './ads.js';
 
 const Key = 'shadowtower';
 
@@ -42,6 +44,9 @@ const blank = {
   done: null,       // stage -> how many times it has been cleared
   tally: null,      // what has been done today, for the daily missions
   paid: null,       // which of today's missions have been collected
+  streak: null,     // { last, run } - days in a row, and the last one counted
+  feats: null,      // which achievements have been collected
+  ads: null,        // { day, spin, small, great } - rewarded adverts watched today
   chests: 0,
   gold: 0,          // shared, and what decides how many spells you can afford to raise
   shards: null,     // spell -> shards held; they decide which spell you are raising
@@ -109,14 +114,15 @@ export function buyHero(data) {
  * to work it out from the angle it happens to stop at. Returns null when there is no spin to
  * take, which is also what stops a second press during the animation from paying twice.
  */
-export function spin(data, roll = Math.random(), day = today(), pick = Math.random()) {
-  if (!canSpin(data, day)) return null;
+export function spin(data, roll = Math.random(), day = today(), pick = Math.random(), paidFor = false) {
+  if (!paidFor && !canSpin(data, day)) return null;
   const at = wedgeFor(roll);
   const kind = kindAt(at);
   const amount = amountAt(at, data.level || 1);
   const key = kind === 'shard' ? spellFor(data.loadout, pick) : null;
 
-  data.spun = day;
+  // An advert spin does not spend the free one: it is an extra turn, not the same turn twice.
+  if (!paidFor) data.spun = day;
   data.spins = (data.spins || 0) + 1;
   mark(data, 'spins', 1, day);
   if (kind === 'exp') data.bank = (data.bank || 0) + amount;
@@ -135,11 +141,11 @@ export const timesDone = (data, stage) => Math.max(0, (data.done || {})[stage] |
  * prize. Ten are bought as one purchase rather than ten in a row, because ten in a row would be
  * ten single prices and the discount is the whole point of the button.
  */
-export function openChest(data, kind, many = 1) {
+export function openChest(data, kind, many = 1, paidFor = false) {
   const n = Math.max(1, Math.floor(many));
-  if (!canOpen(data, kind, n)) return null;
+  if (!paidFor && !canOpen(data, kind, n)) return null;
   const prize = chestPrize(kind, data.level || 1, data.loadout || [], n);
-  data.gems -= prize.gems;
+  if (!paidFor) data.gems -= prize.gems;
   data.chests = (data.chests || 0) + n;
   mark(data, 'chests', n);
   data.bank = (data.bank || 0) + prize.exp;
@@ -162,6 +168,13 @@ export function mark(data, what, by = 1, day = today()) {
   if (!data.tally || data.tally.day !== day) {
     data.tally = { day, clears: 0, kills: 0, stars: 0, deepest: 0, chests: 0, raises: 0, spins: 0, hero: 0 };
     data.paid = [];
+  }
+  // The streak counts days on which something was DONE, not days the page was opened and left.
+  // Counted here rather than on load, so it cannot be run up by refreshing seven times.
+  if (!data.streak) data.streak = { last: null, run: 0 };
+  if (data.streak.last !== day) {
+    data.streak.run = nextDay(data.streak.last, day) ? weekAt(data.streak.run) + 1 : 1;
+    data.streak.last = day;
   }
   if (what === 'stars' || what === 'deepest') {
     // these two are a best, not a running total
@@ -201,6 +214,83 @@ export function claimDaily(data, key, day = today()) {
 /** The three this run is asking for. The map shows these before PLAY and the end screen scores them. */
 export function runJobs(data, stage = data.stage) {
   return runKeys(stage, data.runs || 0).map((key) => ({ key, job: runOf(key) }));
+}
+
+/** Where the week stands, and whether its prize is waiting. */
+export function week(data) {
+  const run = weekAt(data.streak ? data.streak.run : 0);
+  return { run, of: Week, due: weekDue(run), pays: weekPays(data.level || 1) };
+}
+
+/** Collects the seventh day. The count wraps, so the next week starts from nothing. */
+export function claimWeek(data) {
+  const w = week(data);
+  if (!w.due) return null;
+  data.streak.run = 0;
+  data.gems = (data.gems || 0) + w.pays.gems;
+  data.gold = (data.gold || 0) + w.pays.gold;
+  save(data);
+  return w.pays;
+}
+
+/** What the account has done in its life, for the achievements to be measured against. */
+export function lifetime(data) {
+  const levels = Object.values(data.spell || {});
+  return {
+    runs: data.runs || 0,
+    kills: data.kills || 0,
+    best: data.best || 0,
+    chests: data.chests || 0,
+    spins: data.spins || 0,
+    hero: data.hero || 0,
+    topSpell: levels.length ? Math.max(...levels) : 1,
+    cleanStages: Object.values(data.stars || {}).filter((n) => n >= 3).length,
+  };
+}
+
+export function feats(data) {
+  const life = lifetime(data);
+  return Feats.map((f) => ({
+    key: f.key, feat: f,
+    at: Math.min(f.need, Math.floor(life[f.of] || 0)),
+    need: f.need,
+    done: (life[f.of] || 0) >= f.need,
+    paid: (data.feats || []).includes(f.key),
+    gems: f.gems,
+  }));
+}
+
+/** Collects one achievement. Once in the life of an account, which is what stops it being farmed. */
+export function claimFeat(data, key) {
+  const one = feats(data).find((f) => f.key === key);
+  if (!one || !one.done || one.paid) return null;
+  data.feats.push(key);
+  data.gems = (data.gems || 0) + one.gems;
+  save(data);
+  return { gems: one.gems };
+}
+
+/** How many rewarded adverts are left today, per thing they buy. */
+export function adsLeft(data, kind, day = today()) {
+  if (!AdAllow[kind]) return 0;
+  const used = data.ads && data.ads.day === day ? (data.ads[kind] || 0) : 0;
+  return Math.max(0, AdAllow[kind] - used);
+}
+
+/**
+ * Books one watched advert. False when the day's allowance is gone.
+ *
+ * Only called once the advert has actually finished, so an advert the player closed costs nothing.
+ */
+export function useAd(data, kind, day = today()) {
+  if (adsLeft(data, kind, day) <= 0) return false;
+  if (!data.ads || data.ads.day !== day) {
+    data.ads = { day };
+    for (const k of AdKinds) data.ads[k] = 0;
+  }
+  data.ads[kind] = (data.ads[kind] || 0) + 1;
+  save(data);
+  return true;
 }
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
@@ -337,6 +427,24 @@ export function tidy(data) {
   }
   const paid = Array.isArray(data.paid) ? data.paid : [];
   data.paid = day ? paid.filter((k, i) => dailyOf(k) && paid.indexOf(k) === i) : [];
+
+  const streak = (data.streak && typeof data.streak === 'object') ? data.streak : {};
+  const lastDay = typeof streak.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(streak.last)
+    ? streak.last : null;
+  data.streak = {
+    last: lastDay,
+    run: lastDay ? Math.max(0, Math.min(Week, Math.floor(streak.run || 0))) : 0,
+  };
+
+  const feats = Array.isArray(data.feats) ? data.feats : [];
+  data.feats = feats.filter((k, i) => featOf(k) && feats.indexOf(k) === i);
+
+  // Watched adverts are per day like everything else, and a count over the day's allowance would
+  // be a button that is spent before it is pressed.
+  const ads = (data.ads && typeof data.ads === 'object') ? data.ads : {};
+  const adDay = typeof ads.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ads.day) ? ads.day : null;
+  data.ads = { day: adDay };
+  for (const k of AdKinds) data.ads[k] = adDay ? Math.max(0, Math.min(AdAllow[k], Math.floor(ads[k] || 0))) : 0;
 
   // How often each stage has been cleared. A junk key here would either hand out first-clear gems
   // for ever or withhold them for a stage nobody has played.
