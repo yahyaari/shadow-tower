@@ -6,24 +6,53 @@
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
 > `node Tools/test.mjs` → **426 kontrol geçiyor**.
 >
-> **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
-> var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
-> ateşten ×2.1, yıldırımdan ×0.55 alır). **Bu, loadout'u bölüme göre bir karar yapıyor** —
-> ölçüm: kurtlara karşı bıçak yığını ateş yığınından %19 fazla öldürüyor, örümceklere karşı tersi.
+> ## SIRADAKİ İŞ: SAHANIN BÖLÜME GÖRE DEĞİŞMESİ
 >
-> **Üç patron:** Gardiyan, Çağırıcı, Gölge. Patronların ailesi yok, nötr.
+> **Bu, oyunun şu anki en büyük açığı ve kullanıcı bunu yapmamı istedi.**
 >
-> **Dört para birimi:** deneyim, altın, parça, gem. Gem farmlanamaz.
+> Menüde 12 ayrı yer var (orman, ova, yol, taşlar, çukur, sırt, bataklık, mağara, yıkık köy,
+> buzul, kemik tarlası, kum denizi) ve her birinin kendi çizimi var. **Ama oyunun içindeki saha
+> hepsinde aynı.** Menü "Kum Denizi" diyor, OYNA'ya basıyorsun, aynı ölü ormandasın.
 >
-> **Sıradaki iş — hiçbiri seçilmedi:**
-> 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
-> 2. **Reklam** (CrazyGames SDK) · 3. **CrazyGames hazırlığı** · 4. **Müzik**
+> Sebebi: `src/draw.js` içindeki `Trees` sabiti. Modül seviyesinde, **sabit bir tohumla bir kez**
+> üretiliyor (`let s = 20260413`), ve bölümden hiç haberi yok. 52 öğe: %30 kaya, %70 ağaç.
+> Ön yay (oyuncuya en yakın 0.72 radyan) kasten boş bırakılıyor — oradaki bir ağaç en büyük
+> çiziliyor, yazının üstüne biniyor ve düşmanların girdiği yere denk geliyor.
 >
-> **Kullanıcının cevaplamadığı sorular:** ailelerin zayıflık/zırh oranları (×2.1 / ×0.55) doğru
-> mu; 4. aile "Kurtlar" olarak seçildi, uygun mu; bölüm-aile eşlemesi doğru mu.
+> **Yapılacak:** sahne bölümün `look`'una göre üretilsin. 12 görünümün çizim kuralları
+> `src/menu.js` içindeki `portrait()`'te zaten var (`Hills`, `Count`, ve her `look` için bir dal)
+> — sıfırdan yazmak değil, uyarlamak. `stageOf(n).look` ile `src/stages.js`'ten geliyor,
+> `Looks` listesi de orada.
 >
-> **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
-> birleşip yeni bir büyü doğurması.
+> Dikkat: `Trees` modül seviyesinde sabit olduğu için `begin()` çağrıldığında yeniden
+> üretilmesi gerekir; `frame()` her karede çağrılıyor, orada üretmek olmaz.
+>
+> ## Bundan sonrası (hiçbiri seçilmedi)
+>
+> 1. **Müzik** — ses efektleri var, müzik yok. Dosyasız üretilebilir (ses efektleri zaten öyle).
+> 2. **Büyü birleştirme** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
+> 3. **Gerçek parmakla test** — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
+> 4. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
+>
+> ## Enerji — karar verildi, SDK'ya bırakıldı
+>
+> Depo **60**, koşu **5**, %100 bitirişte **+5** iade, dakikada **2** yenilenme. SDK ile birlikte,
+> "enerjin bitti → reklam izle doldur" üstüne kurulacak. CrazyGames enerji yasaklamıyor
+> (kontrol edildi), itiraz ekonomikti: gelir oynanma süresine bağlı ve satacak bir şey yok.
+>
+> ## Bitmiş olanlar
+>
+> Oyun döngüsü · bölüm seçimi + yıldızlar · 10 büyü / 48 yükseltme / 41 dönüşüm (24'ü kombo
+> kilitli) · **üç patron** (Gardiyan/Çağırıcı/Gölge) · **dört düşman ailesi + element direnci** ·
+> **12 yer** · **dört para birimi** (deneyim/altın/parça/gem) · gem farmlanamaz · **iki sandık +
+> 10x** · **kalıcı büyü seviyeleri** · 50 hücreli kahraman peteği · **görevler** (günlük + koşu) ·
+> **7 günlük seri** · **12 başarım** · **reklam dikişi** · beş sekmeli menü · külliyat · iki dil ·
+> 1x-1.5x-2x hız · dosyasız ses.
+>
+> ## Kullanıcının cevaplamadığı sorular
+>
+> Aile çarpanları (×2.1 / ×0.55) · kahraman basamak fiyatları · bölüm uzunluğu (~1:45) ·
+> gem temposu · hafta ödülü (250 gem) · başarım ödülleri.
 
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
