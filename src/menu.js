@@ -597,15 +597,67 @@ function portrait(ctx, r, stage, look) {
   // --- far shapes, faint
   ctx.fillStyle = Black;
   ctx.globalAlpha = 0.22;
-  if (look === 'ridge' || look === 'hollow') {
+  const Hills = { ridge: 0.3, hollow: 0.14, ice: 0.34, marsh: 0.08 };
+  if (Hills[look] !== undefined) {
+    // One profile across the back, shaped differently by place: a ridge is a skyline, dunes roll,
+    // a marsh is almost flat, and ice is jagged rather than rounded.
     ctx.beginPath();
     ctx.moveTo(r.x, floor);
-    for (let x = 0; x <= 1.001; x += 0.08) {
-      const hgt = (look === 'ridge' ? 0.3 : 0.14) * r.h * (0.5 + Math.sin(x * 9 + stage) * 0.5);
-      ctx.lineTo(r.x + r.w * x, floor - hgt);
+    for (let x = 0; x <= 1.001; x += look === 'ice' ? 0.045 : 0.08) {
+      const wave = look === 'ice'
+        ? Math.abs(Math.sin(x * 23 + stage)) * 0.9 + 0.1
+        : look === 'dunes'
+          ? 0.5 + Math.sin(x * 4.2 + stage) * 0.5
+          : 0.5 + Math.sin(x * 9 + stage) * 0.5;
+      ctx.lineTo(r.x + r.w * x, floor - Hills[look] * r.h * wave);
     }
     ctx.lineTo(r.x + r.w, floor);
     ctx.closePath(); ctx.fill();
+
+  } else if (look === 'dunes') {
+    // Layered crests, each nearer one a little darker. One wave across the back was a flat line
+    // with nothing on it - sand only reads as sand when one ridge overlaps another.
+    for (let n = 0; n < 4; n++) {
+      const deep = n / 3;
+      const lift = r.h * (0.3 - deep * 0.06);
+      const slide = roll() * 6;
+      ctx.globalAlpha = 0.16 + deep * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(r.x, floor);
+      for (let x = 0; x <= 1.001; x += 0.05) {
+        const wave = Math.sin(x * (2.4 + n * 0.8) + slide) * 0.5 + 0.5;
+        ctx.lineTo(r.x + r.w * x, floor - lift * (0.25 + wave * 0.75) * (0.55 + deep * 0.45));
+      }
+      ctx.lineTo(r.x + r.w, floor);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 0.22;
+
+  } else if (look === 'cave') {
+    // A mound with a hole in it, rather than a grey wall with spikes - which is what filling the
+    // whole back with rock looked like. The mound is faint; the mouth is the only black thing in
+    // the picture, which is the point of it.
+    const mx = r.x + r.w * (0.26 + roll() * 0.14);
+    ctx.beginPath();
+    ctx.moveTo(r.x - r.w * 0.1, floor);
+    ctx.quadraticCurveTo(mx, floor - r.h * 0.95, r.x + r.w * 0.86, floor);
+    ctx.closePath(); ctx.fill();
+
+  } else if (look === 'ruin') {
+    // broken rooflines, each missing a different piece
+    for (let i = 0; i < 9; i++) {
+      const x = r.x + roll() * r.w;
+      const wd = (26 + roll() * 26) * scale;
+      const hgt = (30 + roll() * 40) * scale;
+      ctx.beginPath();
+      ctx.moveTo(x, floor);
+      ctx.lineTo(x, floor - hgt);
+      ctx.lineTo(x + wd * 0.5, floor - hgt - (roll() < 0.5 ? 14 * scale : 0));
+      ctx.lineTo(x + wd, floor - hgt * (0.4 + roll() * 0.5));
+      ctx.lineTo(x + wd, floor);
+      ctx.closePath(); ctx.fill();
+    }
+
   } else {
     for (let i = 0; i < 14; i++) {
       const x = r.x + roll() * r.w;
@@ -637,7 +689,10 @@ function portrait(ctx, r, stage, look) {
   ctx.fillStyle = Black;
   ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
-  const near = look === 'field' ? 5 : look === 'stones' ? 7 : look === 'road' ? 8 : 13;
+  const Count = {
+    field: 5, stones: 7, road: 8, marsh: 16, cave: 11, ruin: 6, ice: 9, bones: 4, dunes: 5,
+  };
+  const near = Count[look] ?? 13;
   for (let i = 0; i < near; i++) {
     const x = r.x + (i / (near - 1)) * r.w + (roll() - 0.5) * r.w * 0.08;
     const hgt = (40 + roll() * 60) * scale;
@@ -649,6 +704,130 @@ function portrait(ctx, r, stage, look) {
       ctx.lineTo(x + 7 * scale, floor - hgt * 0.92);
       ctx.lineTo(x + 9 * scale, floor);
       ctx.closePath(); ctx.fill();
+
+    } else if (look === 'marsh') {
+      // reeds, in clumps, with a head on about half of them
+      ctx.lineWidth = 2.4 * scale;
+      for (let n = 0; n < 4; n++) {
+        const rx = x + (n - 1.5) * 5 * scale;
+        const rh = hgt * (0.4 + roll() * 0.5);
+        const bend = (roll() - 0.5) * 12 * scale;
+        ctx.beginPath();
+        ctx.moveTo(rx, floor);
+        ctx.quadraticCurveTo(rx + bend * 0.4, floor - rh * 0.6, rx + bend, floor - rh);
+        ctx.stroke();
+        if (roll() < 0.5) {
+          ctx.beginPath();
+          ctx.ellipse(rx + bend, floor - rh - 3 * scale, 2 * scale, 5 * scale, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+    } else if (look === 'cave') {
+      // The mouth is drawn once, on the first pass, and the rest of the passes are its teeth -
+      // cut out of it in the pale rather than drawn on in the black, so they read as gaps in the
+      // dark the way teeth in a silhouette have to.
+      const mx = r.x + r.w * 0.33;
+      const mw = r.w * 0.3;
+      const mh = r.h * 0.56;
+      const mouth = () => {
+        ctx.beginPath();
+        ctx.moveTo(mx - mw / 2, floor);
+        ctx.lineTo(mx - mw / 2, floor - mh * 0.45);
+        ctx.quadraticCurveTo(mx, floor - mh * 1.3, mx + mw / 2, floor - mh * 0.45);
+        ctx.lineTo(mx + mw / 2, floor);
+        ctx.closePath();
+      };
+      if (i === 0) {
+        mouth();
+        ctx.fill();
+      } else {
+        // Clipped to the mouth. Without it the teeth that fell outside the arch cut into the
+        // faint hill instead and read as marks floating in the sky.
+        ctx.save();
+        mouth();
+        ctx.clip();
+        ctx.globalCompositeOperation = 'destination-out';
+        const at = mx - mw * 0.4 + ((i - 1) / (near - 2)) * mw * 0.8;
+        const down = i % 2 === 0;
+        const t = (12 + roll() * 16) * scale;
+        ctx.beginPath();
+        if (down) {
+          const top = floor - mh * (0.62 + roll() * 0.42);
+          ctx.moveTo(at - 6 * scale, top); ctx.lineTo(at, top + t); ctx.lineTo(at + 6 * scale, top);
+        } else {
+          ctx.moveTo(at - 6 * scale, floor); ctx.lineTo(at, floor - t); ctx.lineTo(at + 6 * scale, floor);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = Black;
+      }
+
+    } else if (look === 'ruin') {
+      // a standing piece of wall with a window gone out of it
+      const wd = (30 + roll() * 30) * scale;
+      const h2 = hgt * 0.9;
+      ctx.beginPath();
+      ctx.rect(x - wd / 2, floor - h2, wd, h2);
+      ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillRect(x - wd * 0.18, floor - h2 * 0.78, wd * 0.36, h2 * 0.34);
+      ctx.restore();
+      ctx.fillStyle = Black;
+
+    } else if (look === 'ice') {
+      // shards: straight edges, no curve anywhere
+      ctx.beginPath();
+      ctx.moveTo(x - 11 * scale, floor);
+      ctx.lineTo(x - 3 * scale, floor - hgt);
+      ctx.lineTo(x + 5 * scale, floor - hgt * 0.62);
+      ctx.lineTo(x + 12 * scale, floor);
+      ctx.closePath(); ctx.fill();
+
+    } else if (look === 'bones') {
+      // A rib cage arching out of the ground. Thin and close together it read as grass, so there
+      // are fewer of them, they are twice the weight, and the spine runs along the top of them.
+      ctx.lineWidth = 5 * scale;
+      const span = hgt * 0.75;
+      const wide = 13 * scale;
+      for (let n = 0; n < 5; n++) {
+        const at = x + (n - 2) * wide;
+        const rise = span * (1 - Math.abs(n - 2) * 0.18);
+        ctx.beginPath();
+        ctx.moveTo(at, floor);
+        ctx.quadraticCurveTo(at + 15 * scale, floor - rise * 0.7, at + 6 * scale, floor - rise);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 4 * scale;
+      ctx.beginPath();
+      ctx.moveTo(x - 2 * wide + 6 * scale, floor - span * 0.64);
+      ctx.quadraticCurveTo(x + 6 * scale, floor - span * 1.06, x + 2 * wide + 6 * scale, floor - span * 0.64);
+      ctx.stroke();
+      if (roll() < 0.6) {
+        ctx.beginPath();
+        ctx.ellipse(x - 3 * wide, floor - 9 * scale, 10 * scale, 9 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+    } else if (look === 'dunes') {
+      // the near crest, solid, cutting across the bottom of the picture
+      if (i === 0) {
+        ctx.beginPath();
+        ctx.moveTo(r.x, floor);
+        for (let t = 0; t <= 1.001; t += 0.05) {
+          ctx.lineTo(r.x + r.w * t, floor - r.h * 0.065 * (0.3 + Math.sin(t * 3.1 + 1.6) * 0.5 + 0.5));
+        }
+        ctx.lineTo(r.x + r.w, floor);
+        ctx.closePath(); ctx.fill();
+      }
+      // and almost nothing standing: a stalk, bent hard with the wind
+      ctx.lineWidth = 3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(x, floor);
+      ctx.quadraticCurveTo(x + 14 * scale, floor - hgt * 0.5, x + 34 * scale, floor - hgt * 0.55);
+      ctx.stroke();
+
     } else if (look === 'field' && i % 2) {
       ctx.beginPath();
       ctx.moveTo(x - 14 * scale, floor);

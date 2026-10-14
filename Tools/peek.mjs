@@ -103,8 +103,8 @@ await sleep(400);
 await screenshot('menu_map');
 
 // Harita, bolum bolum: ailelerin ve zayifliklarinin OYNA'nin yaninda gorunmesi gerekiyor.
-for (const stage of [2, 4, 6]) {
-  await evaluate(`(() => { const d = window.ShadowTower.meta; d.stars[${stage - 1}] = 1; d.stage = ${stage}; return true; })()`);
+for (const stage of [2, 4, 6, 7, 8, 9, 10, 11, 12]) {
+  await evaluate(`(() => { const d = window.ShadowTower.meta; for (let i = 1; i < ${stage}; i++) d.stars[i] = 1; d.stage = ${stage}; return true; })()`);
   await sleep(350);
   await screenshot('harita_bolum' + stage);
 }

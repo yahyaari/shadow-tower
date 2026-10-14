@@ -4,7 +4,7 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **340 kontrol geçiyor**.
+> `node Tools/test.mjs` → **348 kontrol geçiyor**.
 >
 > **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
 > var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
@@ -110,6 +110,27 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## On iki yer
+
+Altı yer vardı, altısı da sayıyla tekrar ediyordu: 7. bölüm "Uğursuz Orman 2" idi ve resmi 1.
+bölümle **birebir aynı** çiziliyordu. Altı yeni yer eklendi (bataklık, mağara ağzı, yıkık köy,
+buzul, kemik tarlası, kum denizi), hepsi listenin **sonuna** — böylece 1-6. bölümler aynen kaldı
+ve ölçülmüş denge kıpırdamadı.
+
+Üç ayrı döngü uzunluğu var ve bu kasten: **yer 12'de, aile deseni 8'de, patron 3'te** dönüyor.
+Yer + aile kombinasyonu ancak 24 bölümde bir tekrar ediyor, yani "Uğursuz Orman 2"ye
+döndüğünde orada başka şeyler yaşıyor.
+
+Resim hâlâ kodda üretiliyor: `look` bir dosya adı değil, bir yer türü. `Looks` listesi var çünkü
+portre tanımadığı bir görünüm için **sessizce çıplak ağaçlara düşüyor** — yanlış yazılmış bir
+görünüm hata vermez, ilk ormanı çizer ve kimse fark etmez. Test bu yüzden her yerin görünümünün
+listede olmasını, her görünümün kullanılmasını ve hiçbirinin iki kez kullanılmamasını kontrol
+ediyor.
+
+Üçü ilk çizimde okunmuyordu ve düzeltildi: **mağara** gri bir dikdörtgen artı dişti (artık tepeye
+açılmış siyah bir ağız, dişler ağzın içine kırpılıyor), **kemik tarlası** ot gibi görünüyordu
+(kaburgalar iki kat kalın, omurga da var), **kum denizi** boştu (üst üste binen kum sırtları).
 
 ## Dört düşman ailesi
 
@@ -409,7 +430,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | yol | ne yapar |
 | --- | --- |
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
-| `src/stages.js` | Bölüm adları ve görünümleri. Saf veri. |
+| `src/stages.js` | 12 yerin adı, tanıtımı ve görünümü + çizilebilen `Looks` listesi. |
 | `src/foes.js` | Düşman aileleri, elementler, direnç tablosu, bölüm→aile eşlemesi. Saf veri. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
@@ -421,7 +442,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 340 kontrol + bot. |
+| `Tools/test.mjs` | 348 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

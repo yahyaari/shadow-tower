@@ -21,7 +21,7 @@ import {
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
-import { kindsOn } from '../src/stages.js';
+import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
 import {
   Families, FamilyKeys, Elements, Roles, takes, weakness, armour, familiesOn, StageFamilies,
 } from '../src/foes.js';
@@ -492,6 +492,34 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   check('ama sıfırdan oynanamayacak kadar değil', pressure(hard) < pressure(easy) * 2.5,
     `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
 }
+
+// --- bölümler ve yerler --------------------------------------------------------------------------
+
+check('on iki ayrı yer var', Stages.length === 12, String(Stages.length));
+check('her yerin adı, tanıtımı ve görünümü var',
+  Stages.every((st) => st.name && st.name[0] && st.name[1] && st.blurb && st.blurb[1] && st.look));
+check('her yerin adı farklı',
+  new Set(Stages.map((st) => st.name[1])).size === Stages.length);
+
+// Portre, tanimadigi bir `look` icin ciplak agaclara dusuyor. Yani yanlis yazilmis bir gorunum
+// hata vermez - sessizce ilk ormani cizer ve kimse fark etmez. Liste bu yuzden var.
+check('her yerin görünümü çizilebiliyor',
+  Stages.every((st) => Looks.includes(st.look)),
+  Stages.filter((st) => !Looks.includes(st.look)).map((st) => st.look).join(', '));
+check('her görünüm en az bir yerde kullanılıyor',
+  Looks.every((l) => Stages.some((st) => st.look === l)),
+  Looks.filter((l) => !Stages.some((st) => st.look === l)).join(', '));
+check('aynı görünüm iki yerde kullanılmıyor',
+  new Set(Stages.map((st) => st.look)).size === Stages.length);
+
+// Listenin sonu gelince adlar sayiyla tekrar ediyor; resim de ayni, ama o bolumde yasayanlar
+// farkli olmali - yoksa 13. bolum 1. bolumun birebir aynisi olur.
+check('liste bitince adlar sayıyla dönüyor',
+  stageOf(Stages.length + 1).name[1] === Stages[0].name[1] + ' 2',
+  stageOf(Stages.length + 1).name[1]);
+check('aynı yere dönüldüğünde içinde yaşayanlar değişiyor',
+  familiesOn(1).join() !== familiesOn(Stages.length + 1).join(),
+  `1. ${familiesOn(1).join('+')} vs ${Stages.length + 1}. ${familiesOn(Stages.length + 1).join('+')}`);
 
 // --- düşman aileleri ------------------------------------------------------------------------------
 
