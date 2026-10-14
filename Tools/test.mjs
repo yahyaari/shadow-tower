@@ -13,7 +13,7 @@ import {
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry, Fusions, fusionKeys, fusionOf, anySpell } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs, week, claimWeek, feats, claimFeat, lifetime, adsLeft, useAd } from '../src/meta.js';
+import { needFor, worth, goldFor, shardsFor, record, finish, doubleUp, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs, week, claimWeek, feats, claimFeat, lifetime, adsLeft, useAd } from '../src/meta.js';
 import {
   Wedges, amountAt, kindAt, Jackpot, wedgeFor, spellFor, unitOf, goldUnitOf, ShardUnit,
   Chests, ChestKinds, chestPrize, costOf, canOpen, Bulk, gemsHeld,
@@ -21,7 +21,10 @@ import {
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
-import { sceneryFor } from '../src/draw.js';
+import {
+  sceneryFor, runBtns, runPanel, runRows, PauseRows, endBtns, endKeys,
+  hitRun, hitRunPanel, hitEnd, speedBox,
+} from '../src/draw.js';
 import { Scale, Bar, Root, hzOf, beatOf, beatAt, walkFrom, nextDegree } from '../src/music.js';
 import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
@@ -614,6 +617,168 @@ check('koşudan koşuya değişiyor',
     weak.jobs.some((j) => !j.done), JSON.stringify(weak.jobs.map((j) => j.done)));
 }
 
+// --- koşu ekranının arayüzü -----------------------------------------------------------------------
+
+// Her sey gercek olculerle: bir telefon dik, bir masaustu yatay, bir de en yuksek piksel orani -
+// kutularin birbirine girdigi yer hep uclardan biri oldu.
+const screens = [[390, 844, 1], [390, 844, 2.4], [1280, 720, 1], [1280, 720, 2]];
+const over = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const mid = (b) => [b.x + b.w / 2, b.y + b.h / 2];
+
+check('iki köşe butonu hız düğmelerine değmiyor', screens.every(([w, h, r]) => {
+  const btn = runBtns(w, h, r);
+  const sp = speedBox(w, h, r);
+  return !over(btn.menu, sp) && !over(btn.cards, sp) && !over(btn.menu, btn.cards);
+}), 'üst sağda üç şey var ve üçü de basılabilir olmak zorunda');
+
+check('iki köşe butonu da ekranın içinde', screens.every(([w, h, r]) => {
+  const btn = runBtns(w, h, r);
+  return Object.values(btn).every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= w && b.y + b.h <= h);
+}));
+
+check('parmak büyüklüğünde', screens.every(([w, h, r]) =>
+  Object.values(runBtns(w, h, r)).every((b) => b.w >= 34 && b.h >= 34)),
+  'otuz dört piksel altı buton, basılmak isteyen bir buton değil');
+
+check('her köşe butonu kendi adını veriyor', screens.every(([w, h, r]) => {
+  const btn = runBtns(w, h, r);
+  return Object.entries(btn).every(([what, b]) => hitRun(w, h, ...mid(b), r) === what);
+}));
+
+check('butonların dışına basmak hiçbir şey açmıyor',
+  screens.every(([w, h, r]) => hitRun(w, h, w / 2, h / 2, r) === null));
+
+// --- duraklatma paneli
+check('duraklatma panelinde beş satır var', runRows({}, 'menu') === PauseRows.length
+  && PauseRows.join() === 'resume,sound,music,lang,leave');
+
+check('panel her ekrana sığıyor', screens.every(([w, h, r]) =>
+  [1, 5, 7].every((rows) => {
+    const q = runPanel(w, h, r, rows);
+    return q.box.x >= 0 && q.box.y >= 0
+      && q.box.x + q.box.w <= w && q.box.y + q.box.h <= h
+      && q.row(rows - 1).y + q.row(rows - 1).h <= q.box.y + q.box.h;
+  })), 'uzun bir kart listesi yüksek piksel oranında ekranın altından taşıyordu');
+
+check('panelin satırları üst üste gelmiyor', screens.every(([w, h, r]) => {
+  const q = runPanel(w, h, r, 7);
+  for (let i = 1; i < 7; i++) if (over(q.row(i - 1), q.row(i))) return false;
+  return true;
+}));
+
+check('duraklatma panelinin her satırı basılabilir', screens.every(([w, h, r]) =>
+  PauseRows.every((what, i) => {
+    const q = runPanel(w, h, r, PauseRows.length);
+    return hitRunPanel(w, h, ...mid(q.row(i)), r, 'menu', {}) === what;
+  })), 'çizilen ama basılamayan satır, olmayan satırdır');
+
+check('çarpı paneli kapatıyor', screens.every(([w, h, r]) =>
+  hitRunPanel(w, h, ...mid(runPanel(w, h, r, 5).close), r, 'menu', {}) === 'close'));
+
+check('panelin dışına basmak da kapatıyor',
+  screens.every(([w, h, r]) => hitRunPanel(w, h, 4, h - 4, r, 'menu', {}) === 'close'));
+
+// Kart listesinin satirlari okunmak icin, basilmak icin degil: uzerine basmak hicbir sey yapmaz,
+// yoksa listeyi okurken parmagin kaydigi yer paneli kapatirdi.
+check('kart listesinde satıra basmak paneli kapatmıyor', screens.every(([w, h, r]) => {
+  const st = { loadout: ['bolt'], passives: {}, kit: { bolt: {} }, sealed: [], fused: [] };
+  const q = runPanel(w, h, r, runRows(st, 'cards'));
+  return hitRunPanel(w, h, ...mid(q.row(0)), r, 'cards', st) === null;
+}));
+
+{
+  const s = begin(3, ['bolt', 'fireball', 'frost'], 1);
+  check('kart listesi taşınan büyü kadar satır istiyor',
+    runRows(s, 'cards') === carrying(s).length, `${runRows(s, 'cards')} / ${carrying(s).length}`);
+  s.passives.mend = 2;
+  check('takviyeler bir satır daha açıyor', runRows(s, 'cards') === carrying(s).length + 1);
+}
+
+// --- koşunun sonundaki butonlar
+{
+  const lost = { phase: 'lost', stage: 4 };
+  check('kaybedince iki buton var: yeniden ve menü',
+    endKeys(lost, {}).join() === 'again,menu');
+
+  // Kazanilan bolumu tekrar oynamak ile siradakine girmek ayri seyler. Menu zaten ilerlediyse
+  // buton SONRAKI BOLUM der; ilerlemediyse - eski bir bolum tekrar gecildiyse - YENIDEN OYNA.
+  const won = { phase: 'done', stage: 4 };
+  check('menü ilerlediyse sonraki bölüm deniyor',
+    endKeys(won, { nextStage: 5, won: {} }).join() === 'next,menu');
+  check('ilerlemediyse yeniden oyna deniyor',
+    endKeys(won, { nextStage: 4, won: {} }).join() === 'again,menu');
+  check('reklam hakkı varsa 2x butonu başta',
+    endKeys(won, { nextStage: 5, won: {}, adsDouble: 3 }).join() === 'double,next,menu');
+  check('bir kez ikiye katlandıysa buton gidiyor',
+    endKeys(won, { nextStage: 5, won: {}, adsDouble: 3, doubled: { gold: 1 } }).join() === 'next,menu');
+  check('kaybedince 2x teklif edilmiyor',
+    endKeys(lost, { adsDouble: 3, won: {} }).join() === 'again,menu',
+    'ikiye katlanacak bir ödül yok');
+
+  check('bitiş butonları ekranın içinde ve üst üste değil', screens.every(([w, h, r]) =>
+    [['again', 'menu'], ['double', 'next', 'menu']].every((keys) => {
+      const btns = endBtns(w, h, r, keys);
+      const list = keys.map((k) => btns[k]);
+      if (!list.every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= w && b.y + b.h <= h)) return false;
+      for (let i = 1; i < list.length; i++) if (over(list[i - 1], list[i])) return false;
+      return true;
+    })));
+
+  check('her bitiş butonu kendi adını veriyor', screens.every(([w, h, r]) => {
+    const sh = { nextStage: 5, won: {}, adsDouble: 3 };
+    const keys = endKeys(won, sh);
+    const btns = endBtns(w, h, r, keys);
+    return keys.every((k) => hitEnd(w, h, ...mid(btns[k]), r, won, sh) === k);
+  }));
+
+  check('bitiş ekranının boşluğuna basmak hiçbir şey yapmıyor',
+    screens.every(([w, h, r]) => hitEnd(w, h, w / 2, 30 * r, r, won, { nextStage: 5, won: {} }) === null),
+    'eskiden her yere basmak kaybettiğin bölüme geri sokuyordu');
+}
+
+// --- reklamın ikiye katladığı ödül
+{
+  const d = tidy({ level: 6, loadout: ['bolt', 'fireball'] });
+  const won = finish(d, 2, 300, 300, 260, { bolt: 4, fireball: 2 });
+  const gold = d.gold, gems = d.gems, bank = d.bank || 0;
+  const held = { ...d.shards };
+
+  const again = doubleUp(d, won);
+  check('reklam ödülün aynısını bir kez daha ödüyor',
+    d.gold === gold + (won.gold || 0) && d.gems === gems + (won.gems || 0)
+    && (d.bank || 0) === bank + won.earned,
+    `altın ${gold}->${d.gold}, gem ${gems}->${d.gems}`);
+  check('parçalar da büyü büyü ikiye katlanıyor',
+    Object.entries(won.shards).every(([k, n]) => d.shards[k] === (held[k] || 0) + n),
+    'parçayı atlayan bir 2x, beslediğin büyüyü atlıyor demektir');
+  check('ne ödediğini söylüyor',
+    again && again.gold === won.gold && again.earned === won.earned);
+
+  check('ikinci basış hiçbir şey ödemiyor', (() => {
+    const was = d.gold;
+    const twice = doubleUp(d, won);
+    return twice === null && d.gold === was;
+  })(), 'bir reklam bir ödül');
+  check('bitiş ekranı artık 2x göstermiyor',
+    endKeys({ phase: 'done', stage: 2 }, { won, adsDouble: 3, nextStage: 3, doubled: again })
+      .includes('double') === false);
+}
+
+// Gemler ikiye katlanabilir ve bu farmlamaya kapi acmaz: gem ILK geciste dusuyor, yani bu ancak
+// bir bolumun hayatinda bir kez odedigi seyi ikiye katlayabilir. Olculdu, tahmin edilmedi:
+{
+  const d = tidy({ level: 6, loadout: ['bolt'] });
+  const first = finish(d, 3, 300, 300, 300, { bolt: 3 });
+  doubleUp(d, first);
+  const after = d.gems;
+  for (let i = 0; i < 30; i++) {
+    const w = finish(d, 3, 300, 300, 300, { bolt: 3 });
+    doubleUp(d, w);
+  }
+  check('reklamla bile aynı bölüm gem madeni olmuyor', d.gems - after < first.gems * 2,
+    `ilk geçiş ${first.gems}x2, sonraki otuz geçiş toplam ${d.gems - after}`);
+}
+
 // --- birleşmeler ----------------------------------------------------------------------------------
 
 check('dört birleşme var', fusionKeys.length === 4, fusionKeys.join(', '));
@@ -1172,12 +1337,16 @@ check('her patronun adı ve açıklaması var',
 // --- yıldızlar ----------------------------------------------------------------------------------
 
 {
+  // Uc esik: bitirdin (1), duvarda bir sey kaldi (2), duvara dokunulmadi (3). Eskiden %60 ve %95
+  // vardi, yani iki yildiz da oyuncunun kenarini hissedemedigi ikinci bir puanlamaydi.
   check('tam duvarla üç yıldız', starsFor(300, 300) === 3);
-  check('%95 üstü iki yıldız', starsFor(286, 300) === 2 && starsFor(299, 300) === 2);
-  check('%60 üstü bir yıldız', starsFor(190, 300) === 1 && starsFor(284, 300) === 1);
-  check('%60 altı yıldız yok', starsFor(170, 300) === 0);
+  check('%5 üstü iki yıldız',
+    starsFor(16, 300) === 2 && starsFor(299, 300) === 2 && starsFor(190, 300) === 2);
+  check('%5 altı bir yıldız', starsFor(14, 300) === 1 && starsFor(1, 300) === 1);
+  check('bitiren hiçbir zaman sıfır yıldız almıyor', starsFor(0, 300) === 1,
+    'bölümü bitirmek kendi başına bir yıldız eder');
   check('sıradaki yıldızın eşiği söyleniyor',
-    nextStarAt(0) === 60 && nextStarAt(1) === 95 && nextStarAt(2) === 100 && nextStarAt(3) === null);
+    nextStarAt(1) === 5 && nextStarAt(2) === 100 && nextStarAt(3) === null);
 }
 
 {
@@ -1190,8 +1359,8 @@ check('her patronun adı ve açıklaması var',
   check('bölüm bitince sonraki açılıyor', stageOpen(d, 2) && furthestStage(d) === 2);
   check('bölüm bitince menü sonrakine geçiyor', d.stage === 2, String(d.stage));
 
-  const worse = finish(d, 1, 100, 300, 400);
-  check('kötü bir tekrar kazanılmış yıldızı geri almıyor', starsAt(d, 1) === 3 && worse.stars === 0);
+  const worse = finish(d, 1, 10, 300, 400);
+  check('kötü bir tekrar kazanılmış yıldızı geri almıyor', starsAt(d, 1) === 3 && worse.stars === 1);
 
   const better = finish(d, 2, 290, 300, 400);
   check('ikinci bölüm de kaydediliyor', starsAt(d, 2) === 2 && better.beat === true);

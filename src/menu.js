@@ -354,7 +354,7 @@ export function spellHalves(w, h, dpr = 1) {
 export function raiseRows(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  const top = b.top + 92 * U;
+  const top = b.top + 104 * U;
   const gap = 6 * U;
   // Two columns on a wide screen. In one column the ten rows have to share the band's height and
   // on a desktop that leaves 38 pixels for two lines of writing - the rows overran each other.
@@ -1186,7 +1186,15 @@ function purse(ctx, data, x, y, U, shownExp = null, withGems = false) {
  */
 function coins(ctx, data, x, y, U) {
   coin(ctx, x + 8 * U, y, 8 * U, Black, Pale);
-  write(ctx, String(Math.round(data.gold || 0)), x + 22 * U, y, 20 * U, 800, 'left');
+  const gold = String(Math.round(data.gold || 0));
+  write(ctx, gold, x + 22 * U, y, 20 * U, 800, 'left');
+
+  // Runes as well. This screen spends both and only ever named one of them.
+  ctx.font = `800 ${20 * U}px ${Face}`;
+  const at = x + 22 * U + ctx.measureText(gold).width + 24 * U;
+  const total = Object.values(data.shards || {}).reduce((a, b) => a + b, 0);
+  shard(ctx, at + 6 * U, y, 7 * U, Black);
+  write(ctx, String(total), at + 18 * U, y, 20 * U, 800, 'left');
 }
 
 /** The mark that says what a prize is paid in. */
@@ -1727,10 +1735,12 @@ function raiseTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
   const rows = raiseRows(w, h, U);
   const left = rows.length ? rows[0].x : Math.max(16 * U, w / 2 - 260 * U);
-  coins(ctx, data, left, b.top + 58 * U, U);
+  coins(ctx, data, left, b.top + 56 * U, U);
+  // The line of explanation gets its own row. Beside the purse it sat on the rune total, which is
+  // the number this screen was added to show.
   ctx.globalAlpha = 0.6;
-  fitWrite(ctx, say(UI.raiseHow), left + rows[0].w, b.top + 58 * U,
-    10 * U, 600, 'right', Black, rows[0].w * 0.62);
+  fitWrite(ctx, say(UI.raiseHow), left + rows[0].w / 2, b.top + 84 * U,
+    10 * U, 600, 'center', Black, rows[0].w);
   ctx.globalAlpha = 1;
 
   for (const r of rows) {
@@ -1806,13 +1816,13 @@ function raiseTab(ctx, data, w, h, U, show) {
     coin(ctx, rx - gw - 10 * U, lo, cost * 0.46, ink, back);
     ctx.globalAlpha = 1;
 
-    // what you hold, beside the cost, only while it is the thing standing in the way
-    if (!enoughShards) {
-      ctx.globalAlpha = 0.55;
-      fitWrite(ctx, say(UI.shardsHeld, held), rx - sw - 20 * U, hi,
-        Math.min(9 * U, r.h * 0.17), 600, 'right', ink, r.w * 0.28);
-      ctx.globalAlpha = 1;
-    }
+    // What you hold, always - not only when it is the thing standing in the way. Shown only on
+    // the rows that were short, a player with enough runes had no way to know they had any, and
+    // the screen asked for a currency it never displayed.
+    ctx.globalAlpha = enoughShards ? 0.5 : 0.75;
+    fitWrite(ctx, say(UI.shardsHeld, held), rx - sw - 20 * U, hi,
+      Math.min(9 * U, r.h * 0.17), 600, 'right', ink, r.w * 0.28);
+    ctx.globalAlpha = 1;
   }
 
 }

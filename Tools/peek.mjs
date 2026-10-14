@@ -31,7 +31,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = [];
 let bad = 0;
 
-const watchdog = setTimeout(() => { console.log("ZAMAN AŞIMI"); browser.kill(); process.exit(2); }, 90000);
+// Doksan saniye, kosu ekraninin kendi fiksturleri eklenene kadar yetiyordu. Patronlar gercek
+// zamanda dovusuyor ve her yeni fikstur bu butceden yiyor.
+const watchdog = setTimeout(() => { console.log("ZAMAN AŞIMI"); browser.kill(); process.exit(2); }, 180000);
 
 let target;
 for (let i = 0; i < 60 && !target; i++) {
@@ -67,7 +69,48 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   ws.send(JSON.stringify({ id, method, params }));
 });
 
-const evaluate = async (e) => (await send("Runtime.evaluate", { expression: e, returnByValue: true })).result?.result?.value;
+/**
+ * Sayfada bir ifade degerlendirir.
+ *
+ * Patlayan bir ifade sessizce `undefined` donuyordu, yani "havadaki vurus sayisi: undefined"
+ * satiri hem "sifir tane var" hem "ifade patladi" anlamina geliyordu - ve olcmek icin yazilmis
+ * bir satirin soyleyebilecegi en kotu sey budur.
+ */
+const evaluate = async (e) => {
+  const r = (await send("Runtime.evaluate", { expression: e, returnByValue: true })).result;
+  if (r?.exceptionDetails) {
+    const why = r.exceptionDetails.exception?.description ?? r.exceptionDetails.text;
+    log.push(`[exception] ${e} -> ${why}`);
+    bad++;
+    throw new Error(why);
+  }
+  return r?.result?.value;
+};
+
+/**
+ * Bir kutunun ortasina gercek bir basis.
+ *
+ * `box` oyunun kendi olcusunu veren bir ifade - tuvalin pikselleriyle. Burada CSS pikseline
+ * cevrilip pencereye gercek bir `pointerdown` olarak gonderiliyor, yani parmagin gittigi
+ * dinleyiciye gidiyor. Kutuyu burada kendimiz hesaplasaydik yalnizca kendi aritmetigimizi
+ * dogrulamis olurduk.
+ */
+async function tap(box) {
+  const ok = await evaluate(`(() => {
+    const M = window.ShadowTower, C = document.getElementById('game');
+    const b = ${box};
+    if (!b) return 'kutu yok';
+    const r = C.getBoundingClientRect();
+    const k = C.width / r.width;
+    const x = r.left + (b.x + b.w / 2) / k;
+    const y = r.top + (b.y + b.h / 2) / k;
+    window.dispatchEvent(new PointerEvent('pointerdown', {
+      clientX: x, clientY: y, bubbles: true, cancelable: true, pointerType: 'touch',
+    }));
+    return 'ok';
+  })()`);
+  if (ok !== 'ok') console.log('  BASIS DUSTU: ' + box + ' -> ' + ok);
+}
 
 async function screenshot(name) {
   const r = await send("Page.captureScreenshot", { format: "png" });
@@ -80,8 +123,20 @@ await send("Page.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: phone ? 2 : 1, mobile: phone });
 await send("Page.navigate", { url });
 
+// Oyun gercekten acildi mi. Acilmadiysa burada duruyoruz: bos bir sayfa da fotograf cekilir ve
+// bembeyaz kirk kare, bakmadan "temiz" diye gecilen kirk karedir. `--phone` diye bir argumani
+// yoktu bu aracin, url sanildi, tarayici "--phone" adresine gitti ve butun kareler bos cikti.
 const deadline = Date.now() + 20000;
 while (Date.now() < deadline && !log.some((l) => l.includes("[ShadowTower] ready"))) await sleep(200);
+if (!log.some((l) => l.includes("[ShadowTower] ready"))) {
+  console.log('OYUN ACILMADI: ' + url);
+  for (const line of log) console.log('  ' + line);
+  if (!log.length) console.log('  konsolda tek satir yok');
+  console.log("kullanim: node Tools/peek.mjs <url> <klasor> [genislik] [yukseklik]");
+  clearTimeout(watchdog);
+  browser.kill();
+  process.exit(3);
+}
 await sleep(400);
 
 
@@ -380,7 +435,7 @@ await sleep(600);
 await screenshot('patron_golge_ikiye');
 
 // Bolum tamamlandi: uc ayri yildiz durumu
-for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bitti_1yildiz', 0.7]]) {
+for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.4], ['bitti_1yildiz', 0.02]]) {
   await evaluate(`(() => {
     const s = window.ShadowTower.state;
     // Ayni kosuyu tekrar bitiriyoruz; gercek akista start() bunlari sifirliyor.
@@ -408,6 +463,101 @@ for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bit
   }
   await sleep(500);
   await screenshot(name);
+}
+
+// Reklamli bitis ekrani: 2x odul butonu ve onun altindaki ikisi. SDK gelmedigi icin
+// `adsDouble` gercek akista sifir; burada elle veriyoruz, cizim dogru mu diye.
+await evaluate(`(() => { window.ShadowTower.show.adsDouble = 3; window.ShadowTower.show.nextStage = 4; return true; })()`);
+await sleep(350);
+await screenshot('bitti_reklamli');
+await evaluate(`(() => { window.ShadowTower.show.adsDouble = 0; return true; })()`);
+
+// Duvar yikildiginda: artik her yere basmak degil, iki buton.
+await evaluate(`(() => {
+  const m = window.ShadowTower, s = m.state;
+  s.phase = 'playing';
+  m.show.booked = false; m.show.won = null; m.show.doubled = null;
+  s.wall = 1;
+  s.foes.length = 0;
+  for (let i = 0; i < 6; i++) { const f = m.spawnOne(s, 'brute', (i / 6) * Math.PI * 2); f.r = 40; }
+  return true;
+})()`);
+for (let i = 0; i < 160; i++) {
+  if (await evaluate(`window.ShadowTower.state.phase === 'lost'`)) break;
+  await sleep(80);
+}
+await sleep(400);
+await screenshot('kaybettim');
+
+// --- kosu ekraninin kendi arayuzu
+// Gercek bir kosu: iki butonu da gercek basisla aciyoruz, posalayarak degil. Bir paneli elle
+// kurmak yalnizca kuran ile cizenin ayni fikirde oldugunu kanitlar.
+await evaluate(`(() => {
+  const m = window.ShadowTower;
+  m.start();
+  const s = m.state;
+  s.stage = 5;
+  s.level = 7;
+  s.kit.bolt = { tier: 3, taken: 11, boosts: { more: 1, pierce: 1, hit: 2 }, evos: ['split', 'burst'] };
+  s.kit.fireball = { tier: 2, taken: 6, boosts: { wider: 2 }, evos: ['fire'] };
+  s.kit.frost = { tier: 1, taken: 2, boosts: { deep: 1 }, evos: [] };
+  for (const k of ['fireball', 'frost']) { s.cools[k] = 0.4; if (!s.loadout.includes(k)) s.loadout.push(k); }
+  s.passives = { mend: 2 };
+  s.wall = s.maxWall * 0.78;
+  s.phase = 'playing';
+  m.show.hint = false;
+  for (let i = 0; i < 7; i++) { const f = m.spawnOne(s, ['walker','runner','brute'][i % 3], (i / 7) * Math.PI * 2); f.r = 250; }
+  return true;
+})()`);
+await sleep(600);
+
+// Vurus sayilari: bir an gercekten dovusmesini bekliyoruz, sonra hangi sayilarin havada
+// oldugunu sayiyoruz. Ekrana bakmak yetmez - bos bir kare de temiz gorunur.
+await evaluate(`(() => { const s = window.ShadowTower.state; s.heat = 0; s.xp = 0; return true; })()`);
+await sleep(1100);
+// Dovusurken seviye atlanirsa kart ekrani aciliyor ve sahada hicbir sey gorunmuyor. Kartlari
+// kapatip sahaya donuyoruz: cekmek istedigimiz sey dovus, kart degil.
+await evaluate(`(() => {
+  const s = window.ShadowTower.state;
+  if (s.phase === 'picking') { s.phase = 'playing'; s.choices = []; }
+  s.xp = 0;
+  return s.phase;
+})()`);
+await sleep(500);
+// Havada sayi OLDUGU bir kare bekliyoruz. Bir kare once saymak, "iki tane vardi" deyip hicbiri
+// gorunmeyen bir fotograf cekmek demek - olculen seyle cekilen sey ayni an olmak zorunda.
+let floats = 0;
+for (let i = 0; i < 60; i++) {
+  floats = await evaluate(`window.ShadowTower.show.floats.filter((f) => f.hit).length`);
+  if (floats >= 3) break;
+  await sleep(60);
+}
+console.log('  havadaki vurus sayisi: ' + floats);
+await screenshot('kosu_vurus_sayilari');
+
+// Sayilari bekleyen dongu de bir seviye atlatabiliyor. Butonlara basmadan once sahaya bir kez
+// daha donuyoruz: 'picking' sirasinda iki kose butonu ne ciziliyor ne basilabiliyor.
+await evaluate(`(() => {
+  const s = window.ShadowTower.state;
+  if (s.phase === 'picking') { s.phase = 'playing'; s.choices = []; }
+  s.xp = 0;
+  return s.phase;
+})()`);
+await sleep(300);
+
+for (const [what, name] of [['cards', 'kosu_kartlar'], ['menu', 'kosu_menu']]) {
+  // Butonlar yalnizca dovus surerken basilabilir, ve on dort kart kartlari 'picking'e dusurur.
+  // Basmadan once nerede oldugumuzu soyluyoruz: basis dustugunde sebebini aramak yerine okumak.
+  console.log(`  ${name}: ekran = ` + await evaluate(
+    `window.ShadowTower.screen + '/' + window.ShadowTower.state.phase`));
+  await tap(`window.ShadowTower.ui.runBtns(C.width, C.height, M.dpr).${what}`);
+  await sleep(450);
+  console.log(`  ${name}: panel = ` + await evaluate(`window.ShadowTower.show.paused`));
+  await screenshot(name);
+  // Kapatirken da gercek basisla: panelin disina.
+  await tap('{ x: 2, y: 2, w: 8, h: 8 }');
+  await sleep(250);
+  console.log(`  ${name}: kapandi mi = ` + await evaluate(`window.ShadowTower.show.paused === null`));
 }
 
 // Muzik gercekten caliyor mu? Duyamiyoruz; ses saatine kac nota verildigini sayabiliyoruz.

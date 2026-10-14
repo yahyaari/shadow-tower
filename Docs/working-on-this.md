@@ -346,9 +346,12 @@ Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca b
 | ayakta kalan duvar | yıldız |
 |---|---|
 | %100 | ★★★ |
-| %95+ | ★★☆ |
-| %60+ | ★☆☆ |
-| altı | bitirdin ama yıldız yok |
+| %5+ | ★★☆ |
+| altı | ★☆☆ |
+
+Üç eşik, üç cümle: **bitirdin** (1), **duvarda bir şey kaldı** (2), **duvara dokunulmadı** (3).
+Eskiden %60 ve %95'ti; ikisi de oyuncunun kenarını hissedemediği, yani hiçbir şey anlatmayan
+sayılardı. Bitiren hiçbir zaman sıfır yıldız almıyor.
 
 Yıldızlar her bölüm için **en iyisi** saklanıyor: kötü giden bir tekrar kazanılmışı geri almıyor,
 yoksa kimse tekrar denemezdi. Bir bölümü bitirmek sonrakini açıyor.
@@ -622,8 +625,8 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses + tek AudioContext (müzik de onu paylaşıyor). |
 | `src/music.js` | Dosyasız müzik. Düzenleme saf aritmetik, vuruş baskıdan geliyor. |
-| `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 472 kontrol + bot. |
+| `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını, `.ui` koşu ekranının ölçülerini verir. |
+| `Tools/test.mjs` | 501 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -695,6 +698,40 @@ darboğaz olduğu için iki kat simülasyon istemek kare hızını yarıya indir
 ilerlememiş gibi görünüyor. Bu yüzden adımlama `advance()` içine taşındı ve tuvalsiz test
 ediliyor — 2 saniyelik duvar saatinde 1x→2.0sn, 1.5x→3.0sn, 2x→4.0sn.
 
+## Koşu ekranının arayüzü
+
+Sahanın üstünde üç şey var ve üçü de sağ üst köşede: hız pilleri (`1x 1.5x 2x`), altında iki
+buton. Öldürülen sayısı onların altına indi — tam menü butonunun durduğu yerdeydi.
+
+| buton | ne açar |
+| --- | --- |
+| ☰ | **Duraklat**: devam et, ses, müzik, dil, koşudan çık |
+| ▤ | **Bu koşu**: taşınan her büyü, kademesi, elementi, dönüşümleri, yükseltmeleri, takviyeler |
+
+**İkisi de duraklatıyor.** Panel açıkken `advance` hiç çağrılmıyor; parçacıklar ve uçuşan sayılar
+da donuyor. Arkada yürümeye devam eden bir dalganın önünde okunan panel, koşuya mal olan paneldir.
+Panelin dışına basmak kapatıyor; `Esc` duraklatır, `Tab` kart listesini açar.
+
+"Koşudan çık" ne kaybettirdiğini söylüyor — yarıda bırakılan koşu hiçbir şey bankaya yazmıyor.
+
+### Vuruş sayıları
+
+`wound()` artık dirençten SONRAKİ hasarı olaya koyuyor; örümceğin üstünde çıkan sayı örümceğin
+yediği sayı, yoksa direnç tablosu anlatılan ama hiç görülmeyen bir şey olurdu.
+
+Sayılar **konuma göre birleşiyor**: aynı yere düşen ikinci vuruş, hâlâ yükselmekte olan sayıya
+ekleniyor. Birleştirmeden önce bir nova otuz yaratığa aynı anda düşünce ekran bembeyaz oluyordu.
+Havada en fazla 26 tane durabiliyor.
+
+### Koşunun sonu
+
+Artık "her yere bas" yok, buton var. Kaybedince **YENİDEN OYNA** / **ANA MENÜYE DÖN**; kazanınca
+menü ilerlediyse **SONRAKİ BÖLÜM**, ilerlemediyse yine yeniden oyna.
+
+Kazanınca en üstte **REKLAM İZLE · 2× ÖDÜL**: deneyim, altın, parça ve gem bir kez daha ödeniyor
+(`meta.doubleUp`). Gem'i de katlıyor ve bu farmlamaya kapı açmıyor, çünkü gem zaten ilk geçişte
+düşüyor — günde 3 hak. SDK gelene kadar `ads.ready()` false olduğu için buton hiç çıkmıyor.
+
 ## Derinlik mi genişlik mi — en uzun savaş
 
 Bu oyunda en çok uğraştığım şey: **tek bir büyüye yatırım yapmak, dört büyü taşımaktan iyi
@@ -717,7 +754,19 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 Şu an dolu loadout tek büyüden iyi ve testte ayrı bir kontrol olarak duruyor. Fark hâlâ mütevazı
 (4:13 vs 3:10) — gerçek oyunda loadout zaten hep dört, ama bu kontrol kanarya olarak kalsın.
 
-## Üç kere ölçüm aletini oyun sandım
+## Beş kere ölçüm aletini oyun sandım
+
+Bu projenin en sık tekrarlanan hatası. Her seferinde ölçen şey bozuktu, ölçülen şey değil:
+
+1. Çark fikstürü `turn` ile `won`'u ayrı ayrı uydurdu; ekran 275 derken yazı +195 diyordu.
+2. Dönüşüm boyutunu ALAN KARTI OLMAYAN bolt üzerinde ölçmeye çalıştım; sayı hiç değişmedi.
+3. Aile tablosunu hep 0. kartı alan bir bot ölçtü; oyun olduğundan çok daha zor göründü.
+4. `peek.mjs`'e olmayan bir `--phone` bayrağı verdim; tarayıcı "--phone" adresine gitti ve kırk
+   karenin hepsi bomboş çıktı — araç hiç şikâyet etmedi.
+5. Patlayan her `evaluate` sessizce `undefined` döndü, yani yukarıdaki boş kareler tam olarak
+   "ölçtüm" diye yazdığım satırların arkasında duruyordu.
+
+Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor, istisna fırlatıyor.
 
 ## Diğer bulgular
 
@@ -765,12 +814,32 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
   `speedBox`, `hitSpeed`, `settings`, `hitSettings` fonksiyonları da gitti — `look.mjs` konsolda
   "does not provide an export named hitSettings" diye yakaladı. Bu hatayı bu projede ikinci kez
   yaptım.
+- **Olmayan bir bayrağı aracın yuttuğunu varsayma.** `peek.mjs` konumsal argüman alıyor
+  (`<url> <klasör> <en> <boy>`); `--phone` yazınca o URL sanıldı, tarayıcı "--phone" adresine
+  gitti ve KIRK KARENİN HEPSİ BOMBOŞ çıktı. Araç hiç şikâyet etmedi. Artık oyun açılmazsa
+  duruyor — ölçüm aracını oyun sanmanın beşinci örneği.
+- **Patlayan bir `evaluate` sessizce `undefined` dönüyordu.** "havadaki vuruş sayısı: undefined"
+  satırı hem "hiç yok" hem "ifade patladı" demekti; ikisini ayıramayan bir ölçüm satırı ölçmüyor
+  demektir. Artık istisna konsola yazılıp fırlatılıyor — yukarıdaki boş kareler de böyle ortaya
+  çıktı.
+- **Ölçtüğün an ile çektiğin an aynı olmalı.** Vuruş sayılarını bir kare önce sayıp fotoğrafı
+  sonra çekince "3 tane var" deyip hiçbiri görünmeyen bir kare çıktı. Şimdi sayı havada OLDUĞU
+  kare bekleniyor.
+- **Fikstür kurmak koşuyu durdurmuyor.** Sahayı kurup bir saniye bekleyince oyun seviye atlayıp
+  kart ekranına geçti; köşe butonları o ekranda ne çiziliyor ne basılabiliyor, panel de hiç
+  açılmadı. Basmadan önce sahaya dönmek gerekiyor.
+- **Panel açıkken hiçbir şey adım atmamalı.** Duraklatma, panelin kendisi: `advance` çağrılmıyor,
+  parçacıklar ve uçuşan sayılar da donuyor. Arkada yürümeye devam eden bir dalganın önünde
+  okunan panel, koşuya mal olan paneldir.
+- **"Her yere bas" bir buton değildir.** Bitiş ekranı eskiden her basışı kabul ediyordu; kaybeden
+  oyuncuyu nedenini okumadan aynı bölüme geri sokuyordu. Artık sadece butonlar cevap veriyor.
+- **Reklamla 2x gem, farmlamaya kapı açmıyor** — çünkü gem zaten İLK geçişte düşüyor. Ölçüldü:
+  aynı bölümü otuz kez daha geçip her seferinde reklamı izlemek, ilk geçişin iki katından az
+  getiriyor.
 
 ## Yapılmadı
 
-- Müzik yok (ses efektleri var).
-- Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
-- Tek arena (patron üç tane, düşman ailesi dört tane).
+- Tek arena (patron üç tane, düşman ailesi dört tane, yer on iki tane).
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
 - Yıldızlar hiçbir şey satın almıyor; sadece bir geçişin kaç gem getireceğini belirliyorlar.
 - Gerçek parmakla oynanmadı.

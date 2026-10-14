@@ -4,7 +4,10 @@
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
 import { begin, advance, click, take, investedIn, spawn, carrying, pressure } from './rules.js';
-import { frame, hitCard, cards, hitSpeed } from './draw.js';
+import {
+  frame, hitCard, cards, hitSpeed, hitRun, hitRunPanel, hitEnd,
+  runBtns, runPanel, runRows, endBtns, endKeys,
+} from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, boardReach, boardShape, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
 import * as sound from './sound.js';
@@ -35,6 +38,15 @@ function fresh() {
     // between two of them - which looks like a spin that landed on nothing.
     turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
     board: null, boardScroll: 0, adMissing: 0,
+    // Which panel is open over the field, if any: 'menu' or 'cards'. Also the pause, because the
+    // panel and the pause are the same thing.
+    paused: null,
+    // Settings as the run screen needs to read them. `draw` has no business importing the sound,
+    // and the pause menu has to say whether it is on.
+    muted: false, music: true,
+    // The end screen's three answers: what the advert paid, how many are left today, and the
+    // stage the menu has moved on to.
+    doubled: null, adsDouble: 0, nextStage: 0,
   };
 }
 
@@ -64,9 +76,35 @@ function start() {
  * figure is simply gone on the next frame, and the thing the whole game is about would be the
  * one thing with no feedback at all.
  */
+/**
+ * A number over whatever was just hit.
+ *
+ * Capped and merged rather than one per strike: a nova landing on thirty creatures threw thirty
+ * numbers at the same instant and the screen went white. One float per creature position, and a
+ * second hit in the same place adds to the one already rising.
+ */
+function hitShow(e) {
+  if (!(e.dealt > 0)) return;
+  const near = show.floats.find((f) => f.hit
+    && Math.abs(f.x - e.x) < 26 && Math.abs(f.y - e.y) < 26 && f.life > 0.35);
+  if (near) {
+    near.sum += e.dealt;
+    near.text = String(Math.round(near.sum));
+    near.life = Math.max(near.life, 0.6);
+    return;
+  }
+  if (show.floats.length > 26) return;
+  show.floats.push({
+    hit: true, sum: e.dealt, text: String(Math.round(e.dealt)),
+    x: e.x, y: e.y, life: 0.8, rise: 0,
+    big: e.kind === 'killed',
+  });
+}
+
 function readEvents() {
   for (const e of state.events) {
     if (e.kind === 'killed') {
+      hitShow(e);
       sound.died(e.size > 2);
       for (let i = 0; i < 11 + e.size * 7; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -79,6 +117,7 @@ function readEvents() {
         });
       }
     } else if (e.kind === 'struck') {
+      hitShow(e);
       for (let i = 0; i < 3; i++) {
         const a = Math.random() * Math.PI * 2;
         show.bits.push({
@@ -136,10 +175,14 @@ function tick(now) {
   // How fast the whole thing runs. `advance` does the stepping; it is in the rules so it can be
   // tested without a canvas.
   show.speed = data.speed;
+  show.muted = sound.isMuted();
+  show.music = data.music !== false;
   // The bed keeps time with the same number the wave is spawned from, so it tightens as the
   // field fills and opens out again when it clears.
   music.feel(pressure(state));
-  const dts = advance(state, dt, data.speed, readEvents);
+  // A panel you read while the wave keeps walking is a panel that costs you the run. Nothing is
+  // stepped while one is open - not the fight, not the specks, not the floating numbers.
+  const dts = show.paused ? 0 : advance(state, dt, data.speed, readEvents);
 
 
   // Booked once: `step` runs every frame and a run that ended ten frames ago is still ended.
@@ -151,6 +194,10 @@ function tick(now) {
       show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills,
         investedIn(state),
         { level: state.level, evos: carrying(state).reduce((a, k) => a + state.kit[k].evos.length, 0) });
+      // Read once, here, rather than every frame: `finish` has just moved the account on, and
+      // these are the two things the buttons at the foot are decided by.
+      show.nextStage = data.stage;
+      show.adsDouble = ads.ready() ? meta.adsLeft(data, 'double') : 0;
       sound.cleared();
     } else {
       sound.over();
@@ -417,21 +464,26 @@ addEventListener('pointerdown', (e) => {
     return;
   }
 
-  // The speed control sits over the field, so it is read before a tap counts as a cast.
+  // A panel is open, so it is the only thing on the screen that answers a press - including the
+  // field behind it, which closes it rather than casting through it.
+  if (show.paused) {
+    doPause(hitRunPanel(canvas.width, canvas.height, p.x, p.y, dpr, show.paused, state));
+    return;
+  }
+
+  // The speed control and the two corner buttons sit over the field, so they are read before a
+  // tap counts as a cast.
   if (state.phase === 'playing') {
     const pace = hitSpeed(canvas.width, canvas.height, p.x, p.y, dpr);
     if (pace) { data.speed = pace; show.speed = pace; meta.save(data); return; }
+    const btn = hitRun(canvas.width, canvas.height, p.x, p.y, dpr);
+    if (btn) { show.paused = btn; return; }
   }
 
-  if (state.phase === 'done') {
-    // Back to the menu, which has already moved on to the stage this one opened.
-    screen = 'menu';
-    show = fresh();
-    return;
-  }
-  if (state.phase === 'lost') {
-    // Straight back into the same stage. Failing a stage you chose is a retry, not a trip home.
-    start();
+  // A finished run is answered by its buttons and by nothing else. It used to take a press
+  // anywhere, which on a loss put you back in the stage before you had read why you lost.
+  if (state.phase === 'done' || state.phase === 'lost') {
+    doEnd(hitEnd(canvas.width, canvas.height, p.x, p.y, dpr, state, show));
     return;
   }
   if (state.phase === 'picking') {
@@ -445,6 +497,58 @@ addEventListener('pointerdown', (e) => {
   click(state);
   show.hint = false;
 }, { passive: false });
+
+/**
+ * A row of the pause menu.
+ *
+ * The settings here are the same three the opening screen has and are saved the same way, so a
+ * language changed mid-run is the language the menu opens in.
+ */
+function doPause(what) {
+  if (!what || what === 'close' || what === 'resume') { show.paused = null; return; }
+  if (what === 'sound') {
+    sound.setMuted(!sound.isMuted());
+    data.muted = sound.isMuted();
+    meta.save(data);
+    return;
+  }
+  if (what === 'music') {
+    data.music = data.music === false;
+    music.setOn(data.music);
+    if (data.music) music.start('run');
+    meta.save(data);
+    return;
+  }
+  if (what === 'lang') {
+    const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
+    setLanguage(next);
+    data.lang = next;
+    meta.save(data);
+    return;
+  }
+  if (what === 'leave') { screen = 'menu'; show = fresh(); }
+}
+
+/**
+ * A button at the foot of a finished run.
+ *
+ * The advert is watched first and booked after, as everywhere else: an advert the player closed
+ * costs an allowance nothing and pays nothing.
+ */
+function doEnd(what) {
+  if (what === 'again' || what === 'next') { start(); return; }
+  if (what === 'menu') { screen = 'menu'; show = fresh(); return; }
+  if (what !== 'double') return;
+  if (!show.won || show.doubled || meta.adsLeft(data, 'double') <= 0) return;
+  ads.show().then((watched) => {
+    if (!watched || !meta.useAd(data, 'double')) { show.adMissing = performance.now(); return; }
+    const got = meta.doubleUp(data, show.won);
+    if (!got) return;
+    show.doubled = got;
+    show.adsDouble = meta.adsLeft(data, 'double');
+    sound.prize();
+  });
+}
 
 addEventListener('pointerup', (e) => {
   if (!drag) return;
@@ -476,6 +580,21 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (data.tab === 'map') start(); }
     return;
   }
+  // Escape is the pause, and the way out of either panel. Tab is the card list, because that is
+  // the one you want while you are deciding what to take next.
+  if (e.key === 'Escape') {
+    show.paused = show.paused ? null : 'menu';
+    return;
+  }
+  if (show.paused) {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); show.paused = null; }
+    return;
+  }
+  if (e.key === 'Tab' && state.phase === 'playing') {
+    e.preventDefault();
+    show.paused = 'cards';
+    return;
+  }
   if (state.phase === 'picking') {
     const n = Number(e.key);
     if (n >= 1 && n <= 3) take(state, n - 1);
@@ -500,6 +619,13 @@ window.ShadowTower = {
   // only ever proves that the poser and the painter agree; this goes through the same handler a
   // finger does, so a wheel that paid one wedge and stopped on another would show up.
   menu: doMenu,
+  // The run screen's presses, for the same reason: a panel a tool posed proves only that the
+  // poser and the painter agree.
+  pause: doPause, endPress: doEnd,
+  // Where the run screen's buttons actually are, and at what ratio they were measured. A tool
+  // that worked this out for itself would only ever check its own arithmetic.
+  get dpr() { return dpr; },
+  ui: { runBtns, runPanel, runRows, endBtns, endKeys },
 };
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

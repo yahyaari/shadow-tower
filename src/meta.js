@@ -306,14 +306,19 @@ export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
 export function starsFor(wall, maxWall) {
   const part = maxWall > 0 ? wall / maxWall : 0;
   if (part >= 1) return 3;
-  if (part >= 0.95) return 2;
-  if (part >= 0.6) return 1;
-  return 0;
+  if (part >= 0.05) return 2;
+  return 1;
 }
 
-/** How much of the wall the next star up would need, or null at three. */
+/**
+ * How much of the wall the next star up would need, or null at three.
+ *
+ * Finishing at all is worth one, finishing with anything left is worth two, and the third is the
+ * only one that asks for something: the wall untouched. The old thresholds were 60 and 95, which
+ * made the first two stars a second scoring system nobody could feel the edges of.
+ */
 export function nextStarAt(stars) {
-  return stars >= 3 ? null : stars === 2 ? 100 : stars === 1 ? 95 : 60;
+  return stars >= 3 ? null : stars === 2 ? 100 : 5;
 }
 
 /** Stage one is always there; each later one opens when the one before it has been finished. */
@@ -562,6 +567,61 @@ export function finish(data, stage, wall, maxWall, kills, taken = null, run = {}
   };
 }
 
+/**
+ * Banks experience, takes the levels it is worth, and opens what those levels open.
+ *
+ * Its own function because experience arrives from two places now - the end of a run, and the
+ * advert that doubles it - and a second copy of the level loop is a second place for the account
+ * to level up without the spell it earned ever reaching a loadout.
+ */
+function gainXp(data, earned) {
+  const wasLevel = data.level;
+  data.xp += earned;
+  data.bank = (data.bank || 0) + earned;
+  while (data.xp >= needFor(data.level)) {
+    data.xp -= needFor(data.level);
+    data.level += 1;
+  }
+  const opened = spellKeys.filter((k) => UnlockAt[k] > wasLevel && UnlockAt[k] <= data.level);
+  // A spell that has just unlocked goes straight into a loadout with room, so the next run
+  // actually uses it instead of waiting to be noticed on a screen nobody reads.
+  for (const k of opened) if (data.loadout.length < LoadoutSize) data.loadout.push(k);
+  return { wasLevel, levelled: data.level > wasLevel, opened };
+}
+
+/**
+ * Pays a finished run's reward a second time, for an advert.
+ *
+ * Everything the run paid, including the gems - which sounds like a hole in the one rule the
+ * economy has, and is not. Gems are paid on a FIRST clear, so this can only ever double what a
+ * stage was going to pay once in its life, and the day's allowance caps it besides.
+ *
+ * It takes the `won` the run already returned and marks it, so a second press pays nothing.
+ */
+export function doubleUp(data, won) {
+  if (!won || won.doubled) return null;
+
+  const again = {
+    earned: won.earned || 0,
+    gold: won.gold || 0,
+    gems: won.gems || 0,
+    shards: {},
+  };
+  data.gold = (data.gold || 0) + again.gold;
+  data.gems = (data.gems || 0) + again.gems;
+  for (const [k, n] of Object.entries(won.shards || {})) {
+    if (!spellKeys.includes(k) || !(n > 0)) continue;
+    again.shards[k] = n;
+    data.shards[k] = (data.shards[k] || 0) + n;
+  }
+  const grew = gainXp(data, again.earned);
+  save(data);
+
+  // Marked on the object the end screen is still reading, so the button that paid it disappears.
+  won.doubled = true;
+  return { ...again, ...grew };
+}
+
 export function record(data, stage, kills, taken = null, lift = 1) {
   const earned = Math.round(worth(stage, kills) * (1 + heroBonus(data).gain) * lift);
   const coin = Math.round(goldFor(stage, kills) * lift);
@@ -580,20 +640,10 @@ export function record(data, stage, kills, taken = null, lift = 1) {
   }
   data.gold = (data.gold || 0) + coin;
 
-  data.xp += earned;
-  data.bank = (data.bank || 0) + earned;
   data.runs = (data.runs || 0) + 1;
   data.kills = (data.kills || 0) + kills;
-  while (data.xp >= needFor(data.level)) {
-    data.xp -= needFor(data.level);
-    data.level += 1;
-  }
   if (stage > wasBest) data.best = stage;
-
-  const opened = spellKeys.filter((k) => UnlockAt[k] > wasLevel && UnlockAt[k] <= data.level);
-  // A spell that has just unlocked goes straight into a loadout with room, so the next run
-  // actually uses it instead of waiting to be noticed on a screen nobody reads.
-  for (const k of opened) if (data.loadout.length < LoadoutSize) data.loadout.push(k);
+  const { opened } = gainXp(data, earned);
 
   save(data);
   return {

@@ -349,16 +349,19 @@ const aimAt = (s, how) => (how === 'strong' ? strongest(s) : how === 'crowd' ? c
  */
 function wound(s, f, amount, chill = 0, element = null) {
   if (f.hp <= 0) return;
-  f.hp -= amount * takes(f.family, element);
+  // What actually landed, after the family's own table. The number shown over a spider has to be
+  // the number it took, or the resistances are a thing the player is told about and never sees.
+  const dealt = amount * takes(f.family, element);
+  f.hp -= dealt;
   f.hurt = 1;
   if (chill) f.chill = Math.max(f.chill, chill);
   const p = placeOf(f);
   if (f.hp <= 0) {
     s.kills += 1;
     s.xp += f.xp;
-    s.events.push({ kind: 'killed', x: p.x, y: p.y, size: f.size, xp: f.xp });
+    s.events.push({ kind: 'killed', x: p.x, y: p.y, size: f.size, xp: f.xp, dealt, element });
   } else {
-    s.events.push({ kind: 'struck', x: p.x, y: p.y, size: f.size });
+    s.events.push({ kind: 'struck', x: p.x, y: p.y, size: f.size, dealt, element });
   }
 }
 

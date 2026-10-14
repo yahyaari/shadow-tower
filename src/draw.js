@@ -1133,6 +1133,128 @@ export function speedBox(w, h, dpr = 1) {
   return { x: w - 22 * U - bw, y: 20 * U, w: bw, h: 30 * U };
 }
 
+/**
+ * The two buttons a run needs that are not the fight.
+ *
+ * Under the speed pills, in the corner, because the middle of the top bar is the stage and the
+ * boss and the left is the wall. Both of them pause: a panel you read while the wave keeps
+ * walking is a panel that costs you the run.
+ */
+export function runBtns(w, h, dpr = 1) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const sz = 36 * U;
+  const y = 58 * U;
+  return {
+    menu: { x: w - 22 * U - sz, y, w: sz, h: sz },
+    cards: { x: w - 22 * U - sz * 2 - 8 * U, y, w: sz, h: sz },
+  };
+}
+
+/**
+ * The panel both of those buttons open.
+ *
+ * The rows shrink to fit rather than running off the bottom: the card list is as long as the run
+ * made it, and at a high pixel ratio a fixed row height walked straight off a phone.
+ */
+export function runPanel(w, h, dpr = 1, rows = 3) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const pw = Math.min(440 * U, w - 36 * U);
+  const head = 84 * U;
+  const tail = 16 * U;
+  const ph = Math.min(h - 64 * U, head + tail + Math.max(1, rows) * 48 * U);
+  const rowH = Math.max(26 * U, (ph - head - tail) / Math.max(1, rows));
+  const x = w / 2 - pw / 2;
+  const y = h / 2 - ph / 2;
+  return {
+    box: { x, y, w: pw, h: ph },
+    close: { x: x + pw - 50 * U, y: y + 10 * U, w: 40 * U, h: 40 * U },
+    title: { x: x + 20 * U, y: y + 34 * U },
+    top: y + head,
+    rowH,
+    row: (i) => ({ x: x + 14 * U, y: y + head + i * rowH, w: pw - 28 * U, h: rowH - 6 * U }),
+  };
+}
+
+/** The rows the pause menu offers, in the order they are drawn. */
+export const PauseRows = ['resume', 'sound', 'music', 'lang', 'leave'];
+
+/**
+ * How many rows a panel has. Read by the geometry, the painter and the hit test alike, so a panel
+ * cannot be drawn with more rows than can be pressed.
+ */
+export function runRows(state, which) {
+  if (which === 'menu') return PauseRows.length;
+  const kept = Object.keys(state.passives || {}).filter((k) => Passives[k]);
+  return carrying(state).length + (kept.length ? 1 : 0);
+}
+
+/**
+ * What a finished run offers.
+ *
+ * Buttons rather than "tap anywhere". Tapping anywhere meant the run that had just ended threw
+ * you somewhere before you had read what it paid, and on a loss it threw you straight back into
+ * the stage that had just beaten you.
+ */
+export function endBtns(w, h, dpr = 1, keys = ['again', 'menu']) {
+  const U = Math.max(1, Math.min(2.4, dpr));
+  const bw = Math.min(300 * U, w - 72 * U);
+  const bh = 48 * U;
+  const gap = 9 * U;
+  const foot = Math.min(h - 24 * U, h * 0.94);
+  const top = foot - keys.length * bh - (keys.length - 1) * gap;
+  const out = {};
+  keys.forEach((k, i) => { out[k] = { x: w / 2 - bw / 2, y: top + i * (bh + gap), w: bw, h: bh }; });
+  return out;
+}
+
+/**
+ * Which buttons a finished run shows.
+ *
+ * `show.nextStage` is the stage the menu has moved on to. Replaying the stage you just cleared
+ * and walking into the next one are different things, and a button that said NEXT STAGE while
+ * restarting the same one would be lying twice over.
+ */
+export function endKeys(state, show) {
+  if (state.phase === 'lost') return ['again', 'menu'];
+  const on = (show.nextStage || 0) > state.stage ? 'next' : 'again';
+  const canDouble = (show.adsDouble || 0) > 0 && show.won && !show.doubled;
+  return canDouble ? ['double', on, 'menu'] : [on, 'menu'];
+}
+
+function within(b, px, py) {
+  return !!b && px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+}
+
+/** The two top-corner buttons. Null when the press was not on either. */
+export function hitRun(w, h, px, py, dpr = 1) {
+  const r = runBtns(w, h, dpr);
+  for (const [what, box] of Object.entries(r)) if (within(box, px, py)) return what;
+  return null;
+}
+
+/**
+ * A press while a panel is open.
+ *
+ * Returns the row's name, 'close' for the cross or for anything outside the panel, and null for
+ * a press that landed on the panel but not on a row - which closes nothing.
+ */
+export function hitRunPanel(w, h, px, py, dpr, which, state) {
+  const rows = runRows(state, which);
+  const r = runPanel(w, h, dpr, rows);
+  if (within(r.close, px, py)) return 'close';
+  if (!within(r.box, px, py)) return 'close';
+  if (which !== 'menu') return null;
+  for (let i = 0; i < rows; i++) if (within(r.row(i), px, py)) return PauseRows[i];
+  return null;
+}
+
+export function hitEnd(w, h, px, py, dpr, state, show) {
+  const keys = endKeys(state, show);
+  const r = endBtns(w, h, dpr, keys);
+  for (const k of keys) if (within(r[k], px, py)) return k;
+  return null;
+}
+
 export function hitSpeed(w, h, px, py, dpr = 1) {
   const b = speedBox(w, h, dpr);
   if (px < b.x || px > b.x + b.w || py < b.y || py > b.y + b.h) return null;
@@ -1175,6 +1297,17 @@ export function hitCard(w, h, px, py, dpr = 1) {
  * conversion back, and it is 1 on an ordinary monitor, which is why none of this changes the
  * look there.
  */
+/** A panel, a row, a button: the same outline, filled when it is the one that is chosen. */
+function slab(ctx, b, U, filled = false, radius = 10) {
+  ctx.beginPath();
+  ctx.roundRect(b.x, b.y, b.w, b.h, radius * U);
+  ctx.fillStyle = filled ? Black : 'rgba(246,243,236,0.97)';
+  ctx.fill();
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = 2 * U;
+  ctx.stroke();
+}
+
 function panel(ctx, state, w, h, U, show) {
   // --- experience, right across the top, where it cannot be missed
   const part = Math.max(0, Math.min(1, state.xp / state.need));
@@ -1215,7 +1348,41 @@ function panel(ctx, state, w, h, U, show) {
     ctx.fillStyle = Black;
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW * Math.min(1, state.stageT / StageWaves), 5 * U);
   }
-  write(ctx, say(UI.down, state.kills), w - 22 * U, 70 * U, 13 * U, 700, 'right');
+  // Pushed below the two buttons rather than kept at 70. It sat exactly where the menu button
+  // now is, and a kill counter under a button is a kill counter nobody can read.
+  write(ctx, say(UI.down, state.kills), w - 22 * U, 112 * U, 13 * U, 700, 'right');
+
+  // --- the menu and what the run has collected, as icons: there is no room up here for words
+  if (state.phase === 'playing') {
+    const btn = runBtns(w, h, U);
+    for (const [what, b] of Object.entries(btn)) {
+      const lit = show.paused === what;
+      slab(ctx, b, U, lit, 9);
+      const ink = lit ? Pale : Black;
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2.4 * U;
+      if (what === 'menu') {
+        // three bars, which is what a menu looks like everywhere
+        for (let i = 0; i < 3; i++) {
+          const ly = b.y + b.h * (0.32 + i * 0.18);
+          ctx.beginPath();
+          ctx.moveTo(b.x + b.w * 0.26, ly);
+          ctx.lineTo(b.x + b.w * 0.74, ly);
+          ctx.stroke();
+        }
+      } else {
+        // two cards, one behind the other
+        ctx.beginPath();
+        ctx.roundRect(b.x + b.w * 0.2, b.y + b.h * 0.24, b.w * 0.36, b.h * 0.5, 2 * U);
+        ctx.stroke();
+        ctx.fillStyle = lit ? Black : Inks.Pale;
+        ctx.beginPath();
+        ctx.roundRect(b.x + b.w * 0.38, b.y + b.h * 0.34, b.w * 0.36, b.h * 0.5, 2 * U);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
 
   // --- how fast the whole thing runs, in the corner where nothing else is
   {
@@ -1293,6 +1460,141 @@ function panel(ctx, state, w, h, U, show) {
     write(ctx, `${say(Passives[key].name)} ${state.passives[key]}`, w - 22 * U, py, 13 * U, 600, 'right');
     py += 19 * U;
   }
+}
+
+/**
+ * The pause menu: settings, and the way out.
+ *
+ * Leaving says what it costs. A run abandoned halfway has banked nothing - no gold, no runes, no
+ * gems - and a button marked only LEAVE would be a button people press once and regret.
+ */
+function pausePanel(ctx, state, w, h, U, show) {
+  const r = runPanel(w, h, U, PauseRows.length);
+  slab(ctx, r.box, U, false, 14);
+  write(ctx, say(UI.paused), r.title.x, r.title.y, 20 * U, 800);
+  cross(ctx, r.close, U);
+
+  PauseRows.forEach((what, i) => {
+    const b = r.row(i);
+    slab(ctx, b, U, what === 'leave');
+    const ink = what === 'leave' ? Pale : Black;
+    const mid = b.y + b.h / 2;
+    const size = Math.min(15 * U, b.h * 0.4);
+    if (what === 'resume') {
+      write(ctx, say(UI.resume), b.x + 16 * U, mid, size, 800, 'left', ink);
+    } else if (what === 'sound') {
+      write(ctx, say(UI.sound), b.x + 16 * U, mid, size, 800, 'left', ink);
+      write(ctx, say(show.muted ? UI.off : UI.on), b.x + b.w - 16 * U, mid, size, 800, 'right', ink);
+    } else if (what === 'music') {
+      write(ctx, say(UI.music), b.x + 16 * U, mid, size, 800, 'left', ink);
+      write(ctx, say(show.music === false ? UI.off : UI.on), b.x + b.w - 16 * U, mid, size, 800, 'right', ink);
+    } else if (what === 'lang') {
+      write(ctx, say(UI.language), b.x + 16 * U, mid, size, 800, 'left', ink);
+      write(ctx, language().toUpperCase(), b.x + b.w - 16 * U, mid, size, 800, 'right', ink);
+    } else {
+      write(ctx, say(UI.leaveRun), b.x + 16 * U, mid - size * 0.4, size, 800, 'left', ink);
+      ctx.globalAlpha = 0.7;
+      write(ctx, say(UI.leaveTell), b.x + 16 * U, mid + size * 0.8, size * 0.72, 600, 'left', ink);
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+/**
+ * What the run is carrying, in one place.
+ *
+ * The strip down the left of the field has the names and the tiers, and no room for anything
+ * else. This is where what each spell actually became goes: the evolutions by name, the boosts
+ * by name and count, the fusions as the spells they now are, and the boons at the foot.
+ */
+function cardsPanel(ctx, state, w, h, U) {
+  const owned = carrying(state);
+  const kept = Object.keys(state.passives || {}).filter((k) => Passives[k]);
+  const rows = runRows(state, 'cards');
+  const r = runPanel(w, h, U, rows);
+  slab(ctx, r.box, U, false, 14);
+  write(ctx, say(UI.thisRun), r.title.x, r.title.y, 20 * U, 800);
+  write(ctx, say(UI.lv, state.level), r.box.x + r.box.w - 56 * U, r.title.y, 14 * U, 800, 'right');
+  cross(ctx, r.close, U);
+
+  if (!owned.length) {
+    ctx.globalAlpha = 0.6;
+    write(ctx, say(UI.nothingYet), w / 2, r.top + 20 * U, 13 * U, 700, 'center');
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  const big = Math.min(15 * U, r.rowH * 0.34);
+  const small = Math.max(8 * U, big * 0.68);
+
+  owned.forEach((key, i) => {
+    const b = r.row(i);
+    const sp = anySpell(key);
+    const kit = state.kit[key];
+    const spent = (state.sealed || []).includes(key);
+    const born = (state.fused || []).includes(key);
+    ctx.globalAlpha = spent ? 0.5 : 1;
+
+    const head = `${say(sp.name).toUpperCase()}${kit.tier > 1 ? `  T${kit.tier}` : ''}`;
+    fitWrite(ctx, head, b.x, b.y + big, big, 800, 'left', Black, b.w * 0.68);
+    // The element on every row, because which spell is which element is the whole reason the
+    // family table on the map is worth reading.
+    const el = UI['el_' + sp.element];
+    if (el) write(ctx, say(el).toUpperCase(), b.x + b.w, b.y + big, small, 800, 'right');
+
+    // What went into it. Evolutions first - they change what the spell does - then the boosts,
+    // with a count where one was taken more than once.
+    const bits = [];
+    for (const e of kit.evos || []) {
+      const found = (sp.evolutions || []).find((v) => v.key === e);
+      if (found) bits.push(say(found.name));
+    }
+    for (const [k, n] of Object.entries(kit.boosts || {})) {
+      const found = (sp.boosts || []).find((v) => v.key === k);
+      if (found) bits.push(n > 1 ? `${say(found.name)} ×${n}` : say(found.name));
+    }
+    if (born) bits.unshift(say(UI.fusion));
+    if (spent) bits.unshift(say(UI.sealedTell));
+    ctx.globalAlpha = spent ? 0.4 : 0.66;
+    fitWrite(ctx, bits.length ? bits.join('  ·  ') : say(UI.nothingYet),
+      b.x, b.y + big + small + 5 * U, small, 600, 'left', Black, b.w);
+    ctx.globalAlpha = 1;
+  });
+
+  if (kept.length) {
+    const b = r.row(owned.length);
+    write(ctx, say(UI.boons), b.x, b.y + big, small, 800, 'left');
+    fitWrite(ctx, kept.map((k) => `${say(Passives[k].name)} ×${state.passives[k]}`).join('  ·  '),
+      b.x, b.y + big + small + 5 * U, small, 600, 'left', Black, b.w);
+  }
+}
+
+/** The cross that closes a panel. */
+function cross(ctx, b, U) {
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = 2.4 * U;
+  const m = b.w * 0.3;
+  ctx.beginPath();
+  ctx.moveTo(b.x + m, b.y + m); ctx.lineTo(b.x + b.w - m, b.y + b.h - m);
+  ctx.moveTo(b.x + b.w - m, b.y + m); ctx.lineTo(b.x + m, b.y + b.h - m);
+  ctx.stroke();
+}
+
+/** A row of buttons at the foot of a finished run. */
+function endRow(ctx, w, h, U, state, show) {
+  const keys = endKeys(state, show);
+  const r = endBtns(w, h, U, keys);
+  for (const k of keys) {
+    const b = r[k];
+    slab(ctx, b, U, k !== 'menu', 12);
+    const ink = k === 'menu' ? Black : Pale;
+    const words = k === 'double' ? say(UI.adDouble)
+      : k === 'next' ? say(UI.nextStage)
+      : k === 'again' ? say(UI.retry)
+      : say(UI.toMenu);
+    fitWrite(ctx, words, b.x + b.w / 2, b.y + b.h / 2, 15 * U, 800, 'center', ink, b.w - 24 * U);
+  }
+  return r[keys[0]].y;
 }
 
 function picking(ctx, state, w, h, show, U) {
@@ -1673,8 +1975,14 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   for (const f of show.floats) {
     const [fx, fy] = place(S, f.x, f.y);
-    ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 1.6));
-    write(ctx, f.text, fx, fy - f.rise, 15 * S.scale + 6, 800, 'center');
+    // Damage numbers hold at full ink for most of their life and only fade at the end. At
+    // `life * 2.2` they spent most of their time half-there, which on a pale field is a number
+    // you can tell is present without being able to read it.
+    ctx.globalAlpha = Math.max(0, Math.min(1, f.life * (f.hit ? 4 : 1.6))) * (f.hit ? 0.92 : 1);
+    // Still smaller than anything else that floats here - they happen several times a second and
+    // at the size of a level-up they would be the game - but big enough to read.
+    const size = f.hit ? (f.big ? 16 : 13) * S.scale + 5 : 15 * S.scale + 6;
+    write(ctx, f.text, fx, fy - f.rise, size, 800, 'center');
     ctx.globalAlpha = 1;
   }
 
@@ -1688,12 +1996,24 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
 
+  // A panel, which is also a pause: the loop stops stepping while one is open. Over the field
+  // rather than instead of it, so the wave you are about to walk back into is still visible.
+  if (show.paused) {
+    ctx.fillStyle = 'rgba(236,231,220,0.82)';
+    ctx.fillRect(0, 0, w, h);
+    if (show.paused === 'menu') pausePanel(ctx, state, w, h, U, show);
+    else cardsPanel(ctx, state, w, h, U);
+  }
+
   // --- the stage is finished, and scored on how much wall is still standing
   if (state.phase === 'done') {
     ctx.fillStyle = 'rgba(236,231,220,0.93)';
     ctx.fillRect(0, 0, w, h);
     const won = show.won;
-    const row = (n) => h / 2 + (n - 2.6) * 34 * U;
+    // Lifted by however many buttons are at the foot. With three of them the spoils used to run
+    // underneath the advert button on a short landscape window.
+    const lift = endKeys(state, show).length * 17 * U;
+    const row = (n) => h / 2 - lift + (n - 2.6) * 34 * U;
     const part = Math.round((Math.max(0, state.wall) / state.maxWall) * 100);
     let foot = row(4.7);
 
@@ -1715,7 +2035,15 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
           w / 2, foot, 14 * U, 800, 'center', Black, w - 48 * U);
       }
     }
-    write(ctx, say(UI.toMenu), w / 2, Math.max(row(6.6), foot + 30 * U), 15 * U, 700, 'center');
+    // What the advert paid, said where the prizes are said. A button that doubled a reward and
+    // then showed the same numbers it showed before would be an advert nobody trusts twice.
+    if (show.doubled) {
+      foot += 26 * U;
+      ctx.font = `800 ${13 * U}px ${Face}`;
+      const line = `${say(UI.doubled)}  ·  +${show.doubled.earned} XP  ·  +${show.doubled.gold}`;
+      fitWrite(ctx, line, w / 2, foot, 13 * U, 800, 'center', Black, w - 48 * U);
+    }
+    endRow(ctx, w, h, U, state, show);
   }
 
   if (state.phase === 'lost') {
@@ -1728,7 +2056,7 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     const secs = Math.floor(state.t);
     const clock = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
     write(ctx, say(UI.runLine, state.level, state.kills, clock), w / 2, row(2), 15 * U, 600, 'center');
-    write(ctx, say(UI.retry), w / 2, row(3.4), 15 * U, 700, 'center');
+    endRow(ctx, w, h, U, state, show);
   }
 }
 
