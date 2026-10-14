@@ -550,6 +550,38 @@ function spellFx(ctx, S, state) {
  * In two inks there is no gold, so what carries it is solid against hollow - which also means a
  * row of them reads at a glance from across a phone.
  */
+/**
+ * A coin, for gold.
+ *
+ * Two inks, so it cannot be yellow and has to be a shape instead: a disc with a ring bitten out
+ * of it. At the sizes this appears at - beside a number, on a wedge - the ring is what stops it
+ * reading as a full stop.
+ */
+export function coin(ctx, x, y, r, colour, back) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = colour; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r * 0.52, 0, Math.PI * 2);
+  ctx.fillStyle = back; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r * 0.26, 0, Math.PI * 2);
+  ctx.fillStyle = colour; ctx.fill();
+  ctx.restore();
+}
+
+/** A shard: a plain rhombus, chosen because nothing else in the game is one. */
+export function shard(ctx, x, y, r, colour) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r * 0.66, y);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r * 0.66, y);
+  ctx.closePath();
+  ctx.fillStyle = colour;
+  ctx.fill();
+  ctx.restore();
+}
+
 export function star(ctx, x, y, r, filled, colour) {
   ctx.save();
   ctx.translate(x, y);
@@ -1072,6 +1104,35 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
 
 // --- the frame --------------------------------------------------------------------------------
 
+/**
+ * What a finished stage paid: experience, gold, and the shards each carried spell earned.
+ *
+ * On two lines rather than three, because this sits under a star row and over a prompt and the
+ * screen is not tall. Shards are named by spell, since a shard that does not say which spell it
+ * belongs to is a number with nowhere to go.
+ */
+function spoils(ctx, won, cx, y, U, room) {
+  const gap = 14 * U;
+  const exp = say(UI.earned, won.earned);
+  const gold = say(UI.earnedGold, won.gold || 0);
+
+  ctx.font = `800 ${16 * U}px ${Face}`;
+  const we = ctx.measureText(exp).width;
+  const wg = ctx.measureText(gold).width;
+  const wide = we + gap + wg + 22 * U;
+  const left = cx - wide / 2;
+
+  write(ctx, exp, left, y, 16 * U, 800, 'left');
+  coin(ctx, left + we + gap + 8 * U, y, 7 * U, Black, Inks.Pale);
+  write(ctx, gold, left + we + gap + 22 * U, y, 16 * U, 800, 'left');
+
+  const bits = Object.entries(won.shards || {}).filter(([, n]) => n > 0);
+  if (!bits.length) return;
+  const line = bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  ');
+  shard(ctx, cx - room / 2 + 6 * U, y + 24 * U, 6 * U, Black);
+  fitWrite(ctx, line, cx + 8 * U, y + 24 * U, 12 * U, 700, 'center', Black, room - 40 * U);
+}
+
 export function frame(ctx, w, h, state, show, dpr = 1) {
   const S = stage(w, h);
   const U = Math.max(1, Math.min(2.4, dpr));
@@ -1156,10 +1217,12 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
       const need = nextStarAt(won.stars);
       write(ctx, need === null ? say(UI.allStars) : say(UI.starFor, need),
         w / 2, row(3.7), 13 * U, 500, 'center');
-      write(ctx, say(UI.earned, won.earned), w / 2, row(4.7), 16 * U, 800, 'center');
+      // Everything the run paid, because three currencies that drop silently are three
+      // currencies the player does not know they have.
+      spoils(ctx, won, w / 2, row(4.7), U, w - 48 * U);
       if (won.opened.length) {
         fitWrite(ctx, say(UI.unlocked, won.level, won.opened.map((k) => say(Spells[k].name)).join(' + ').toUpperCase()),
-          w / 2, row(5.5), 14 * U, 800, 'center', Black, w - 48 * U);
+          w / 2, row(6.1), 14 * U, 800, 'center', Black, w - 48 * U);
       }
     }
     write(ctx, say(UI.toMenu), w / 2, row(6.6), 15 * U, 700, 'center');

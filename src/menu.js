@@ -8,13 +8,16 @@
 // first; what goes inside each tab is a conversation per tab.
 
 import {
-  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark,
+  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
-import { needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus } from './meta.js';
 import {
-  Wedges, prizeAt, chestPart, chestFull, chestPrize, ChestKills, canSpin,
+  needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus, spellStep, levelOf, shardsOf,
+} from './meta.js';
+import { Steps as SpellSteps, liftAt } from './upgrades.js';
+import {
+  Wedges, amountAt, kindAt, Jackpot, chestPart, chestFull, chestPrize, ChestKills, canSpin,
 } from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
@@ -189,6 +192,47 @@ export function wedgeUnder(turn) {
   return ((at % Wedges.length) + Wedges.length) % Wedges.length;
 }
 
+/** The two halves of the spells tab, the same shape as the two halves of the codex. */
+export function spellHalves(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const bw = Math.min(180 * U, (w - 56 * U) / 2);
+  const bh = 36 * U;
+  const y = b.top + 4 * U;
+  return {
+    loadout: { x: w / 2 - bw - 6 * U, y, w: bw, h: bh },
+    raise: { x: w / 2 + 6 * U, y, w: bw, h: bh },
+  };
+}
+
+/**
+ * One row per spell on the upgrade half.
+ *
+ * The whole row is the press. Two targets on one row - a body that picks and a button that buys -
+ * is a phone-sized way of buying something you meant to look at.
+ */
+export function raiseRows(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const top = b.top + 92 * U;
+  const gap = 6 * U;
+  // Two columns on a wide screen. In one column the ten rows have to share the band's height and
+  // on a desktop that leaves 38 pixels for two lines of writing - the rows overran each other.
+  // A phone is the other way round: height to spare, no width for a second column.
+  const cols = narrow(w, h) ? 1 : 2;
+  const down = Math.ceil(spellKeys.length / cols);
+  const cw = Math.min(460 * U, (w - 32 * U - (cols - 1) * gap) / cols);
+  const rh = Math.min(74 * U, (b.bottom - top - 8 * U - gap * (down - 1)) / down);
+  const left = w / 2 - (cols * cw + (cols - 1) * gap) / 2;
+  const order = [...spellKeys].sort((a, c) => UnlockAt[a] - UnlockAt[c]);
+  return order.map((key, i) => ({
+    key,
+    x: left + Math.floor(i / down) * (cw + gap),
+    y: top + (i % down) * (rh + gap),
+    w: cw, h: rh,
+  }));
+}
+
 /** The one button that opens the settings. */
 export function gearBox(w, h, dpr = 1) {
   const U = unit(dpr);
@@ -360,9 +404,6 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (inside(a.next, px, py)) return { what: 'stage', step: 1 };
     if (inside(playBox(w, h, dpr), px, py)) return { what: 'play' };
   }
-  if (data.tab === 'spells') {
-    for (const t of spellTiles(w, h, dpr)) if (inside(t, px, py)) return { what: 'tile', key: t.key };
-  }
   if (data.tab === 'hero') {
     const next = heroNext(data);
     if (next) {
@@ -380,6 +421,22 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (show.spin) return null;
     if (canSpin(data) && inside(spinBox(w, h, dpr), px, py)) return { what: 'spin' };
     if (chestFull(data) && inside(chestOpen(w, h, dpr), px, py)) return { what: 'chest' };
+  }
+  if (data.tab === 'spells') {
+    // The halves are read before anything under them: the loadout grid starts near the top of the
+    // band and a tile that overlapped a half would eat the press that was meant to switch.
+    const sh = spellHalves(w, h, dpr);
+    if (inside(sh.loadout, px, py)) return { what: 'spellHalf', key: 'loadout' };
+    if (inside(sh.raise, px, py)) return { what: 'spellHalf', key: 'raise' };
+    if (data.spellTab === 'raise') {
+      for (const r of raiseRows(w, h, dpr)) {
+        if (!inside(r, px, py)) continue;
+        if (UnlockAt[r.key] > data.level) return null;
+        return { what: 'buySpell', key: r.key };
+      }
+      return null;
+    }
+    for (const t of spellTiles(w, h, dpr)) if (inside(t, px, py)) return { what: 'tile', key: t.key };
   }
   if (data.tab === 'codex') {
     // An open entry is the only thing on the screen, bar the way out of it.
@@ -644,6 +701,64 @@ function chest(ctx, x, y, s, open, colour, back) {
  * experience into the same bank the hero comb spends, so neither of them asks the player to
  * learn a second currency in order to understand a prize.
  */
+/**
+ * What the account has to spend, on one line.
+ *
+ * Experience and gold sit together because they are spent on different screens and a player who
+ * only ever sees one of them on the screen that spends it never learns there are two.
+ */
+function purse(ctx, data, x, y, U, shownExp = null) {
+  const exp = String(Math.round(shownExp === null ? (data.bank || 0) : shownExp));
+  write(ctx, say(UI.heroBank), x, y, 10 * U, 700, 'left');
+  write(ctx, exp, x, y + 20 * U, 22 * U, 800, 'left');
+
+  ctx.font = `800 ${22 * U}px ${Face}`;
+  const after = x + ctx.measureText(exp).width + 26 * U;
+  coin(ctx, after, y + 20 * U, 8 * U, Black, Pale);
+  write(ctx, String(Math.round(data.gold || 0)), after + 14 * U, y + 20 * U, 22 * U, 800, 'left');
+}
+
+/**
+ * Gold alone, on one line.
+ *
+ * The upgrade screen does not spend experience, so showing it there is a number the player has to
+ * work out is irrelevant - and it was the number pushing the rows into the tabs above them.
+ */
+function coins(ctx, data, x, y, U) {
+  coin(ctx, x + 8 * U, y, 8 * U, Black, Pale);
+  write(ctx, String(Math.round(data.gold || 0)), x + 22 * U, y, 20 * U, 800, 'left');
+}
+
+/** The mark that says what a prize is paid in. */
+function kindMark(ctx, kind, x, y, r, ink, back) {
+  if (kind === 'gold') return coin(ctx, x, y, r, ink, back);
+  if (kind === 'shard') return shard(ctx, x, y, r, ink);
+  // experience: the same four-pointed spark the bolt is drawn with
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+    const o = i % 2 ? r * 0.3 : r;
+    i ? ctx.lineTo(x + Math.cos(a) * o, y + Math.sin(a) * o)
+      : ctx.moveTo(x + Math.cos(a) * o, y + Math.sin(a) * o);
+  }
+  ctx.closePath();
+  ctx.fillStyle = ink;
+  ctx.fill();
+  ctx.restore();
+}
+
+/** What a spin paid, in words. */
+function spinSaid(won) {
+  if (!won) return '';
+  if (won.kind === 'gold') return say(UI.earnedGold, won.amount);
+  if (won.kind === 'shard') {
+    return won.key ? say(UI.earnedShards, won.amount, say(Spells[won.key].name).toUpperCase())
+      : say(UI.earnedShardsAny, won.amount);
+  }
+  return say(UI.earned, won.amount);
+}
+
 function wheelTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
   const c = wheelBox(w, h, U);
@@ -657,8 +772,7 @@ function wheelTab(ctx, data, w, h, U, show) {
   // pressed, so that closing the tab mid-spin cannot lose it, and a number that jumps before
   // the needle lands tells you what you won before the wheel does.
   const shown = turning ? show.spin.was : (data.bank || 0);
-  write(ctx, say(UI.heroBank), left, b.top + 16 * U, 10 * U, 700, 'left');
-  write(ctx, String(Math.round(shown)), left, b.top + 36 * U, 22 * U, 800, 'left');
+  purse(ctx, data, left, b.top + 16 * U, U, shown);
 
   // --- the wheel
   const step = (Math.PI * 2) / Wedges.length;
@@ -683,12 +797,14 @@ function wheelTab(ctx, data, w, h, U, show) {
     // angles and four of them are upside down; the wheel turns, so there is no angle at which
     // laying them out radially is right for more than two of them at once.
     const mid = from + step / 2;
-    const big = Wedges[i] === Math.max(...Wedges);
+    const big = i === Jackpot;
+    const ink = dark ? Pale : Black;
     ctx.save();
-    ctx.translate(Math.cos(mid) * c.r * 0.62, Math.sin(mid) * c.r * 0.62);
+    ctx.translate(Math.cos(mid) * c.r * 0.6, Math.sin(mid) * c.r * 0.6);
     ctx.rotate(-turn);
-    write(ctx, String(prizeAt(i, level)), 0, 0,
-      (big ? 17 : 14) * U, 800, 'center', dark ? Pale : Black);
+    kindMark(ctx, kindAt(i), 0, -14 * U, 7 * U, ink, dark ? Black : Pale);
+    write(ctx, String(amountAt(i, level)), 0, 6 * U,
+      (big ? 17 : 14) * U, 800, 'center', ink);
     ctx.restore();
   }
   ctx.strokeStyle = Black;
@@ -717,7 +833,8 @@ function wheelTab(ctx, data, w, h, U, show) {
   if (turning) {
     write(ctx, say(UI.spinning), w / 2, sb.y + sb.h / 2, 14 * U, 800, 'center');
   } else if (show.spinWon !== null && show.spinWon !== undefined) {
-    write(ctx, say(UI.earned, show.spinWon), w / 2, sb.y + sb.h / 2 - 6 * U, 20 * U, 800, 'center');
+    fitWrite(ctx, spinSaid(show.spinWon), w / 2, sb.y + sb.h / 2 - 6 * U,
+      20 * U, 800, 'center', Black, w - 60 * U);
     ctx.globalAlpha = 0.6;
     write(ctx, say(UI.spinTomorrow), w / 2, sb.y + sb.h / 2 + 18 * U, 11 * U, 600, 'center');
     ctx.globalAlpha = 1;
@@ -740,7 +857,7 @@ function wheelTab(ctx, data, w, h, U, show) {
     const box = chestBox(w, h, U);
     const full = chestFull(data);
     const part = chestPart(data);
-    const prize = chestPrize(level);
+    const prize = chestPrize(level, data.loadout || []);
     const won = show.chestWon !== null && show.chestWon !== undefined;
 
     ctx.strokeStyle = Black;
@@ -758,10 +875,15 @@ function wheelTab(ctx, data, w, h, U, show) {
     if (won) {
       // What it paid, and nothing else. Written over the count and the bar this used to sit on
       // top of, both of them were unreadable.
-      write(ctx, say(UI.earned, show.chestWon), tx, box.y + box.h / 2 - 4 * U,
-        19 * U, 800, 'left');
-      ctx.globalAlpha = 0.6;
-      write(ctx, say(UI.chestAgain), tx, box.y + box.h / 2 + 20 * U, 11 * U, 600, 'left');
+      const got = show.chestWon;
+      const bits = Object.entries(got.shards || {}).filter(([, n]) => n > 0);
+      fitWrite(ctx, `${say(UI.earned, got.exp)}   ${say(UI.earnedGold, got.gold)}`,
+        tx, box.y + box.h / 2 - 10 * U, 17 * U, 800, 'left', Black, box.w - (tx - box.x) - 20 * U);
+      ctx.globalAlpha = 0.75;
+      fitWrite(ctx, bits.length
+        ? bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  ')
+        : say(UI.chestAgain),
+        tx, box.y + box.h / 2 + 16 * U, 11 * U, 700, 'left', Black, box.w - (tx - box.x) - 20 * U);
       ctx.globalAlpha = 1;
     } else {
       write(ctx, say(UI.chest), tx, box.y + 26 * U, 12 * U, 800, 'left');
@@ -786,12 +908,12 @@ function wheelTab(ctx, data, w, h, U, show) {
         ctx.strokeStyle = Black;
         ctx.lineWidth = 2.4 * U;
         ctx.beginPath(); ctx.roundRect(ob.x, ob.y, ob.w, ob.h, 10 * U); ctx.stroke();
-        write(ctx, say(UI.chestOpen, prize), ob.x + ob.w / 2, ob.y + ob.h / 2,
+        write(ctx, say(UI.chestOpen), ob.x + ob.w / 2, ob.y + ob.h / 2,
           13 * U, 800, 'center', lit ? Pale : Black);
       } else {
         ctx.globalAlpha = 0.6;
-        fitWrite(ctx, say(UI.chestWorth, prize), box.x + box.w - 16 * U, box.y + box.h - 24 * U,
-          11 * U, 600, 'right', Black, bw);
+        fitWrite(ctx, say(UI.chestWorth, prize.exp, prize.gold),
+          box.x + box.w - 16 * U, box.y + box.h - 24 * U, 11 * U, 600, 'right', Black, bw);
         ctx.globalAlpha = 1;
       }
     }
@@ -856,11 +978,148 @@ function mapTab(ctx, data, w, h, U, show) {
   write(ctx, say(UI.play), p.x + p.w / 2, p.y + p.h / 2, 21 * U, 800, 'center', lit ? Pale : Black);
 }
 
+/** The two halves, drawn the same way the codex draws its two. */
+function half(ctx, box, label, on, lit, U) {
+  ctx.fillStyle = on ? Black : 'rgba(13,12,11,0)';
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = (on || lit ? 2.6 : 1.4) * U;
+  ctx.globalAlpha = on || lit ? 1 : 0.45;
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
+  ctx.globalAlpha = 1;
+  write(ctx, label, box.x + box.w / 2, box.y + box.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
+}
+
+/** The level a spell has been raised to, as pips rather than a number you have to read. */
+function pips(ctx, x, y, at, gap, ink) {
+  const r = gap * 0.38;
+  for (let i = 1; i <= SpellSteps; i++) {
+    ctx.beginPath();
+    ctx.arc(x + (i - 1) * gap, y, r, 0, Math.PI * 2);
+    if (i <= at) {
+      ctx.fillStyle = ink;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = Math.max(1, r * 0.4);
+      ctx.globalAlpha = 0.4;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+/**
+ * The upgrade half: one row per spell, the whole row a press.
+ *
+ * Every row says the same four things in the same places - which spell, how far it has been
+ * raised, what the next step gives, and what it costs. A row you cannot afford is drawn faint
+ * rather than hidden, because the reason to carry a spell into a run is the shard cost sitting
+ * here with nothing next to it.
+ */
+function raiseTab(ctx, data, w, h, U, show) {
+  const b = band(w, h, U);
+  const rows = raiseRows(w, h, U);
+  const left = rows.length ? rows[0].x : Math.max(16 * U, w / 2 - 260 * U);
+  coins(ctx, data, left, b.top + 58 * U, U);
+  ctx.globalAlpha = 0.6;
+  fitWrite(ctx, say(UI.raiseHow), left + rows[0].w, b.top + 58 * U,
+    10 * U, 600, 'right', Black, rows[0].w * 0.62);
+  ctx.globalAlpha = 1;
+
+  for (const r of rows) {
+    const open = UnlockAt[r.key] <= data.level;
+    const at = levelOf(data, r.key);
+    const step = open ? spellStep(data, r.key) : null;
+    const held = shardsOf(data, r.key);
+    const afford = !!(step && step.afford);
+    const lit = show.overMenu === 'buySpell:' + r.key && afford;
+
+    ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
+    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10 * U); ctx.fill();
+    ctx.globalAlpha = open ? 1 : 0.3;
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = (afford ? 2.6 : 1.4) * U;
+    ctx.globalAlpha = open ? (afford ? 1 : 0.45) : 0.25;
+    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10 * U); ctx.stroke();
+    ctx.globalAlpha = open ? 1 : 0.35;
+
+    const ink = lit ? Pale : Black;
+    const back = lit ? Black : Pale;
+    // Everything inside a row is placed from the row, not from numbers that assumed one height:
+    // the rows shrink to fit the band and fixed offsets simply overran into the row beneath.
+    const hi = r.y + r.h * 0.33;
+    const lo = r.y + r.h * 0.72;
+    const pip = Math.min(9 * U, (r.w * 0.34) / SpellSteps);
+    sigil(ctx, r.key, r.x + 24 * U, r.y + r.h / 2, Math.min(24 * U, r.h * 0.42), ink);
+
+    const tx = r.x + 44 * U;
+    fitWrite(ctx, open ? say(Spells[r.key].name) : say(UI.locked),
+      tx, hi, Math.min(13 * U, r.h * 0.24), 800, 'left', ink, r.w * 0.42);
+
+    if (!open) {
+      fitWrite(ctx, say(UI.opensAt, UnlockAt[r.key]), tx, lo,
+        Math.min(10 * U, r.h * 0.2), 500, 'left', ink, r.w * 0.5);
+      ctx.globalAlpha = 1;
+      continue;
+    }
+
+    pips(ctx, tx + 4 * U, lo, at, pip, ink);
+    ctx.globalAlpha = 0.75;
+    fitWrite(ctx, say(UI.spellLift, Math.round(liftAt(at) * 100)),
+      tx + SpellSteps * pip + 10 * U, lo, Math.min(10 * U, r.h * 0.19), 700, 'left', ink, r.w * 0.26);
+    ctx.globalAlpha = 1;
+
+    const rx = r.x + r.w - 14 * U;
+    if (!step) {
+      write(ctx, say(UI.spellMax), rx, r.y + r.h / 2, Math.min(13 * U, r.h * 0.24), 800, 'right', ink);
+      ctx.globalAlpha = 1;
+      continue;
+    }
+
+    // the cost, right-aligned: runes nearest the top because they are the half that says no
+    const cost = Math.min(13 * U, r.h * 0.23);
+    ctx.font = `800 ${cost}px ${Face}`;
+    const sw = ctx.measureText(String(step.shards)).width;
+    const enoughShards = held >= step.shards;
+    ctx.globalAlpha = enoughShards ? 1 : 0.4;
+    write(ctx, String(step.shards), rx, hi, cost, 800, 'right', ink);
+    shard(ctx, rx - sw - 8 * U, hi, cost * 0.42, ink);
+    ctx.globalAlpha = 1;
+
+    const gw = ctx.measureText(String(step.gold)).width;
+    const enoughGold = (data.gold || 0) >= step.gold;
+    ctx.globalAlpha = enoughGold ? 1 : 0.4;
+    write(ctx, String(step.gold), rx, lo, cost, 800, 'right', ink);
+    coin(ctx, rx - gw - 10 * U, lo, cost * 0.46, ink, back);
+    ctx.globalAlpha = 1;
+
+    // what you hold, beside the cost, only while it is the thing standing in the way
+    if (!enoughShards) {
+      ctx.globalAlpha = 0.55;
+      fitWrite(ctx, say(UI.shardsHeld, held), rx - sw - 20 * U, hi,
+        Math.min(9 * U, r.h * 0.17), 600, 'right', ink, r.w * 0.28);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+}
+
 function spellsTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
+  const sh = spellHalves(w, h, U);
+  const on = data.spellTab === 'raise' ? 'raise' : 'loadout';
+  half(ctx, sh.loadout, say(UI.tabLoadout), on === 'loadout', show.overMenu === 'spellHalf:loadout', U);
+  half(ctx, sh.raise, say(UI.tabRaise), on === 'raise', show.overMenu === 'spellHalf:raise', U);
+
+  if (on === 'raise') {
+    raiseTab(ctx, data, w, h, U, show);
+    return;
+  }
+
   const room = LoadoutSize - data.loadout.length;
   write(ctx, room > 0 ? say(UI.chooseMore, room) : say(UI.chooseUpTo, LoadoutSize),
-    w / 2, b.top + 26 * U, 13 * U, 800, 'center');
+    w / 2, b.top + 58 * U, 13 * U, 800, 'center');
 
   for (const t of spellTiles(w, h, U)) {
     const open = UnlockAt[t.key] <= data.level;
@@ -879,33 +1138,26 @@ function spellsTab(ctx, data, w, h, U, show) {
     ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
 
     const ink = taken ? Pale : Black;
+    const at = levelOf(data, t.key);
     const under = fixed ? say(UI.always) : open ? say(sp.tells) : say(UI.opensAt, UnlockAt[t.key]);
     if (t.tall) {
       const fits = t.w - 92 * U;
       sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 28 * U, ink);
       fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 74 * U, t.y + 26 * U, 16 * U, 800, 'left', ink, fits);
       fitWrite(ctx, under, t.x + 74 * U, t.y + 48 * U, 10 * U, fixed ? 800 : 500, 'left', ink, fits);
+      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 14 * U, t.y + 26 * U, 12 * U, 800, 'right', ink);
     } else {
       const fits = t.w - 16 * U;
       sigil(ctx, t.key, t.x + t.w / 2, t.y + 28 * U, 28 * U, ink);
       fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 58 * U, 13 * U, 800, 'center', ink, fits);
       fitWrite(ctx, fixed ? say(UI.always) : open ? '' : say(UI.levelledPlain, UnlockAt[t.key]),
         t.x + t.w / 2, t.y + 76 * U, 9 * U, fixed ? 800 : 600, 'center', ink, fits);
+      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 10 * U, t.y + 14 * U, 11 * U, 800, 'right', ink);
     }
     ctx.globalAlpha = 1;
   }
-
-  write(ctx, say(UI.spellsSoon), w / 2, b.bottom - 18 * U, 11 * U, 500, 'center');
 }
 
-/**
- * The codex: everything the game has in it, written down.
- *
- * Two halves, because a spell and a creature want different shapes on the page - a spell has a
- * list of upgrades and tiers under it, a creature has a silhouette and a sentence. Spells open
- * into an entry of their own, and the entry is the only place a player can find out which
- * combinations exist before meeting one.
- */
 function codexTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
   const ct = codexTabs(w, h, U);

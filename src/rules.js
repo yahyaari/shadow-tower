@@ -11,6 +11,7 @@
 // card that changes what the spell does rather than how much of it there is.
 
 import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always } from './spells.js';
+import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
 
 export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always };
@@ -106,7 +107,13 @@ export function xpFor(level) {
 /** What the hero ladder adds, when nothing has been bought. */
 export const NoHero = { dmg: 0, wall: 0, cd: 0, area: 0, mend: 0, gain: 0 };
 
-export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = NoHero) {
+export const NoLevels = {};
+
+/**
+ * `levels` is the permanent level each spell carries, bought between runs with gold and shards.
+ * It arrives as plain data and is never written to, so a run cannot change what the account owns.
+ */
+export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = NoHero, levels = NoLevels) {
   const carried = loadout.filter((k) => Spells[k]).slice(0, LoadoutSize);
   if (!carried.includes(Always)) carried.unshift(Always);
   const kit = { [Always]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
@@ -119,6 +126,7 @@ export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = N
     boss: null,
     phase: 'playing',             // 'playing' | 'picking' | 'done' | 'lost'
     hero: { ...NoHero, ...hero },
+    levels: { ...levels },
     wall: Base.wall + (hero.wall || 0), maxWall: Base.wall + (hero.wall || 0),
     level: 1, xp: 0, need: xpFor(1),
     kills: 0,
@@ -157,6 +165,16 @@ export const carries = (s, key) => !!s.kit[key];
 /** Every spell actually casting, in loadout order. */
 export const carrying = (s) => s.loadout.filter((k) => s.kit[k]);
 
+/**
+ * How much of the run went into each spell that was actually cast.
+ *
+ * This is what shards are paid on. A spell brought and cast still earns something for having been
+ * carried; the one fed all run earns the most. It is why a run with four spells does not simply
+ * pay four times over - what you concentrated on is what you bank.
+ */
+export const investedIn = (s) =>
+  Object.fromEntries(carrying(s).map((k) => [k, s.kit[k].taken || 0]));
+
 /** Brought, but not taken yet - the ones the cards can still hand you. */
 export const waiting = (s) => s.loadout.filter((k) => !s.kit[k]);
 
@@ -188,7 +206,10 @@ export function statsOf(s, key) {
   return {
     tier: kit.tier,
     size,
-    damage: sp.damage * (1 + add.dmg + tierLift) * (1 + hero.dmg),
+    // Three sources, and they multiply: the cards taken this run, the hero comb, and the
+    // permanent level this spell has been raised to. The level is the smallest of the three on
+    // purpose - it is the one that never goes away.
+    damage: sp.damage * (1 + add.dmg + tierLift) * (1 + hero.dmg) * (1 + liftAt((s.levels || {})[key])),
     // Two floors, and the absolute one is the important half.
     //
     // Damage, projectile count and fire rate multiply each other, so a spell that can halve its

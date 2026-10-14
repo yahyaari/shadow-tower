@@ -3,7 +3,7 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, advance, click, take } from './rules.js';
+import { begin, advance, click, take, investedIn } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
@@ -46,7 +46,7 @@ window.addEventListener('resize', size);
 size();
 
 function start() {
-  state = begin(Date.now(), data.loadout, data.stage, meta.heroBonus(data));
+  state = begin(Date.now(), data.loadout, data.stage, meta.heroBonus(data), meta.spellLevels(data));
   show = fresh();
   show.hint = (data.runs || 0) < 2;
   screen = 'run';
@@ -101,7 +101,13 @@ function readEvents() {
 }
 
 function tick(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  // Two clocks. The fight is stepped with a capped `dt`, because a stutter that let it run on for
+  // a quarter of a second would move every enemy through the wall. The wheel is not a simulation
+  // and nothing of the sort can happen to it, so it gets the real elapsed time - with the cap it
+  // takes three seconds only on a machine that never drops below twenty frames, and crawls on
+  // anything slower.
+  const raw = (now - last) / 1000;
+  const dt = Math.min(0.05, raw);
   last = now;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -110,7 +116,7 @@ function tick(now) {
     if (data.tab === 'hero' && show.heroScroll === null) {
       show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
     }
-    spinOn(dt);
+    spinOn(Math.min(0.25, raw));
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
     return;
@@ -126,7 +132,10 @@ function tick(now) {
   if (!show.booked && (state.phase === 'done' || state.phase === 'lost')) {
     show.booked = true;
     if (state.phase === 'done') {
-      show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills);
+      // `investedIn` is read here rather than inside meta, because what the run put into each
+      // spell is the run's business and shards are the account's.
+      show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills,
+        investedIn(state));
       sound.cleared();
     } else {
       sound.over();
@@ -180,7 +189,7 @@ function spinOn(dt) {
 
   if (sp.t >= sp.dur) {
     show.turn = sp.to;
-    show.spinWon = sp.prize;
+    show.spinWon = sp.won;
     show.spin = null;
     sound.prize();
   }
@@ -207,6 +216,7 @@ function doMenu(hit) {
     return;
   }
   if (hit.what === 'codexHalf') { data.codex = hit.key; meta.save(data); return; }
+  if (hit.what === 'spellHalf') { data.spellTab = hit.key; meta.save(data); return; }
   if (hit.what === 'codexOpen') { show.codexPick = hit.key; return; }
   if (hit.what === 'codexClose') { show.codexPick = null; return; }
   if (hit.what === 'spin') {
@@ -218,7 +228,7 @@ function doMenu(hit) {
     show.spinWon = null;
     show.chestWon = null;
     show.spin = {
-      at: got.at, prize: got.prize, was: (data.bank || 0) - got.prize,
+      at: got.at, won: got, was: got.kind === 'exp' ? (data.bank || 0) - got.amount : (data.bank || 0),
       from, to: restFor(got.at, from), t: 0, dur: 3, past: 0,
     };
     return;
@@ -226,8 +236,12 @@ function doMenu(hit) {
   if (hit.what === 'chest') {
     const got = meta.openChest(data);
     if (!got) return;
-    show.chestWon = got.prize;
+    show.chestWon = got;
     sound.prize();
+    return;
+  }
+  if (hit.what === 'buySpell') {
+    if (meta.buySpell(data, hit.key)) sound.levelled();
     return;
   }
   if (hit.what === 'heroBuy') {
@@ -277,6 +291,8 @@ addEventListener('pointermove', (e) => {
       : hit.what === 'tile' ? 'tile:' + hit.key
       : hit.what === 'tab' ? 'tab:' + hit.key
       : hit.what === 'codexHalf' ? 'codexHalf:' + hit.key
+      : hit.what === 'spellHalf' ? 'spellHalf:' + hit.key
+      : hit.what === 'buySpell' ? 'buySpell:' + hit.key
       : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';

@@ -8,8 +8,9 @@ import { LoadoutSize, Always, UnlockAt, unlocked, spellKeys } from './spells.js'
 import { Languages } from './text.js';
 import { Ladder, Steps as HeroSteps, totals as heroTotals, costOf as heroCost } from './hero.js';
 import {
-  today, canSpin, wedgeFor, prizeAt, chestFull, chestPrize, ChestKills,
+  today, canSpin, wedgeFor, amountAt, kindAt, spellFor, chestFull, chestPrize, ChestKills,
 } from './rewards.js';
+import { Steps as SpellSteps, stepOf, canStep } from './upgrades.js';
 
 const Key = 'shadowtower';
 
@@ -27,12 +28,16 @@ const blank = {
   stage: 1,         // the one showing on the menu
   tab: 'map',       // which menu tab was last open
   codex: 'spells',  // and which half of the codex
+  spellTab: 'loadout',  // and which half of the spells tab
   hero: 0,          // how many steps of the hero ladder are bought
   bank: 0,          // experience still to spend
   spun: null,       // the local date of the last free spin, so tomorrow is another one
   spins: 0,
   chest: 0,         // bodies towards the next chest
   chests: 0,
+  gold: 0,          // shared, and what decides how many spells you can afford to raise
+  shards: null,     // spell -> shards held; they decide which spell you are raising
+  spell: null,      // spell -> permanent level, 1 to 10
 };
 
 /**
@@ -44,6 +49,37 @@ const blank = {
  * player who hoards does not get them faster.
  */
 export const heroBonus = (data) => heroTotals(data.hero || 0);
+
+/** The permanent level of every spell, as the rules want it. Unraised spells are simply absent. */
+export const spellLevels = (data) => ({ ...(data.spell || {}) });
+
+export const levelOf = (data, key) => Math.max(1, (data.spell || {})[key] || 1);
+export const shardsOf = (data, key) => Math.max(0, (data.shards || {})[key] || 0);
+
+/** What raising this spell by one costs, and whether it can be afforded. Null at the top. */
+export function spellStep(data, key) {
+  const at = levelOf(data, key);
+  const step = stepOf(at);
+  if (!step) return null;
+  return {
+    ...step, from: at,
+    gold: step.gold, shards: step.shards,
+    afford: (data.gold || 0) >= step.gold && shardsOf(data, key) >= step.shards,
+  };
+}
+
+/** Raises a spell by one. Returns whether it happened, so the screen never reports a false buy. */
+export function buySpell(data, key) {
+  if (!spellKeys.includes(key)) return false;
+  const step = spellStep(data, key);
+  if (!step || !step.afford) return false;
+  data.gold -= step.gold;
+  data.shards[key] -= step.shards;
+  if (data.shards[key] <= 0) delete data.shards[key];
+  data.spell[key] = step.to;
+  save(data);
+  return true;
+}
 
 export const heroNext = (data) => ((data.hero || 0) >= HeroSteps ? null : Ladder[data.hero || 0]);
 
@@ -63,26 +99,35 @@ export function buyHero(data) {
  * to work it out from the angle it happens to stop at. Returns null when there is no spin to
  * take, which is also what stops a second press during the animation from paying twice.
  */
-export function spin(data, roll = Math.random(), day = today()) {
+export function spin(data, roll = Math.random(), day = today(), pick = Math.random()) {
   if (!canSpin(data, day)) return null;
   const at = wedgeFor(roll);
-  const prize = prizeAt(at, data.level || 1);
+  const kind = kindAt(at);
+  const amount = amountAt(at, data.level || 1);
+  const key = kind === 'shard' ? spellFor(data.loadout, pick) : null;
+
   data.spun = day;
   data.spins = (data.spins || 0) + 1;
-  data.bank = (data.bank || 0) + prize;
+  if (kind === 'exp') data.bank = (data.bank || 0) + amount;
+  else if (kind === 'gold') data.gold = (data.gold || 0) + amount;
+  else if (key) data.shards[key] = (data.shards[key] || 0) + amount;
   save(data);
-  return { at, prize };
+  return { at, kind, amount, key };
 }
 
 /** Opens a full chest. Null when it is not full, so the button cannot be hammered. */
 export function openChest(data) {
   if (!chestFull(data)) return null;
-  const prize = chestPrize(data.level || 1);
+  const prize = chestPrize(data.level || 1, data.loadout || []);
   data.chest = 0;
   data.chests = (data.chests || 0) + 1;
-  data.bank = (data.bank || 0) + prize;
+  data.bank = (data.bank || 0) + prize.exp;
+  data.gold = (data.gold || 0) + prize.gold;
+  for (const [k, n] of Object.entries(prize.shards)) {
+    if (spellKeys.includes(k)) data.shards[k] = (data.shards[k] || 0) + n;
+  }
   save(data);
-  return { prize };
+  return prize;
 }
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
@@ -142,6 +187,29 @@ export function worth(stage, kills) {
   return kills + (stage - 1) * 150;
 }
 
+/**
+ * The gold a finished stage pays.
+ *
+ * Shared across every spell, so this is the number that decides how many spells an account can
+ * afford to raise rather than which one. Paced against the upgrade line: raising one spell the
+ * whole way costs about as much gold as twenty-odd clears bring in, so levelling everything is a
+ * long job and levelling your favourite is not.
+ */
+export function goldFor(stage, kills) {
+  return Math.round(kills * 1.2 + (stage - 1) * 120);
+}
+
+/**
+ * The shards one spell earns from a run.
+ *
+ * Paid on what the run put into it, not merely on having brought it. Carrying a spell and never
+ * feeding it earns the floor; feeding it all run earns three times that. This is the half of the
+ * economy that says WHICH spell is being raised, so it has to answer to what you actually played.
+ */
+export function shardsFor(stage, taken) {
+  return 2 + Math.max(0, Math.floor(taken || 0)) + Math.floor((Math.max(1, stage) - 1) / 2);
+}
+
 export function load() {
   let data;
   try {
@@ -174,6 +242,7 @@ export function tidy(data) {
   data.stage = Math.max(1, Math.min(furthestStage(data), Math.floor(data.stage || 1)));
   if (!TabKeys.includes(data.tab)) data.tab = 'map';
   if (data.codex !== 'spells' && data.codex !== 'foes') data.codex = 'spells';
+  if (data.spellTab !== 'loadout' && data.spellTab !== 'raise') data.spellTab = 'loadout';
   data.hero = Math.max(0, Math.min(HeroSteps, Math.floor(data.hero || 0)));
   data.bank = Math.max(0, Math.round(data.bank || 0));
   // A chest held open past what it needs would pay twice, and a saved `spun` that is not a date
@@ -182,6 +251,22 @@ export function tidy(data) {
   data.chests = Math.max(0, Math.floor(data.chests || 0));
   data.spins = Math.max(0, Math.floor(data.spins || 0));
   if (typeof data.spun !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.spun)) data.spun = null;
+  data.gold = Math.max(0, Math.round(data.gold || 0));
+
+  // Shards and levels are keyed by spell, so a key that is not a spell any more - an old build, a
+  // hand-edited save - would quietly buy nothing and show nothing. Dropped rather than kept.
+  const shards = (data.shards && typeof data.shards === 'object') ? data.shards : {};
+  data.shards = {};
+  for (const k of spellKeys) {
+    const n = Math.floor(shards[k] || 0);
+    if (n > 0) data.shards[k] = n;
+  }
+  const spell = (data.spell && typeof data.spell === 'object') ? data.spell : {};
+  data.spell = {};
+  for (const k of spellKeys) {
+    const n = Math.floor(spell[k] || 1);
+    if (n > 1) data.spell[k] = Math.min(SpellSteps, n);
+  }
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
@@ -219,7 +304,7 @@ export function save(data) {
  * Stars are kept at their best: a replay that goes worse does not take back what was earned, or
  * nobody would ever risk a replay.
  */
-export function finish(data, stage, wall, maxWall, kills) {
+export function finish(data, stage, wall, maxWall, kills, taken = null) {
   const stars = starsFor(wall, maxWall);
   const had = data.stars[stage];
   const beat = had === undefined || stars > had;
@@ -227,16 +312,29 @@ export function finish(data, stage, wall, maxWall, kills) {
   // `record` already returns `opened` for the spells the account unlocked, so the stage that
   // just opened is named something else rather than quietly overwriting it.
   const openedStage = had === undefined && stageOpen(data, stage + 1);
-  const account = record(data, stage, kills);
+  const account = record(data, stage, kills, taken);
   if (data.stage < furthestStage(data)) data.stage = Math.min(furthestStage(data), stage + 1);
   save(data);
   return { stars, had, beat, openedStage, ...account };
 }
 
-export function record(data, stage, kills) {
+export function record(data, stage, kills, taken = null) {
   const earned = Math.round(worth(stage, kills) * (1 + heroBonus(data).gain));
+  const coin = goldFor(stage, kills);
   const wasLevel = data.level;
   const wasBest = data.best || 0;
+
+  // Shards go to the spells that were carried, each by what the run put into it. `taken` comes
+  // from the run itself; without it - a replay booked by a tool, an old call - nothing is paid,
+  // which is better than paying a flat amount nobody earned.
+  const won = {};
+  for (const [k, n] of Object.entries(taken || {})) {
+    if (!spellKeys.includes(k)) continue;
+    const got = shardsFor(stage, n);
+    won[k] = got;
+    data.shards[k] = (data.shards[k] || 0) + got;
+  }
+  data.gold = (data.gold || 0) + coin;
 
   data.xp += earned;
   data.bank = (data.bank || 0) + earned;
@@ -258,6 +356,8 @@ export function record(data, stage, kills) {
   save(data);
   return {
     earned,
+    gold: coin,
+    shards: won,
     levelled: data.level > wasLevel,
     wasLevel,
     level: data.level,

@@ -165,11 +165,32 @@ await evaluate(`(() => {
   const d = window.ShadowTower.meta, s = window.ShadowTower.show;
   s.spin = null; s.spinWon = null; s.chestWon = null; s.turn = 0;
   d.spun = null; d.chest = 0; d.bank = 0; d.level = 8;
-  d.tab = 'spells';
+  d.tab = 'spells'; d.spellTab = 'loadout';
   return true;
 })()`);
 await sleep(350);
 await screenshot('menu_spells');
+
+// Yukseltme yarisi: hic parasi olmayan ve tam parasi olan hesap - bir satirin neyi engelledigini
+// soyleyip soylemedigi ancak ikisi yan yana gorulunce anlasilir.
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.spellTab = 'raise';
+  d.gold = 0; d.shards = {}; d.spell = {};
+  return true;
+})()`);
+await sleep(350);
+await screenshot('yukselt_bos');
+
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.gold = 2400;
+  d.shards = { bolt: 14, fireball: 9, frost: 3, lightning: 21, shards: 2 };
+  d.spell = { bolt: 5, fireball: 2, lightning: 10 };
+  return true;
+})()`);
+await sleep(350);
+await screenshot('yukselt_dolu');
 
 // Kulliyat: iki yarisi ve acilmis bir buyu
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'codex'; d.codex = 'spells'; return true; })()`);
