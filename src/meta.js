@@ -9,7 +9,8 @@ import { Languages } from './text.js';
 import { Ladder, Steps as HeroSteps, totals as heroTotals, costOf as heroCost } from './hero.js';
 import {
   today, canSpin, wedgeFor, amountAt, kindAt, spellFor,
-  Chests, ChestKinds, chestPrize, keysFor, canOpen,
+  Chests, ChestKinds, chestPrize, costOf, canOpen, Bulk,
+  gemsOn, repeatLift,
 } from './rewards.js';
 import { Steps as SpellSteps, stepOf, canStep } from './upgrades.js';
 
@@ -34,7 +35,8 @@ const blank = {
   bank: 0,          // experience still to spend
   spun: null,       // the local date of the last free spin, so tomorrow is another one
   spins: 0,
-  keys: null,       // chest kind -> keys held
+  gems: 0,          // what chests are bought with; only a stage's first clears make them
+  done: null,       // stage -> how many times it has been cleared
   chests: 0,
   gold: 0,          // shared, and what decides how many spells you can afford to raise
   shards: null,     // spell -> shards held; they decide which spell you are raising
@@ -116,17 +118,25 @@ export function spin(data, roll = Math.random(), day = today(), pick = Math.rand
   return { at, kind, amount, key };
 }
 
-/** Opens one chest, if there is a key for it. Null otherwise, so the press cannot be hammered. */
-export function openChest(data, kind) {
-  if (!canOpen(data, kind)) return null;
-  const prize = chestPrize(kind, data.level || 1, data.loadout || []);
-  data.keys[kind] -= Chests[kind].keys;
-  if (data.keys[kind] <= 0) delete data.keys[kind];
-  data.chests = (data.chests || 0) + 1;
+export const timesDone = (data, stage) => Math.max(0, (data.done || {})[stage] || 0);
+
+/**
+ * Buys one chest, or ten.
+ *
+ * Returns null when it cannot be paid for, so a press that was too expensive never reports a
+ * prize. Ten are bought as one purchase rather than ten in a row, because ten in a row would be
+ * ten single prices and the discount is the whole point of the button.
+ */
+export function openChest(data, kind, many = 1) {
+  const n = Math.max(1, Math.floor(many));
+  if (!canOpen(data, kind, n)) return null;
+  const prize = chestPrize(kind, data.level || 1, data.loadout || [], n);
+  data.gems -= prize.gems;
+  data.chests = (data.chests || 0) + n;
   data.bank = (data.bank || 0) + prize.exp;
   data.gold = (data.gold || 0) + prize.gold;
-  for (const [k, n] of Object.entries(prize.shards)) {
-    if (spellKeys.includes(k)) data.shards[k] = (data.shards[k] || 0) + n;
+  for (const [k, amount] of Object.entries(prize.shards)) {
+    if (spellKeys.includes(k)) data.shards[k] = (data.shards[k] || 0) + amount;
   }
   save(data);
   return prize;
@@ -251,15 +261,18 @@ export function tidy(data) {
   if (data.spellTab !== 'loadout' && data.spellTab !== 'raise') data.spellTab = 'loadout';
   data.hero = Math.max(0, Math.min(HeroSteps, Math.floor(data.hero || 0)));
   data.bank = Math.max(0, Math.round(data.bank || 0));
-  // A key count that is not a whole number, or is for a chest that no longer exists, would be a
-  // press that does nothing and a number nobody can spend.
-  const keys = (data.keys && typeof data.keys === 'object') ? data.keys : {};
-  data.keys = {};
-  for (const k of ChestKinds) {
-    const n = Math.floor(keys[k] || 0);
-    if (n > 0) data.keys[k] = n;
-  }
+  data.gems = Math.max(0, Math.round(data.gems || 0));
   data.chests = Math.max(0, Math.floor(data.chests || 0));
+
+  // How often each stage has been cleared. A junk key here would either hand out first-clear gems
+  // for ever or withhold them for a stage nobody has played.
+  const done = (data.done && typeof data.done === 'object') ? data.done : {};
+  data.done = {};
+  for (const [k, v] of Object.entries(done)) {
+    const n = Number(k);
+    const times = Math.floor(v);
+    if (Number.isInteger(n) && n >= 1 && Number.isFinite(times) && times > 0) data.done[n] = times;
+  }
   data.spins = Math.max(0, Math.floor(data.spins || 0));
   if (typeof data.spun !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.spun)) data.spun = null;
   data.gold = Math.max(0, Math.round(data.gold || 0));
@@ -323,21 +336,25 @@ export function finish(data, stage, wall, maxWall, kills, taken = null) {
   // `record` already returns `opened` for the spells the account unlocked, so the stage that
   // just opened is named something else rather than quietly overwriting it.
   const openedStage = had === undefined && stageOpen(data, stage + 1);
-  const account = record(data, stage, kills, taken);
-  // Keys are booked here rather than in `record`, because this is the only place that knows how
-  // the stage was finished - and the great key is paid for how, not for whether.
-  const won = keysFor(stars, stage);
-  for (const [k, n] of Object.entries(won)) {
-    if (n > 0) data.keys[k] = (data.keys[k] || 0) + n;
-  }
+  // How many times this stage has been beaten BEFORE this run. Everything about what the run
+  // pays hangs off that number, so it is read before it is bumped.
+  const times = timesDone(data, stage);
+  const lift = repeatLift(times);
+  const account = record(data, stage, kills, taken, lift);
+
+  // Gems are booked here rather than in `record`, because this is the only place that knows both
+  // how often the stage has been cleared and how cleanly it was cleared this time.
+  const gems = gemsOn(stage, times, stars);
+  data.gems = (data.gems || 0) + gems;
+  data.done[stage] = times + 1;
   if (data.stage < furthestStage(data)) data.stage = Math.min(furthestStage(data), stage + 1);
   save(data);
-  return { stars, had, beat, openedStage, keys: won, ...account };
+  return { stars, had, beat, openedStage, gems, times, first: times === 0, ...account };
 }
 
-export function record(data, stage, kills, taken = null) {
-  const earned = Math.round(worth(stage, kills) * (1 + heroBonus(data).gain));
-  const coin = goldFor(stage, kills);
+export function record(data, stage, kills, taken = null, lift = 1) {
+  const earned = Math.round(worth(stage, kills) * (1 + heroBonus(data).gain) * lift);
+  const coin = Math.round(goldFor(stage, kills) * lift);
   const wasLevel = data.level;
   const wasBest = data.best || 0;
 
@@ -347,7 +364,7 @@ export function record(data, stage, kills, taken = null) {
   const won = {};
   for (const [k, n] of Object.entries(taken || {})) {
     if (!spellKeys.includes(k)) continue;
-    const got = shardsFor(stage, n);
+    const got = Math.max(1, Math.round(shardsFor(stage, n) * lift));
     won[k] = got;
     data.shards[k] = (data.shards[k] || 0) + got;
   }
@@ -373,6 +390,7 @@ export function record(data, stage, kills, taken = null) {
     earned,
     gold: coin,
     shards: won,
+    lift,
     levelled: data.level > wasLevel,
     wasLevel,
     level: data.level,

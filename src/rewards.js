@@ -1,16 +1,14 @@
 // What the Rewards tab gives, and when.
 //
-// Three things now, because three things are earned: experience, which buys the hero comb; gold,
-// which is shared and decides how many spells you can afford to raise; and shards, which belong
-// to one spell each and decide which spell you are raising.
+// Four things are earned now. Experience buys the hero comb. Gold is shared and decides how many
+// spells you can afford to raise. Runes belong to one spell each and decide which spell you are
+// raising. Gems buy chests - and gems are the one thing farming cannot produce.
 //
 // Two sources, deliberately different in rhythm:
 //
 //   the wheel  - one free spin a day. It is the reason to open the game tomorrow, which is the
 //                one thing a session of any length cannot provide.
-//   the chest  - fills with bodies as you play, and pays out inside the session you earned it in.
-//                A chest pays all three at once; the wheel pays one thing at a time, which is
-//                what lets a wedge be a single number you can read while it turns.
+//   the chests - bought with gems, one at a time or ten at once.
 //
 // No DOM here and no clock of its own: the day and the rolls are all passed in, so a test can
 // hand it a Tuesday and a loaded die.
@@ -34,6 +32,9 @@ export const ShardUnit = 6;
  * be worth having: one player in eight lands on it, and on a new account that is their first
  * impression of the whole tab. The jackpot is experience, because experience has the longest
  * thing to spend itself on.
+ *
+ * Gems are not on the wheel. They are the one currency only progress can produce, and a wheel
+ * that dripped them would be a way of buying chests by waiting.
  */
 export const Wedges = [
   { kind: 'gold', mul: 1 },
@@ -70,76 +71,102 @@ export function spellFor(loadout, roll) {
   return list[Math.max(0, Math.min(list.length - 1, Math.floor(roll * list.length)))];
 }
 
+// --- gems, and why they cannot be farmed ------------------------------------------------------
+
 /**
- * Two chests and the two keys that open them.
+ * What finishing a stage for the first time is worth in gems.
  *
- * A key rather than a bar that fills with bodies. The bar paid out whenever it happened to be
- * full, which made it a thing that happened TO you; a key sits in your pocket until you choose to
- * spend it, and the great one is worth holding on to.
- *
- * The runes are what these are really for - the one currency a run can only pay for spells you
- * carried, so a chest is where a spell you have not been playing can be caught up on.
- *
- * Nothing here is coloured, because the game has exactly two inks. The two keys are told apart by
- * shape, and are named after what they open rather than after a colour that cannot be drawn.
+ * Climbs with the stage, because the first clear of a deep stage is the hardest single thing a
+ * player does and ought to be the best paid.
  */
+export const gemsFor = (stage) => 30 + 15 * (Math.max(1, Math.floor(stage)) - 1);
+
+/**
+ * How much of that a repeat clear is worth.
+ *
+ * Full the first time, a quarter the second, a tenth the third, nothing after that. Gems are the
+ * currency grinding cannot produce: the only way to more of them is a stage you have not beaten
+ * yet. Stages go on for ever, so there is always another one - but it is always in front of you
+ * rather than behind.
+ */
+const GemDecay = [1, 0.25, 0.1];
+export const gemDecay = (times) => GemDecay[Math.max(0, Math.floor(times))] ?? 0;
+
+/**
+ * How much of everything ELSE a repeat clear is worth.
+ *
+ * This falls off too, so old ground is never the best use of a minute - but it floors at half
+ * rather than at nothing. A player who cannot yet clear the next stage has to grind the last one
+ * to afford the upgrades that will let them; take that away and being stuck becomes being
+ * finished.
+ */
+export const RepeatFloor = 0.5;
+export const repeatLift = (times) =>
+  Math.max(RepeatFloor, 1 - 0.15 * Math.max(0, Math.floor(times)));
+
+/** What a clear pays in gems: which stage, how often it has been beaten, and how cleanly. */
+export function gemsOn(stage, times, stars) {
+  const clean = 0.7 + 0.1 * Math.max(0, Math.min(3, stars || 0));
+  return Math.round(gemsFor(stage) * gemDecay(times) * clean);
+}
+
+// --- the chests -------------------------------------------------------------------------------
+
+/**
+ * Two chests, bought with gems, singly or ten at a time.
+ *
+ * Ten costs nine, which is the whole reason the button exists: not a convenience, a discount for
+ * saving up. The runes are what these are really for - the one currency a run can only pay for
+ * spells you carried, so a chest is where a spell you have not been playing gets caught up.
+ */
+export const Bulk = 10;
+
 export const Chests = {
-  small: { keys: 3, runes: 10, exp: 0.5, gold: 0.5 },
-  great: { keys: 2, runes: 25, exp: 1.5, gold: 1.5 },
+  small: { gems: 100, runes: 10, exp: 0.5, gold: 0.5 },
+  great: { gems: 250, runes: 25, exp: 1.5, gold: 1.5 },
 };
 
 export const ChestKinds = ['small', 'great'];
 
-/**
- * What a cleared stage leaves in your pocket.
- *
- * One small key for finishing, and a great one only for finishing with the wall untouched. Three
- * stars buy nothing - that idea was taken off the table - but they are still the mark of a clean
- * run, and this is what makes that mark worth something: a reason to go back to a stage you can
- * already beat and beat it properly.
- *
- * How often a key drops was the one number nobody specified, and it turned out to be the number
- * that decides whether the whole thing is sane. At one key per chest per clear the chests paid
- * more than the runs that earned them - a third of the stage-one economy was a box. So a key is
- * what every clear gives and the chests cost several of them; the counts sit in `Chests` and are
- * the dial to turn if the rhythm feels wrong.
- *
- * They also climb with the stage. Flat keys made the first stage the best place in the game to
- * farm - it is quick and it is nearly always cleared, so the boxes came faster there than
- * anywhere deeper. The rule the economy has to keep is that the deepest stage you can reliably
- * clear is the one worth clearing.
- */
-export const keysFor = (stars, stage = 1) => {
-  const deep = Math.max(1, Math.floor(stage));
-  return {
-    small: 1 + Math.floor((deep - 1) / 2),
-    great: stars >= 3 ? 1 + Math.floor((deep - 1) / 3) : 0,
-  };
-};
+/** Ten for the price of nine; anything else simply costs its own price, however many. */
+export function costOf(kind, many = 1) {
+  const c = Chests[kind];
+  if (!c) return 0;
+  const n = Math.max(1, Math.floor(many));
+  return c.gems * (n >= Bulk ? n - 1 : n);
+}
 
-export const keysOf = (data, kind) => Math.max(0, ((data.keys || {})[kind] || 0));
+export const gemsHeld = (data) => Math.max(0, Math.round(data.gems || 0));
 
-export const canOpen = (data, kind) => !!Chests[kind] && keysOf(data, kind) >= Chests[kind].keys;
+export const canOpen = (data, kind, many = 1) =>
+  !!Chests[kind] && gemsHeld(data) >= costOf(kind, many);
 
 /**
- * What one chest holds.
+ * What a chest holds.
  *
  * The runes are split over what you are carrying, so the total is what was promised however many
  * spells are in the loadout - a chest that paid per spell would be worth twice as much to a
  * player who happened to have unlocked more of them.
  */
-export function chestPrize(kind, level, loadout = []) {
+export function chestPrize(kind, level, loadout = [], many = 1) {
   const c = Chests[kind];
   if (!c) return null;
+  const n = Math.max(1, Math.floor(many));
   const list = Array.isArray(loadout) ? loadout.filter(Boolean) : [];
+  // Everything is worked out for ONE chest and then multiplied. Rounding the batch instead left
+  // ten-at-once paying 1845 where ten singles paid 1850 - a discount on the prize, in a button
+  // whose entire point is a discount on the price.
   const each = list.length ? Math.max(1, Math.round(c.runes / list.length)) : 0;
+  const exp = Math.round((unitOf(level) * c.exp) / 5) * 5;
+  const gold = Math.round((goldUnitOf(level) * c.gold) / 5) * 5;
   return {
     kind,
-    keys: c.keys,
-    exp: Math.round((unitOf(level) * c.exp) / 5) * 5,
-    gold: Math.round((goldUnitOf(level) * c.gold) / 5) * 5,
-    shards: Object.fromEntries(list.map((k) => [k, each])),
-    runes: each * list.length,
+    many: n,
+    gems: costOf(kind, n),
+    exp: exp * n,
+    gold: gold * n,
+    shards: Object.fromEntries(list.map((k) => [k, each * n])),
+    runes: each * list.length * n,
   };
 }
 
@@ -161,14 +188,15 @@ export const canSpin = (data, day = today()) => (data.spun || null) !== day;
 export function state(data, day = today()) {
   const level = data.level || 1;
   const kit = data.loadout || [];
+  const side = (kind, many) => ({
+    cost: costOf(kind, many),
+    can: canOpen(data, kind, many),
+    holds: chestPrize(kind, level, kit, many),
+  });
   return {
     spin: canSpin(data, day),
     unit: unitOf(level),
-    chests: ChestKinds.map((kind) => ({
-      kind,
-      keys: keysOf(data, kind),
-      can: canOpen(data, kind),
-      holds: chestPrize(kind, level, kit),
-    })),
+    gems: gemsHeld(data),
+    chests: ChestKinds.map((kind) => ({ kind, one: side(kind, 1), many: side(kind, Bulk) })),
   };
 }

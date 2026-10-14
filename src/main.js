@@ -257,7 +257,7 @@ function doMenu(hit) {
     return;
   }
   if (hit.what === 'chest') {
-    const got = meta.openChest(data, hit.key);
+    const got = meta.openChest(data, hit.key, hit.many);
     if (!got) return;
     show.chestWon = got;
     sound.prize();
@@ -316,7 +316,7 @@ addEventListener('pointermove', (e) => {
       : hit.what === 'codexHalf' ? 'codexHalf:' + hit.key
       : hit.what === 'spellHalf' ? 'spellHalf:' + hit.key
       : hit.what === 'buySpell' ? 'buySpell:' + hit.key
-      : hit.what === 'chest' ? 'chest:' + hit.key
+      : hit.what === 'chest' ? `chest:${hit.key}:${hit.many}`
       : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';

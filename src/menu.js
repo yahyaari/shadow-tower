@@ -8,7 +8,7 @@
 // first; what goes inside each tab is a conversation per tab.
 
 import {
-  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard, key,
+  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard, gem,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
@@ -17,7 +17,8 @@ import {
 } from './meta.js';
 import { Steps as SpellSteps, liftAt } from './upgrades.js';
 import {
-  Wedges, amountAt, kindAt, Jackpot, Chests, ChestKinds, chestPrize, keysOf, canOpen, canSpin,
+  Wedges, amountAt, kindAt, Jackpot, Chests, ChestKinds, chestPrize, costOf, canOpen, canSpin,
+  Bulk, gemsHeld,
 } from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
@@ -151,18 +152,30 @@ export function chestBoxes(w, h, dpr = 1) {
   const U = unit(dpr);
   const sb = spinBox(w, h, dpr);
   const bw = Math.min(460 * U, w - 32 * U);
-  const bh = 116 * U;
+  const bh = 126 * U;
   const top = sb.y + sb.h + 46 * U;
   return ChestKinds.map((kind, i) => ({
     kind, x: w / 2 - bw / 2, y: top + i * (bh + 14 * U), w: bw, h: bh,
   }));
 }
 
-/** The press inside a chest panel, on its right. Takes the box so it follows the scroll. */
-export function chestOpen(box, dpr = 1) {
+/**
+ * The two presses inside a chest panel: one, and ten.
+ *
+ * Side by side at the foot of the panel rather than one above the other, so the price of each is
+ * read against the other - which is the only way the ten-for-nine is visible at all.
+ */
+export function chestOpens(box, dpr = 1) {
   const U = unit(dpr);
-  const bw = Math.min(140 * U, box.w * 0.36);
-  return { x: box.x + box.w - bw - 14 * U, y: box.y + box.h - 48 * U, w: bw, h: 38 * U };
+  const gap = 8 * U;
+  const room = Math.min(280 * U, box.w - 108 * U);
+  const bw = (room - gap) / 2;
+  const y = box.y + box.h - 46 * U;
+  const left = box.x + box.w - 14 * U - room;
+  return {
+    one: { x: left, y, w: bw, h: 38 * U, many: 1 },
+    many: { x: left + bw + gap, y, w: bw, h: 38 * U, many: Bulk },
+  };
 }
 
 /** How far the rewards tab may be pushed up, given the window it is in. */
@@ -430,8 +443,13 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     const moved = (r) => ({ ...r, y: r.y - up });
     if (canSpin(data) && inside(moved(spinBox(w, h, dpr)), px, py)) return { what: 'spin' };
     for (const box of chestBoxes(w, h, dpr)) {
-      if (!canOpen(data, box.kind)) continue;
-      if (inside(moved(chestOpen(box, dpr)), px, py)) return { what: 'chest', key: box.kind };
+      const press = chestOpens(box, dpr);
+      for (const side of [press.one, press.many]) {
+        if (!canOpen(data, box.kind, side.many)) continue;
+        if (inside(moved(side), px, py)) {
+          return { what: 'chest', key: box.kind, many: side.many };
+        }
+      }
     }
     return null;
   }
@@ -720,15 +738,21 @@ function chest(ctx, x, y, s, open, colour, back) {
  * Experience and gold sit together because they are spent on different screens and a player who
  * only ever sees one of them on the screen that spends it never learns there are two.
  */
-function purse(ctx, data, x, y, U, shownExp = null) {
+function purse(ctx, data, x, y, U, shownExp = null, withGems = false) {
   const exp = String(Math.round(shownExp === null ? (data.bank || 0) : shownExp));
   write(ctx, say(UI.heroBank), x, y, 10 * U, 700, 'left');
   write(ctx, exp, x, y + 20 * U, 22 * U, 800, 'left');
 
   ctx.font = `800 ${22 * U}px ${Face}`;
-  const after = x + ctx.measureText(exp).width + 26 * U;
-  coin(ctx, after, y + 20 * U, 8 * U, Black, Pale);
-  write(ctx, String(Math.round(data.gold || 0)), after + 14 * U, y + 20 * U, 22 * U, 800, 'left');
+  let at = x + ctx.measureText(exp).width + 26 * U;
+  coin(ctx, at, y + 20 * U, 8 * U, Black, Pale);
+  const gold = String(Math.round(data.gold || 0));
+  write(ctx, gold, at + 14 * U, y + 20 * U, 22 * U, 800, 'left');
+
+  if (!withGems) return;
+  at += 14 * U + ctx.measureText(gold).width + 26 * U;
+  gem(ctx, at, y + 20 * U, 9 * U, Black, Pale);
+  write(ctx, String(gemsHeld(data)), at + 15 * U, y + 20 * U, 22 * U, 800, 'left');
 }
 
 /**
@@ -782,12 +806,11 @@ function spinSaid(won) {
 function chestPanel(ctx, data, box, U, show) {
   const kind = box.kind;
   const great = kind === 'great';
-  const held = keysOf(data, kind);
-  const want = Chests[kind].keys;
-  const can = canOpen(data, kind);
   const won = show.chestWon && show.chestWon.kind === kind ? show.chestWon : null;
-  const holds = chestPrize(kind, data.level || 1, data.loadout || []);
-  const lively = can || !!won;
+  const holds = chestPrize(kind, data.level || 1, data.loadout || [], 1);
+  const press = chestOpens(box, U);
+  const any = canOpen(data, kind, 1);
+  const lively = any || !!won;
 
   ctx.strokeStyle = Black;
   ctx.lineWidth = (lively ? 3 : 1.5) * U;
@@ -799,61 +822,61 @@ function chestPanel(ctx, data, box, U, show) {
   chest(ctx, box.x + 48 * U, box.y + box.h / 2 - 2 * U, great ? 62 * U : 44 * U,
     lively, Black, Pale);
 
-  // Three columns, measured rather than guessed. The writing used to be given the whole panel to
-  // run across and ran straight under the button and through the key.
   const tx = box.x + 94 * U;
   const right = box.x + box.w - 14 * U;
-  const press = chestOpen(box, U);
-  const keyRoom = 58 * U;
-  const title = right - keyRoom - tx - 10 * U;
 
   if (won) {
     const bits = Object.entries(won.shards || {}).filter(([, n]) => n > 0);
-    fitWrite(ctx, say(great ? UI.chestGreat : UI.chestSmall),
+    fitWrite(ctx, say(great ? UI.chestGreat : UI.chestSmall) + (won.many > 1 ? `  ×${won.many}` : ''),
       tx, box.y + 26 * U, 12 * U, 800, 'left', Black, right - tx);
     fitWrite(ctx, `${say(UI.earned, won.exp)}   ${say(UI.earnedGold, won.gold)}`,
       tx, box.y + 56 * U, 16 * U, 800, 'left', Black, right - tx);
     ctx.globalAlpha = 0.75;
     fitWrite(ctx, bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  '),
-      tx, box.y + 84 * U, 11 * U, 700, 'left', Black, right - tx);
+      tx, box.y + 86 * U, 11 * U, 700, 'left', Black, right - tx);
     ctx.globalAlpha = 1;
     return;
   }
 
   fitWrite(ctx, say(great ? UI.chestGreat : UI.chestSmall),
-    tx, box.y + 26 * U, 12 * U, 800, 'left', Black, title);
+    tx, box.y + 26 * U, 12 * U, 800, 'left', Black, right - tx);
 
-  // The key: what it costs and what you have, as a fraction - the only question here is "yet?".
-  key(ctx, right - keyRoom + 4 * U, box.y + 26 * U, 12 * U, great, Black, Pale);
-  ctx.globalAlpha = can ? 1 : 0.5;
-  write(ctx, `${held}/${want}`, right, box.y + 26 * U, 14 * U, 800, 'right');
-  ctx.globalAlpha = 1;
-
-  // what it holds: the runes first, because they are what a chest is for
-  shard(ctx, tx + 6 * U, box.y + 56 * U, 6 * U, Black);
-  write(ctx, String(holds.runes), tx + 18 * U, box.y + 56 * U, 16 * U, 800, 'left');
-
-  const room = (can ? press.x - 12 * U : right) - tx;
+  // what one of them holds: the runes first, because they are what a chest is for
+  shard(ctx, tx + 6 * U, box.y + 52 * U, 6 * U, Black);
+  write(ctx, String(holds.runes), tx + 18 * U, box.y + 52 * U, 16 * U, 800, 'left');
   ctx.globalAlpha = 0.72;
   fitWrite(ctx, say(UI.chestHolds, holds.exp, holds.gold),
-    tx, box.y + 80 * U, 11 * U, 600, 'left', Black, room);
+    tx + 42 * U, box.y + 52 * U, 11 * U, 600, 'left', Black, right - tx - 48 * U);
   ctx.globalAlpha = 1;
 
-  if (can) {
-    const lit = show.overMenu === 'chest:' + kind;
+  // --- the two prices. Ten costs nine, which only reads if both are on the screen at once.
+  for (const side of [press.one, press.many]) {
+    const cost = costOf(kind, side.many);
+    const can = canOpen(data, kind, side.many);
+    const lit = can && show.overMenu === `chest:${kind}:${side.many}`;
     ctx.fillStyle = lit ? Black : Pale;
-    ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 10 * U); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(side.x, side.y, side.w, side.h, 10 * U); ctx.fill();
     ctx.strokeStyle = Black;
-    ctx.lineWidth = 2.4 * U;
-    ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 10 * U); ctx.stroke();
-    write(ctx, say(UI.chestOpen), press.x + press.w / 2, press.y + press.h / 2,
-      13 * U, 800, 'center', lit ? Pale : Black);
-  } else {
-    ctx.globalAlpha = 0.6;
-    fitWrite(ctx, say(great ? UI.keyGreatFrom : UI.keySmallFrom),
-      right, box.y + box.h - 14 * U, 10 * U, 600, 'right', Black, box.w - 108 * U);
+    ctx.lineWidth = (can ? 2.4 : 1.4) * U;
+    ctx.globalAlpha = can ? 1 : 0.4;
+    ctx.beginPath(); ctx.roundRect(side.x, side.y, side.w, side.h, 10 * U); ctx.stroke();
+
+    const ink = lit ? Pale : Black;
+    const back = lit ? Black : Pale;
+    const mid = side.y + side.h / 2;
+    write(ctx, side.many > 1 ? `×${side.many}` : '×1', side.x + 12 * U, mid, 13 * U, 800, 'left', ink);
+    ctx.font = `800 ${13 * U}px ${Face}`;
+    const cw = ctx.measureText(String(cost)).width;
+    write(ctx, String(cost), side.x + side.w - 10 * U, mid, 13 * U, 800, 'right', ink);
+    gem(ctx, side.x + side.w - 14 * U - cw - 8 * U, mid, 7 * U, ink, back);
     ctx.globalAlpha = 1;
   }
+
+  // The saving, over the ten rather than under it - under it, it was drawn behind the button.
+  ctx.globalAlpha = 0.6;
+  write(ctx, say(UI.chestBulk, Math.round((1 - (Bulk - 1) / Bulk) * 100)),
+    right, box.y + 68 * U, 9 * U, 700, 'right');
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -878,7 +901,7 @@ function wheelTab(ctx, data, w, h, U, show) {
   // pressed, so that closing the tab mid-spin cannot lose it, and a number that jumps before
   // the needle lands tells you what you won before the wheel does.
   const shown = turning && show.spin.was !== undefined ? show.spin.was : null;
-  purse(ctx, data, left, b.top + 16 * U, U, shown);
+  purse(ctx, data, left, b.top + 16 * U, U, shown, true);
 
   ctx.save();
   ctx.beginPath();

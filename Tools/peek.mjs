@@ -123,15 +123,15 @@ const rewardAt = (how) => evaluate(`(() => {
   const how = ${JSON.stringify(how)};
   d.tab = 'wheel';
   d.spun = how.spun ?? null;
-  d.keys = how.keys || {}; d.bank = how.bank; d.gold = how.gold ?? 0; d.level = how.level;
+  d.gems = how.gems ?? 0; d.bank = how.bank; d.gold = how.gold ?? 0; d.level = how.level;
   s.spin = null; s.spinWon = null; s.chestWon = null; s.turn = 0;
   s.wheelScroll = how.scroll || 0;
   return true;
 })()`);
 
-const press = (what, key) => evaluate(`(() => { window.ShadowTower.menu({ what: ${JSON.stringify(what)}, key: ${JSON.stringify(key ?? null)} }); return true; })()`);
+const press = (what, key, many) => evaluate(`(() => { window.ShadowTower.menu({ what: ${JSON.stringify(what)}, key: ${JSON.stringify(key ?? null)}, many: ${JSON.stringify(many ?? 1)} }); return true; })()`);
 
-await rewardAt({ keys: { small: 1 }, bank: 1240, gold: 820, level: 8 });
+await rewardAt({ gems: 40, bank: 1240, gold: 820, level: 8 });
 await sleep(350);
 await screenshot('oduller_cevirmeye_hazir');
 
@@ -156,19 +156,19 @@ const down = await evaluate(`(() => {
   return m.reach ? m.reach() : 99999;
 })()`);
 
-await rewardAt({ spun: '2026-01-01', keys: {}, bank: 1240, gold: 820, level: 8, scroll: 99999 });
+await rewardAt({ spun: '2026-01-01', gems: 40, bank: 1240, gold: 820, level: 8, scroll: 99999 });
 await sleep(350);
 await screenshot('sandiklar_kilitli');
 
-await rewardAt({ spun: '2026-01-01', keys: { small: 3, great: 2 }, bank: 1240, gold: 820, level: 8, scroll: 99999 });
+await rewardAt({ spun: '2026-01-01', gems: 3000, bank: 1240, gold: 820, level: 8, scroll: 99999 });
 await sleep(350);
 await screenshot('sandiklar_acilabilir');
 
-await press('chest', 'great');
+await press('chest', 'great', 10);
 await sleep(350);
-await screenshot('sandik_buyuk_acildi');
+await screenshot('sandik_buyuk_10x_acildi');
 
-await rewardAt({ keys: { small: 1 }, bank: 0, gold: 0, level: 1 });
+await rewardAt({ gems: 0, bank: 0, gold: 0, level: 1 });
 await sleep(350);
 await screenshot('oduller_yeni_hesap');
 

@@ -569,50 +569,38 @@ export function coin(ctx, x, y, r, colour, back) {
 }
 
 /**
- * A key, in one of two makes.
+ * A gem.
  *
- * There is no colour in this game, so the two cannot be a grey one and a purple one: the small
- * one is a plain ring and a single tooth, the great one has a barred bow and a double tooth and
- * is drawn a little longer. Told apart by shape at the size they are actually seen at, which a
- * colour code could not have managed in two inks anyway.
+ * A cut stone rather than another diamond: a rune is already a plain rhombus, and at the sizes
+ * these appear at - beside a number on a button - two rhombuses would be one shape. This one has
+ * a flat table, shoulders, and a point, with the facets bitten out in the other ink.
  */
-export function key(ctx, x, y, r, great, colour, back) {
+export function gem(ctx, x, y, r, colour, back) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.strokeStyle = colour;
   ctx.fillStyle = colour;
-  ctx.lineCap = 'butt';
-
-  const bow = r * (great ? 0.5 : 0.42);
-  const top = -r;
-
-  // the bow
   ctx.beginPath();
-  ctx.arc(0, top + bow, bow, 0, Math.PI * 2);
+  ctx.moveTo(-r * 0.46, -r * 0.62);
+  ctx.lineTo(r * 0.46, -r * 0.62);
+  ctx.lineTo(r * 0.92, -r * 0.04);
+  ctx.lineTo(0, r);
+  ctx.lineTo(-r * 0.92, -r * 0.04);
+  ctx.closePath();
   ctx.fill();
+
+  // the facets, cut out rather than drawn on, so the shape still reads when it is tiny
+  ctx.strokeStyle = back;
+  ctx.lineWidth = Math.max(1, r * 0.12);
+  ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.arc(0, top + bow, bow * (great ? 0.42 : 0.46), 0, Math.PI * 2);
-  ctx.fillStyle = back;
-  ctx.fill();
-  ctx.fillStyle = colour;
-
-  // the great one wears a bar across its bow
-  if (great) {
-    ctx.lineWidth = r * 0.12;
-    ctx.beginPath();
-    ctx.moveTo(-bow * 0.44, top + bow);
-    ctx.lineTo(bow * 0.44, top + bow);
-    ctx.stroke();
-  }
-
-  // the shaft
-  const shaft = r * 0.17;
-  ctx.fillRect(-shaft / 2, top + bow * 1.7, shaft, r * (great ? 1.5 : 1.3));
-
-  // the teeth, on the right of the shaft
-  const foot = top + bow * 1.7 + r * (great ? 1.5 : 1.3);
-  ctx.fillRect(shaft / 2, foot - r * 0.3, r * 0.36, shaft * 0.9);
-  if (great) ctx.fillRect(shaft / 2, foot - r * 0.66, r * 0.26, shaft * 0.9);
+  ctx.moveTo(-r * 0.92, -r * 0.04);
+  ctx.lineTo(r * 0.92, -r * 0.04);
+  ctx.moveTo(-r * 0.46, -r * 0.62);
+  ctx.lineTo(-r * 0.2, -r * 0.04);
+  ctx.lineTo(0, r);
+  ctx.moveTo(r * 0.46, -r * 0.62);
+  ctx.lineTo(r * 0.2, -r * 0.04);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1188,15 +1176,21 @@ function spoils(ctx, won, cx, y, U, room) {
     fitWrite(ctx, line, cx + 6 * U, at, 12 * U, 700, 'center', Black, room - 40 * U);
   }
 
-  // The keys, which are the only thing here that is not spent on the screen it was won on.
-  const got = Object.entries(won.keys || {}).filter(([, n]) => n > 0);
-  if (got.length) {
+  // The gems, which are the only thing here a repeat clear will not pay again. Said so, the one
+  // time it matters: the first clear of a stage is worth saying out loud.
+  if (won.gems > 0) {
     at += 24 * U;
-    const words = got.map(([k, n]) => say(k === 'great' ? UI.keyGreat : UI.keySmall, n)).join('  ·  ');
+    const words = won.first ? say(UI.gemsFirst, won.gems) : say(UI.gemsAgain, won.gems);
     ctx.font = `800 ${12 * U}px ${Face}`;
     const ww = Math.min(ctx.measureText(words).width, room - 40 * U);
-    key(ctx, cx - ww / 2 - 14 * U, at, 9 * U, got.some(([k]) => k === 'great'), Black, Inks.Pale);
+    gem(ctx, cx - ww / 2 - 14 * U, at, 8 * U, Black, Inks.Pale);
     fitWrite(ctx, words, cx + 6 * U, at, 12 * U, 800, 'center', Black, room - 40 * U);
+  } else if (won.lift < 1) {
+    at += 24 * U;
+    ctx.globalAlpha = 0.6;
+    fitWrite(ctx, say(UI.gemsSpent, Math.round(won.lift * 100)), cx, at,
+      11 * U, 700, 'center', Black, room - 40 * U);
+    ctx.globalAlpha = 1;
   }
 
   return at;

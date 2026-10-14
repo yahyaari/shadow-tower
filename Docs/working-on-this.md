@@ -4,18 +4,17 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **266 kontrol geçiyor**.
+> `node Tools/test.mjs` → **285 kontrol geçiyor**.
 >
-> **Üç para birimi:** deneyim (kahraman peteği), altın (ortak — kaç büyüyü çıkarabilirsin),
-> parça (büyüye özel, sadece taşıdığın büyülerden düşer — hangi büyüyü çıkarırsın).
-> Büyülerin **kalıcı seviyesi** 1→10, basamak başına +%5 hasar.
+> **Dört para birimi:** deneyim (kahraman peteği), altın (ortak — kaç büyüyü çıkarabilirsin),
+> parça (büyüye özel — hangi büyüyü çıkarırsın), **gem** (sandıklar).
 >
-> **Ödüller sekmesi kaydırmalı:** üstte çark, altında iki sandık. Küçük sandık 3 küçük anahtar
-> ister ve ~10 parça verir; büyük sandık 2 büyük anahtar ister ve ~25 parça verir. Küçük anahtar
-> her bitirmeden, büyük anahtar her 3 yıldızlı bitirmeden düşer; ikisi de bölüm derinliğiyle
-> artar.
+> **Gem farmlanamaz.** Sadece bir bölümü İLK kez geçmek üretir: ilk geçiş tam, ikinci %25,
+> üçüncü %10, sonrası sıfır. Diğer ödüller de tekrarda düşer ama **%50'de taban** yapar —
+> yoksa bir bölümde takılan oyuncunun güçlenme yolu tamamen kapanırdı.
 >
-> **Yıldızlar para birimi değil** ama artık bir işe yarıyor: 3 yıldız = büyük anahtar.
+> **Ödüller sekmesi kaydırmalı:** üstte çark, altında iki sandık. Küçük 100 gem, büyük 250 gem;
+> ikisinde de 1x ve 10x var, 10x dokuz tane fiyatına (%10 indirim).
 >
 > **Sıradaki iş — hiçbiri seçilmedi:**
 > 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
@@ -23,8 +22,8 @@
 > 3. **CrazyGames hazırlığı.** SDK, kapak görseli, tanıtım videosu.
 >
 > **Kullanıcının cevaplamadığı sorular:** kahraman basamak fiyatları; bölüm uzunluğu (~1:45);
-> anahtar/sandık ritmi doğru mu; "gri/mor anahtar" yerine "küçük/büyük" adlandırması olur mu
-> (iki mürekkeple renk çizilemiyor).
+> gem temposu doğru mu (ölçüm: küçük sandık 3., büyük 5., 10x küçük 10., 10x büyük 16. bölümde);
+> tekrar tabanının %50 olması doğru mu.
 >
 > **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
 > birleşip yeni bir büyü doğurması.
@@ -55,7 +54,7 @@ yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 | --- | --- |
 | Harita | **çalışıyor** — bölüm seçimi, bölüm resmi, yıldızlar, düşman listesi, OYNA |
 | Büyüler | **çalışıyor** — iki yarı: KADRO (loadout) ve YÜKSELT (kalıcı büyü seviyesi) |
-| Ödüller | **çalışıyor** — kaydırmalı: günlük çark, altında anahtarla açılan iki sandık |
+| Ödüller | **çalışıyor** — kaydırmalı: günlük çark, altında gem ile alınan iki sandık (1x/10x) |
 | Kahraman | **çalışıyor** — 50 basamaklı merdiven, deneyimle alınır |
 | Külliyat | **çalışıyor** — iki yarı: BÜYÜLER ve CANAVARLAR |
 
@@ -149,41 +148,56 @@ Sekizin biri ikramiye, hepsi düz 1/8. "Neredeyse kazandın" ağırlığı yok, 
 yok. En küçük dilim de bir işe yaramalı: sekiz oyuncudan biri ona düşüyor ve yeni bir hesapta
 oyuncunun bu sekmeye dair ilk izlenimi o oluyor.
 
-### İki sandık, iki anahtar
+### İki sandık, gem ile
 
-Ödüller sekmesi **kaydırılıyor**: üstte çark, aşağısında iki sandık. Sandıklar öldürme sayısıyla
-kendiliğinden dolmuyor; **anahtar** cebinde duruyor ve ne zaman harcayacağına sen karar
-veriyorsun.
+Ödüller sekmesi **kaydırılıyor**: üstte çark, aşağısında iki sandık. İkisi de **gem** ile
+alınıyor, teker teker ya da onar onar.
 
-| | fiyat | verir | anahtar nereden |
+| | 1x | 10x | verir (tek) |
 | --- | --- | --- | --- |
-| **küçük sandık** | 3 küçük anahtar | ~10 parça + biraz deneyim/altın | her bitirme |
-| **büyük sandık** | 2 büyük anahtar | ~25 parça + daha fazlası | her **3 yıldızlı** bitirme |
+| **küçük sandık** | 100 gem | 900 gem | ~10 parça + biraz deneyim/altın |
+| **büyük sandık** | 250 gem | 2250 gem | ~25 parça + daha fazlası |
 
-Yıldızlar hâlâ hiçbir şey satın almıyor, ama artık bir işe yarıyorlar: 3 yıldız bir büyük anahtar
-demek. Geçtiğin bir bölüme dönüp **düzgün** geçmenin sebebi bu.
+10x'in bütün sebebi **dokuz tane fiyatına on tane** olması. Ucuz olmasaydı düğme bir
+kolaylıktan ibaret kalırdı.
 
-**Renk yok.** Oyunun tam iki mürekkebi var; "gri anahtar / mor anahtar" çizilemez. İkisi biçimle
-ayrılıyor (küçük olan sade bir halka ve tek diş, büyük olanın halkasında bir çubuk ve iki diş var)
-ve açtıkları sandığa göre adlandırılıyor.
+### Gem: farmlanamayan para birimi
 
-### Anahtar sıklığı: ekonominin asıl düğmesi
+Oyunun en önemli ekonomik kuralı bu. Gem'i sadece **ilerlemek** üretiyor:
 
-Bu, kimsenin söylemediği ve her şeyi belirleyen sayıydı. İlk kurulumda **her bitirme bir anahtar,
-bir anahtar bir sandık**'tı. Ölçüm: 1. bölümde sandıklar koşuların kendisinden çok ödüyordu
-(altın %133). Sandık fiyatı anahtar sayısına bağlandı (3 ve 2) ve oranlar %38'e indi.
+| geçiş | gem |
+| --- | --- |
+| ilk | tam |
+| ikinci | %25 |
+| üçüncü | %10 |
+| dördüncü ve sonrası | **sıfır** |
 
-Sonra ikinci bir hata çıktı: anahtarlar sabit sayıdayken **1. bölümü çiftliğe çevirmek**
-ilerlemekten iyiydi (dakikada 5,4 parça vs 2,5). Çünkü 1. bölüm hızlı ve neredeyse hep
-bitiriliyor. Hem anahtarlar hem parça geliri bölüm derinliğiyle çarpılır hâle getirildi.
+Üstüne temizlik çarpanı var: 3 yıldızlı bir ilk geçiş, 0 yıldızlıdan %43 fazla ödüyor. Yıldızlar
+hâlâ hiçbir şey satın almıyor ama hangi geçişin daha çok gem getirdiğini belirliyorlar.
 
-Bu arada **ölçümün kendisi de yanlış soruyu soruyordu**. "Ödül, koşu gelirinin yüzde kaçı" sorusu
-*çark* için doğru — çark bedava. Sandık için yanlış: sandığın anahtarı zaten oynayarak
-kazanılıyor. Sandığa sorulacak soru şu: *güvenle bitirebildiğin en derin bölüm en çok ödüyor mu?*
-Ölçüm o soruya çevrildi ve tam donanımda cevap: 5. bölüm dakikada **12,6** parça, 1. bölüm
-**8,2**. Derin olan kazanıyor.
+Bölümler sonsuz döndüğü için gem akışı hiç kurumuyor — ama kaynağı **hep önünde**, hiç arkanda
+değil. Ölçüm: aynı bölümü **elli kez** geçmek tek bir küçük sandık bile açmıyor.
 
-### Çarkın bütün dürüstlüğü tek cümlede
+**Diğer ödüller de tekrarda düşüyor** (1 → 0.85 → 0.70 → 0.55 → %50 taban) ama sıfıra inmiyor.
+Bir sonraki bölümü henüz geçemeyen oyuncunun, geçebilmesi için gereken yükseltmeleri alabilmesi
+bir öncekini tekrar tekrar geçmesine bağlı; o kapıyı kapatmak "takıldım"ı "bittim" yapardı.
+
+### Bu ekonominin üç yanlış kurulumu
+
+Hepsi ölçümle yakalandı, hiçbiri gözle görülmedi:
+
+1. **Her bitirme bir anahtar, bir anahtar bir sandık** → 1. bölümde sandıklar koşuların
+   kendisinden çok ödüyordu (altın %133).
+2. **Sabit anahtar düşüşü** → 1. bölümü çiftliğe çevirmek ilerlemekten iyiydi (dakikada 5,4 parça
+   vs 2,5), çünkü orası hızlı ve neredeyse hep bitiriliyor.
+3. **10x'i toptan yuvarlamak** → on tane birden almak 1845 ödüyordu, tek tek almak 1850. İndirim
+   düğmesinin içine gizli bir ceza. Artık tek sandığın değeri bir kez hesaplanıp çarpılıyor.
+
+Bir de **ölçümün kendisi yanlış soruyu soruyordu**. "Ödül, koşu gelirinin yüzde kaçı" sorusu
+*çark* için doğru — çark bedava. Sandık için yanlış: sandık gem ile alınıyor, gem'i de oynamak
+üretiyor. Sandığa sorulacak soru: *bir sandığa kaç yeni bölüm uzaklıktasın?*
+
+### Çarkın bütün dürüstlüğü tek cümlede### Çarkın bütün dürüstlüğü tek cümlede
 
 **Kazanan dilim kurallarda çekiliyor, animasyon ona nişan alıyor.** `meta.spin()` dilimi seçip
 ödülü bankaya yazıyor; `restFor(at, from)` çarkın o dilimin üstünde durması için gereken açıyı
@@ -303,7 +317,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 266 kontrol + bot. |
+| `Tools/test.mjs` | 285 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -452,5 +466,5 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
 - Tek arena, tek patron tipi.
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
-- Yıldızlar hiçbir şey satın almıyor; 3 yıldız bir büyük anahtar demek, o kadar.
+- Yıldızlar hiçbir şey satın almıyor; sadece bir geçişin kaç gem getireceğini belirliyorlar.
 - Gerçek parmakla oynanmadı.
