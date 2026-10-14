@@ -4,25 +4,27 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **249 kontrol geçiyor**.
+> `node Tools/test.mjs` → **266 kontrol geçiyor**.
 >
-> **Üç para birimi var artık.** Koşu sonu üçü birden düşüyor, çark ve sandık da üçünü veriyor:
-> deneyim (kahraman peteği), altın (ortak, büyü yükseltmeleri), parça (büyüye özel).
-> Büyülerin **kalıcı seviyesi** var: 1→10, her basamak +%5 hasar, altın + o büyünün parçasıyla
-> alınıyor. Büyüler sekmesi ikiye bölündü: KADRO ve YÜKSELT.
+> **Üç para birimi:** deneyim (kahraman peteği), altın (ortak — kaç büyüyü çıkarabilirsin),
+> parça (büyüye özel, sadece taşıdığın büyülerden düşer — hangi büyüyü çıkarırsın).
+> Büyülerin **kalıcı seviyesi** 1→10, basamak başına +%5 hasar.
 >
-> **Yıldızlar artık bir para birimi değil** — kullanıcının kararı. Sadece "bu bölümü ne kadar
-> temiz bitirdin" işareti olarak duruyorlar.
+> **Ödüller sekmesi kaydırmalı:** üstte çark, altında iki sandık. Küçük sandık 3 küçük anahtar
+> ister ve ~10 parça verir; büyük sandık 2 büyük anahtar ister ve ~25 parça verir. Küçük anahtar
+> her bitirmeden, büyük anahtar her 3 yıldızlı bitirmeden düşer; ikisi de bölüm derinliğiyle
+> artar.
+>
+> **Yıldızlar para birimi değil** ama artık bir işe yarıyor: 3 yıldız = büyük anahtar.
 >
 > **Sıradaki iş — hiçbiri seçilmedi:**
 > 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
-> 2. **Reklam.** "Reklam izleyip ödül" istenmişti; CrazyGames SDK'sı gerekiyor. Doğal yeri:
->    fazladan bir çark çevirme hakkı.
+> 2. **Reklam.** CrazyGames SDK'sı gerekiyor. Doğal yeri: fazladan bir çark çevirme hakkı.
 > 3. **CrazyGames hazırlığı.** SDK, kapak görseli, tanıtım videosu.
 >
-> **Kullanıcının cevaplamadığı sorular:** kahraman basamak fiyatları; bölüm uzunluğu (~1:45) ve
-> yıldız eşikleri; hangi büyüler zayıf hissettiriyor; üç para biriminin akış hızı doğru mu
-> (ölçüm: bir büyüyü sonuna kadar çıkarmak altınla ~21, parçayla ~17 koşu).
+> **Kullanıcının cevaplamadığı sorular:** kahraman basamak fiyatları; bölüm uzunluğu (~1:45);
+> anahtar/sandık ritmi doğru mu; "gri/mor anahtar" yerine "küçük/büyük" adlandırması olur mu
+> (iki mürekkeple renk çizilemiyor).
 >
 > **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
 > birleşip yeni bir büyü doğurması.
@@ -53,7 +55,7 @@ yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 | --- | --- |
 | Harita | **çalışıyor** — bölüm seçimi, bölüm resmi, yıldızlar, düşman listesi, OYNA |
 | Büyüler | **çalışıyor** — iki yarı: KADRO (loadout) ve YÜKSELT (kalıcı büyü seviyesi) |
-| Ödüller | **çalışıyor** — günlük çark ve oynadıkça dolan sandık, üçü de para birimi öder |
+| Ödüller | **çalışıyor** — kaydırmalı: günlük çark, altında anahtarla açılan iki sandık |
 | Kahraman | **çalışıyor** — 50 basamaklı merdiven, deneyimle alınır |
 | Külliyat | **çalışıyor** — iki yarı: BÜYÜLER ve CANAVARLAR |
 
@@ -146,6 +148,40 @@ bir ekonomi öğrenmesini istemek olurdu.
 Sekizin biri ikramiye, hepsi düz 1/8. "Neredeyse kazandın" ağırlığı yok, ibrenin kaçırdığı dilim
 yok. En küçük dilim de bir işe yaramalı: sekiz oyuncudan biri ona düşüyor ve yeni bir hesapta
 oyuncunun bu sekmeye dair ilk izlenimi o oluyor.
+
+### İki sandık, iki anahtar
+
+Ödüller sekmesi **kaydırılıyor**: üstte çark, aşağısında iki sandık. Sandıklar öldürme sayısıyla
+kendiliğinden dolmuyor; **anahtar** cebinde duruyor ve ne zaman harcayacağına sen karar
+veriyorsun.
+
+| | fiyat | verir | anahtar nereden |
+| --- | --- | --- | --- |
+| **küçük sandık** | 3 küçük anahtar | ~10 parça + biraz deneyim/altın | her bitirme |
+| **büyük sandık** | 2 büyük anahtar | ~25 parça + daha fazlası | her **3 yıldızlı** bitirme |
+
+Yıldızlar hâlâ hiçbir şey satın almıyor, ama artık bir işe yarıyorlar: 3 yıldız bir büyük anahtar
+demek. Geçtiğin bir bölüme dönüp **düzgün** geçmenin sebebi bu.
+
+**Renk yok.** Oyunun tam iki mürekkebi var; "gri anahtar / mor anahtar" çizilemez. İkisi biçimle
+ayrılıyor (küçük olan sade bir halka ve tek diş, büyük olanın halkasında bir çubuk ve iki diş var)
+ve açtıkları sandığa göre adlandırılıyor.
+
+### Anahtar sıklığı: ekonominin asıl düğmesi
+
+Bu, kimsenin söylemediği ve her şeyi belirleyen sayıydı. İlk kurulumda **her bitirme bir anahtar,
+bir anahtar bir sandık**'tı. Ölçüm: 1. bölümde sandıklar koşuların kendisinden çok ödüyordu
+(altın %133). Sandık fiyatı anahtar sayısına bağlandı (3 ve 2) ve oranlar %38'e indi.
+
+Sonra ikinci bir hata çıktı: anahtarlar sabit sayıdayken **1. bölümü çiftliğe çevirmek**
+ilerlemekten iyiydi (dakikada 5,4 parça vs 2,5). Çünkü 1. bölüm hızlı ve neredeyse hep
+bitiriliyor. Hem anahtarlar hem parça geliri bölüm derinliğiyle çarpılır hâle getirildi.
+
+Bu arada **ölçümün kendisi de yanlış soruyu soruyordu**. "Ödül, koşu gelirinin yüzde kaçı" sorusu
+*çark* için doğru — çark bedava. Sandık için yanlış: sandığın anahtarı zaten oynayarak
+kazanılıyor. Sandığa sorulacak soru şu: *güvenle bitirebildiğin en derin bölüm en çok ödüyor mu?*
+Ölçüm o soruya çevrildi ve tam donanımda cevap: 5. bölüm dakikada **12,6** parça, 1. bölüm
+**8,2**. Derin olan kazanıyor.
 
 ### Çarkın bütün dürüstlüğü tek cümlede
 
@@ -267,7 +303,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 249 kontrol + bot. |
+| `Tools/test.mjs` | 266 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -416,5 +452,5 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
 - Tek arena, tek patron tipi.
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
-- Yıldızlar kasten hiçbir şeye harcanmıyor: sadece "ne kadar temiz bitirdin" işareti.
+- Yıldızlar hiçbir şey satın almıyor; 3 yıldız bir büyük anahtar demek, o kadar.
 - Gerçek parmakla oynanmadı.

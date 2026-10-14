@@ -16,7 +16,7 @@ import { say, setLanguage, language, Languages, UI } from '../src/text.js';
 import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels } from '../src/meta.js';
 import {
   Wedges, amountAt, kindAt, Jackpot, wedgeFor, spellFor, unitOf, goldUnitOf, ShardUnit,
-  ChestKills, ChestExp, ChestGold, ChestShards, chestPrize, chestFull, chestPart,
+  Chests, ChestKinds, chestPrize, keysFor, keysOf, canOpen,
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
@@ -866,42 +866,102 @@ check('parça ödülü taşınan büyülerden seçiliyor', (() => {
 })());
 check('loadout boşsa parça kime gideceğini uydurmuyor', spellFor([], 0.5) === null);
 
-// Sandık üçünü birden ödüyor - sandık ganimet verir, tek bir sayı değil.
+// İki sandık, iki anahtar. Sandık artık öldürme sayısıyla kendiliğinden dolmuyor; anahtar
+// cebinde duruyor ve ne zaman harcayacağına sen karar veriyorsun.
+check('iki sandık var', ChestKinds.length === 2 && Chests.small && Chests.great);
+check('büyük sandık her şeyde küçükten cömert',
+  Chests.great.runes > Chests.small.runes && Chests.great.exp > Chests.small.exp
+  && Chests.great.gold > Chests.small.gold);
+
+// Anahtarlar: bitirmek küçüğü, temiz bitirmek büyüğü veriyor. Yıldızlar artık harcanmıyor ama
+// hâlâ bir şeye yarıyor - bu tam olarak o şey.
+check('her bitirme en az bir küçük anahtar', keysFor(0, 1).small === 1 && keysFor(3, 1).small === 1);
+check('büyük anahtar sadece üç yıldızdan',
+  keysFor(3, 1).great >= 1 && keysFor(2, 1).great === 0 && keysFor(0, 9).great === 0);
+check('derin bölüm daha çok anahtar veriyor',
+  keysFor(3, 9).small > keysFor(3, 1).small && keysFor(3, 9).great > keysFor(3, 1).great,
+  `1. ${JSON.stringify(keysFor(3, 1))} vs 9. ${JSON.stringify(keysFor(3, 9))}`);
+
 {
-  // Seviye 5, cunku tidy() daha dusuk bir seviyede henuz acilmamis buyuyu loadout'tan atmakta
-  // haklidir - ve o zaman bu test sandigi degil tidy'yi olcmus olur.
   const d = tidy({ level: 5, loadout: ['bolt', 'fireball', 'frost', 'lightning'] });
   const kit = d.loadout;
+  const put = Object.fromEntries(kit.map((k) => [k, 4]));
+  const Stage = 1;                       // bir bitirme = tam bir küçük anahtar
+  const perClear = keysFor(2, Stage).small;
   check('dört büyü de taşınıyor', kit.length === 4, kit.join(','));
-  check('boş sandık açılmıyor', openChest(d) === null);
+  check('anahtarsız sandık açılmıyor',
+    openChest(d, 'small') === null && openChest(d, 'great') === null);
 
-  record(d, 1, 200);
-  check('öldürülenler sandığa işliyor', d.chest === 200, String(d.chest));
-  check('sandık dolmadan açılmıyor', openChest(d) === null);
+  // iki yıldızlık bitirmeler: küçük anahtar birikiyor, büyük hiç gelmiyor
+  const short = Math.ceil(Chests.small.keys / perClear) - 1;
+  for (let i = 0; i < short; i++) finish(d, Stage, 96, 100, 210, put);
+  check('bitirmeler küçük anahtar biriktiriyor',
+    keysOf(d, 'small') === short * perClear, String(keysOf(d, 'small')));
+  check('eksik anahtarla sandık açılmıyor',
+    !canOpen(d, 'small') && openChest(d, 'small') === null);
+  check('iki yıldız büyük anahtar vermiyor', keysOf(d, 'great') === 0);
 
-  record(d, 1, ChestKills);
-  check('sandık taşmıyor', d.chest === ChestKills, String(d.chest));
+  finish(d, Stage, 96, 100, 210, put);
+  check('yeterli anahtarla açılabiliyor', canOpen(d, 'small'));
 
+  const hadSmall = keysOf(d, 'small');
   const was = { bank: d.bank, gold: d.gold, shards: { ...d.shards } };
-  const got = openChest(d);
-  check('sandık deneyim, altın ve parça ödüyor',
-    got && got.exp > 0 && got.gold > 0 && Object.keys(got.shards).length === kit.length,
-    JSON.stringify(got));
+  const got = openChest(d, 'small');
+  check('küçük sandık deneyim, altın ve parça ödüyor',
+    got && got.kind === 'small' && got.exp > 0 && got.gold > 0
+    && Object.keys(got.shards).length === kit.length, JSON.stringify(got));
+  check('vaat edilen parça sayısı çıkıyor',
+    Math.abs(got.runes - Chests.small.runes) <= kit.length,
+    `${got.runes} vs ${Chests.small.runes}`);
   check('sandığın deneyimi yazıldı', d.bank === was.bank + got.exp);
   check('sandığın altını yazıldı', d.gold === was.gold + got.gold);
   check('sandığın parçaları taşınanlara dağıldı',
     kit.every((k) => shardsOf(d, k) === (was.shards[k] || 0) + got.shards[k]));
-  check('açılan sandık sıfırlanıyor', d.chest === 0 && !chestFull(d));
-  check('aynı sandık iki kez açılmıyor', openChest(d) === null);
+  check('tam da sandığın istediği kadar anahtar harcandı',
+    keysOf(d, 'small') === hadSmall - Chests.small.keys,
+    `${hadSmall} -> ${keysOf(d, 'small')}, fiyat ${Chests.small.keys}`);
+
+  // üç yıldızlık bitirmeler: büyük anahtar da geliyor
+  const greatPer = keysFor(3, Stage).great;
+  for (let i = 0; i < Math.ceil(Chests.great.keys / greatPer); i++) {
+    finish(d, Stage, 100, 100, 210, put);
+  }
+  check('üç yıldız büyük anahtar veriyor',
+    keysOf(d, 'great') >= Chests.great.keys, JSON.stringify(d.keys));
+  const hadGreat = keysOf(d, 'great');
+  const big = openChest(d, 'great');
+  check('büyük sandık küçükten çok ödüyor',
+    big && big.runes > got.runes && big.exp > got.exp && big.gold > got.gold,
+    JSON.stringify(big));
+  check('büyük anahtarlar harcandı', keysOf(d, 'great') === hadGreat - Chests.great.keys);
+  check('büyük sandık küçük anahtarlara dokunmuyor',
+    keysOf(d, 'small') > 0 && openChest(d, 'great') === null || keysOf(d, 'great') === 0);
 }
+
+// Vaat edilen toplam, kaç büyü taşıdığından bağımsız olmalı: büyü başına ödeyen bir sandık,
+// daha çok büyü açmış oyuncuya iki katı değerinde olurdu.
+{
+  for (const n of [1, 2, 4]) {
+    const kit = ['bolt', 'fireball', 'frost', 'lightning'].slice(0, n);
+    const p = chestPrize('great', 8, kit);
+    check(`${n} büyüyle büyük sandık sözünü tutuyor`,
+      Math.abs(p.runes - Chests.great.runes) <= n,
+      `${p.runes} parça (söz: ${Chests.great.runes})`);
+  }
+}
+
+check('olmayan bir sandık yok', chestPrize('devasa', 5, ['bolt']) === null);
 
 // Bozuk kayıt.
 {
   const d = tidy({
-    level: 1, chest: 99999, chests: -4, spins: 1.7, spun: 'bugün',
+    level: 1, chests: -4, spins: 1.7, spun: 'bugün',
+    keys: { small: 2.7, great: -1, devasa: 9 },
     gold: -20, shards: { bolt: 5, hayalet: 99, frost: -3 }, spell: { bolt: 99, hayalet: 4, frost: 0 },
   });
-  check('taşmış sandık kırpılıyor', d.chest === ChestKills);
+  check('kesirli anahtar yuvarlanıyor', d.keys.small === 2, String(d.keys.small));
+  check('eksi anahtar atılıyor', d.keys.great === undefined);
+  check('olmayan sandığın anahtarı atılıyor', d.keys.devasa === undefined);
   check('tarih olmayan çevirme kaydı atılıyor', d.spun === null);
   check('eksi altın sıfırlanıyor', d.gold === 0);
   check('olmayan büyünün parçası atılıyor', d.shards.hayalet === undefined);
@@ -914,18 +974,22 @@ check('loadout boşsa parça kime gideceğini uydurmuyor', spellFor([], 0.5) ===
 }
 
 {
-  const d = tidy({ level: 4, chest: ChestKills / 2, loadout: ['bolt', 'frost'] });
+  const d = tidy({ level: 4, loadout: ['bolt', 'frost'], keys: { small: Chests.small.keys } });
   const r = rewardState(d, '2026-10-14');
   check('sekme durumu tek okumada geliyor',
-    r.spin === true && r.chest === false && Math.abs(r.part - 0.5) < 1e-9
-    && r.need === ChestKills && r.unit === unitOf(4)
-    && r.chestWorth.exp > 0 && r.chestWorth.gold > 0,
+    r.spin === true && r.unit === unitOf(4) && r.chests.length === 2
+    && r.chests[0].keys === Chests.small.keys && r.chests[0].can === true
+    && r.chests[1].keys === 0 && r.chests[1].can === false
+    && r.chests[1].holds.runes > r.chests[0].holds.runes,
     JSON.stringify(r));
 }
 
 console.log('');
 console.log(`çark: ${Wedges.map((x, i) => `${amountAt(i, 5)}${x.kind === 'gold' ? ' altın' : x.kind === 'shard' ? ' parça' : ' dnym'}`).join(' · ')}   (seviye 5)`);
-console.log(`sandık: ${ChestKills} ölü · seviye 5'te ${chestPrize(5, ['bolt']).exp} deneyim, ${chestPrize(5, ['bolt']).gold} altın, ${ChestShards} parça`);
+for (const kind of ChestKinds) {
+  const p = chestPrize(kind, 5, ['bolt', 'fireball', 'frost', 'lightning']);
+  console.log(`${kind === 'great' ? 'büyük' : 'küçük'} sandık: ${p.keys} anahtar → ${p.runes} parça · ${p.exp} deneyim · ${p.gold} altın  (seviye 5)`);
+}
 console.log(`bir büyüyü sonuna kadar: ${wholeGold.toLocaleString('en')} altın + ${wholeShards} parça → hasar +%${Math.round(liftAt(SpellSteps) * 100)}`);
 
 // --- hesap: ana seviye ve kilitler --------------------------------------------------------------
@@ -1081,6 +1145,8 @@ function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt
     t: s.t,
     level: s.level,
     kills: s.kills,
+    wall: s.wall,
+    maxWall: s.maxWall,
     stars: s.phase === 'done' ? starsFor(s.wall, s.maxWall) : 0,
     evos: carrying(s).reduce((a, k) => a + s.kit[k].evos.length, 0),
   };
@@ -1217,19 +1283,25 @@ check('tıklamak işe yarıyor', byStage[0].rate > lazy.filter(Boolean).length /
 
     for (let i = 1; i <= Session; i++) {
       const r = botRun(i * 7919, Four, stage);
+      if (!r.done) continue;                 // düşen koşu hiçbir şey ödemiyor
       const was = { bank: d.bank, gold: d.gold };
-      // botun koştuğu kadrodaki her büyüye makul bir yatırım
-      const got = record(d, stage, r.kills, Object.fromEntries(Four.map((k) => [k, 4])));
+      // Gerçek yol: `finish`, çünkü anahtarları yıldıza göre veren o. `record` çağırmak
+      // sandıkları hiç açılmamış gösterirdi ve ölçüm oyunun değil kendimin ölçümü olurdu.
+      const got = finish(d, stage, r.wall, r.maxWall, r.kills,
+        Object.fromEntries(Four.map((k) => [k, 4])));
       runs.exp += d.bank - was.bank;
       runs.gold += d.gold - was.gold;
       runs.shard += Object.values(got.shards).reduce((a, b) => a + b, 0);
 
-      const chest = openChest(d);
-      if (chest) {
-        chests += 1;
-        extra.exp += chest.exp;
-        extra.gold += chest.gold;
-        extra.shard += Object.values(chest.shards).reduce((a, b) => a + b, 0);
+      // oyuncu eline geçen anahtarı hemen harcıyor
+      for (const kind of ChestKinds) {
+        let chest;
+        while ((chest = openChest(d, kind))) {
+          chests += 1;
+          extra.exp += chest.exp;
+          extra.gold += chest.gold;
+          extra.shard += Object.values(chest.shards).reduce((a, b) => a + b, 0);
+        }
       }
     }
     const wheel = perSpin(d.level);        // günün tek çevirmesi
@@ -1254,17 +1326,50 @@ check('tıklamak işe yarıyor', byStage[0].rate > lazy.filter(Boolean).length /
     console.log(`  bölüm ${r.stage}: deneyim ${pc(r.part.exp)} · altın ${pc(r.part.gold)} · parça ${pc(r.part.shard)}   (${r.chests} sandık)`);
   }
 
-  // Ödül bir ikram olmalı, ana yemek değil. Oynamak her üç para biriminin de açık ara en büyük
-  // kaynağı olmazsa, çarkı çevirip kapatmak oynamaktan daha verimli hâle gelir.
   const kinds = ['exp', 'gold', 'shard'];
-  check('ödüller oynamanın yerini almıyor',
-    rows.every((r) => kinds.every((k) => r.part[k] < 0.35)),
-    rows.map((r) => `bölüm ${r.stage}: ${kinds.map((k) => k + ' ' + pc(r.part[k])).join(' ')}`).join('  |  '));
   check('ödüller hissedilir derecede var',
     rows.every((r) => kinds.every((k) => r.part[k] > 0.03)),
     rows.map((r) => `bölüm ${r.stage}: ${kinds.map((k) => k + ' ' + pc(r.part[k])).join(' ')}`).join('  |  '));
   check('bir oturumda sandık açılıyor', rows.every((r) => r.chests >= 1),
     rows.map((r) => `bölüm ${r.stage}: ${r.chests}`).join('  '));
+
+  // Üstteki oran, CARK icin dogru soruydu: cark bedava, o yuzden "oynamadan ne kadar
+  // alabiliyorsun" diye sorulur. Sandiklar icin yanlis soru - sandiklarin anahtari zaten
+  // oynayarak kazaniliyor. Sandiga sorulacak soru su: KOLAY bir bolumu ciftlik gibi kullanmak,
+  // ilerlemekten iyi mi? Oyle olsaydi oyun kendi ilk bolumunde kilitlenirdi.
+  {
+    // Karsilastirma, iki bolumun de guvenle bitirilebildigi bir guc seviyesinde yapiliyor.
+    // Botun 3. bolumu ancak %43 bitirdigi ciplak halde olcmek, "gucu yetmeyen oyuncu 1. bolumde
+    // kalsin" demekten baska bir sey olmazdi - ve o zaten dogru.
+    const perMinute = (stage) => {
+      const d = tidy({ level: 9, loadout: ['bolt', 'fireball', 'frost', 'lightning'] });
+      let runes = 0, seconds = 0;
+      for (let i = 1; i <= 30; i++) {
+        const r = botRun(i * 7919, Four, stage, 6, HeroSteps, SpellSteps);
+        seconds += r.t;
+        if (!r.done) continue;
+        const got = finish(d, stage, r.wall, r.maxWall, r.kills,
+          { bolt: 6, fireball: 3, frost: 3, lightning: 3 });
+        runes += got.shards.bolt || 0;            // beslenen büyüye düşen
+        for (const kind of ChestKinds) {
+          let chest;
+          while ((chest = openChest(d, kind))) runes += chest.shards.bolt || 0;
+        }
+      }
+      return (runes / seconds) * 60;
+    };
+    const farm = perMinute(1);
+    const push = perMinute(5);
+    console.log(`  tam donanımda, beslenen büyüye dakikada parça: 1. bölüm ${farm.toFixed(1)} · 5. bölüm ${push.toFixed(1)}`);
+    check('güvenle bitirilen en derin bölüm en çok ödüyor', push > farm * 1.2,
+      `1. bölüm ${farm.toFixed(1)}/dk vs 5. bölüm ${push.toFixed(1)}/dk`);
+  }
+
+  // Yine de bir üst sınır lazım: ilk bölüm yeni oyuncuya cömert olabilir ama oyunun yerini
+  // alamaz.
+  check('ödüller oynamanın yerini almıyor',
+    rows.every((r) => kinds.every((k) => r.part[k] < 0.5)),
+    rows.map((r) => `bölüm ${r.stage}: ${kinds.map((k) => k + ' ' + pc(r.part[k])).join(' ')}`).join('  |  '));
 
   // Bir büyüyü sonuna kadar çıkarmak kaç koşu sürüyor - iki para biriminin de söz sahibi olması
   // gereken yer. Altın tek başına bitiriyorsa parça süs, parça tek başına bitiriyorsa altın süs.

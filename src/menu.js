@@ -8,7 +8,7 @@
 // first; what goes inside each tab is a conversation per tab.
 
 import {
-  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard,
+  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard, key,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
@@ -17,7 +17,7 @@ import {
 } from './meta.js';
 import { Steps as SpellSteps, liftAt } from './upgrades.js';
 import {
-  Wedges, amountAt, kindAt, Jackpot, chestPart, chestFull, chestPrize, ChestKills, canSpin,
+  Wedges, amountAt, kindAt, Jackpot, Chests, ChestKinds, chestPrize, keysOf, canOpen, canSpin,
 } from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
@@ -124,48 +124,54 @@ export function spellTiles(w, h, dpr = 1) {
 }
 
 /**
- * The wheel, the button under it, and the chest panel at the foot of the band.
+ * The wheel, the button under it, and the two chests below them.
  *
- * The wheel takes whatever is left once the other two have what they need, rather than the other
- * way round: a wheel that keeps its size and pushes the chest off the bottom of a short screen
- * loses the half of the tab that pays out while you are actually playing.
+ * The tab scrolls now, so the wheel no longer has to be squeezed small enough to leave the chests
+ * room on the same screen. It takes a comfortable size and the chests sit under the fold, which
+ * is also the order they are met in: you spin, then you look down.
  */
 export function wheelBox(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
   const head = 62 * U;
-  const chest = 126 * U;
-  const press = 56 * U;
-  const room = b.height - head - chest - press - 40 * U;
-  const r = Math.max(56 * U, Math.min(168 * U, Math.min(room / 2, (w - 76 * U) / 2)));
-  // Centred in the space between the heading and the chest rather than hung from the top: on a
-  // wide screen the leftover room is all at the bottom otherwise, and the wheel looks dropped.
-  const from = b.top + head;
-  const to = b.bottom - chest - press - 16 * U;
-  return { cx: w / 2, cy: Math.max(from + r, (from + to) / 2), r, head };
+  const r = Math.max(60 * U, Math.min(168 * U,
+    Math.min((b.height - head - 92 * U) / 2, (w - 76 * U) / 2)));
+  return { cx: w / 2, cy: b.top + head + r, r, head };
 }
 
 export function spinBox(w, h, dpr = 1) {
   const U = unit(dpr);
   const c = wheelBox(w, h, dpr);
   const bw = Math.min(240 * U, w - 90 * U);
-  return { x: w / 2 - bw / 2, y: c.cy + c.r + 16 * U, w: bw, h: 52 * U };
+  return { x: w / 2 - bw / 2, y: c.cy + c.r + 18 * U, w: bw, h: 52 * U };
 }
 
-export function chestBox(w, h, dpr = 1) {
+/** The two chests, stacked under the wheel, in the order they are worth. */
+export function chestBoxes(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const sb = spinBox(w, h, dpr);
+  const bw = Math.min(460 * U, w - 32 * U);
+  const bh = 116 * U;
+  const top = sb.y + sb.h + 46 * U;
+  return ChestKinds.map((kind, i) => ({
+    kind, x: w / 2 - bw / 2, y: top + i * (bh + 14 * U), w: bw, h: bh,
+  }));
+}
+
+/** The press inside a chest panel, on its right. Takes the box so it follows the scroll. */
+export function chestOpen(box, dpr = 1) {
+  const U = unit(dpr);
+  const bw = Math.min(140 * U, box.w * 0.36);
+  return { x: box.x + box.w - bw - 14 * U, y: box.y + box.h - 48 * U, w: bw, h: 38 * U };
+}
+
+/** How far the rewards tab may be pushed up, given the window it is in. */
+export function wheelReach(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  const bw = Math.min(460 * U, w - 40 * U);
-  const bh = 110 * U;
-  return { x: w / 2 - bw / 2, y: b.bottom - bh - 4 * U, w: bw, h: bh };
-}
-
-/** The press inside the chest panel, on its right. */
-export function chestOpen(w, h, dpr = 1) {
-  const U = unit(dpr);
-  const c = chestBox(w, h, dpr);
-  const bw = Math.min(150 * U, c.w * 0.4);
-  return { x: c.x + c.w - bw - 14 * U, y: c.y + c.h - 50 * U, w: bw, h: 38 * U };
+  const boxes = chestBoxes(w, h, dpr);
+  const last = boxes[boxes.length - 1];
+  return Math.max(0, last.y + last.h + 14 * U - b.bottom);
 }
 
 /**
@@ -419,8 +425,15 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     // Nothing on this tab may be pressed while the wheel is turning: the prize is already banked
     // and a second press would be asking for a spin that has been spent.
     if (show.spin) return null;
-    if (canSpin(data) && inside(spinBox(w, h, dpr), px, py)) return { what: 'spin' };
-    if (chestFull(data) && inside(chestOpen(w, h, dpr), px, py)) return { what: 'chest' };
+    // Everything here is drawn shifted by the scroll, so everything here is tested shifted by it.
+    const up = show.wheelScroll || 0;
+    const moved = (r) => ({ ...r, y: r.y - up });
+    if (canSpin(data) && inside(moved(spinBox(w, h, dpr)), px, py)) return { what: 'spin' };
+    for (const box of chestBoxes(w, h, dpr)) {
+      if (!canOpen(data, box.kind)) continue;
+      if (inside(moved(chestOpen(box, dpr)), px, py)) return { what: 'chest', key: box.kind };
+    }
+    return null;
   }
   if (data.tab === 'spells') {
     // The halves are read before anything under them: the loadout grid starts near the top of the
@@ -759,20 +772,119 @@ function spinSaid(won) {
   return say(UI.earned, won.amount);
 }
 
+/**
+ * One chest, and the key that opens it.
+ *
+ * The small one and the great one differ in what they hold and in nothing else, so the panel is
+ * the same for both and the difference is only ever the numbers on it. A chest you have no key
+ * for is drawn faint and still says what it holds - that is the whole reason to want a key.
+ */
+function chestPanel(ctx, data, box, U, show) {
+  const kind = box.kind;
+  const great = kind === 'great';
+  const held = keysOf(data, kind);
+  const want = Chests[kind].keys;
+  const can = canOpen(data, kind);
+  const won = show.chestWon && show.chestWon.kind === kind ? show.chestWon : null;
+  const holds = chestPrize(kind, data.level || 1, data.loadout || []);
+  const lively = can || !!won;
+
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = (lively ? 3 : 1.5) * U;
+  ctx.globalAlpha = lively ? 1 : 0.4;
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 14 * U); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.globalAlpha = lively ? 1 : 0.45;
+  chest(ctx, box.x + 48 * U, box.y + box.h / 2 - 2 * U, great ? 62 * U : 44 * U,
+    lively, Black, Pale);
+
+  // Three columns, measured rather than guessed. The writing used to be given the whole panel to
+  // run across and ran straight under the button and through the key.
+  const tx = box.x + 94 * U;
+  const right = box.x + box.w - 14 * U;
+  const press = chestOpen(box, U);
+  const keyRoom = 58 * U;
+  const title = right - keyRoom - tx - 10 * U;
+
+  if (won) {
+    const bits = Object.entries(won.shards || {}).filter(([, n]) => n > 0);
+    fitWrite(ctx, say(great ? UI.chestGreat : UI.chestSmall),
+      tx, box.y + 26 * U, 12 * U, 800, 'left', Black, right - tx);
+    fitWrite(ctx, `${say(UI.earned, won.exp)}   ${say(UI.earnedGold, won.gold)}`,
+      tx, box.y + 56 * U, 16 * U, 800, 'left', Black, right - tx);
+    ctx.globalAlpha = 0.75;
+    fitWrite(ctx, bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  '),
+      tx, box.y + 84 * U, 11 * U, 700, 'left', Black, right - tx);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  fitWrite(ctx, say(great ? UI.chestGreat : UI.chestSmall),
+    tx, box.y + 26 * U, 12 * U, 800, 'left', Black, title);
+
+  // The key: what it costs and what you have, as a fraction - the only question here is "yet?".
+  key(ctx, right - keyRoom + 4 * U, box.y + 26 * U, 12 * U, great, Black, Pale);
+  ctx.globalAlpha = can ? 1 : 0.5;
+  write(ctx, `${held}/${want}`, right, box.y + 26 * U, 14 * U, 800, 'right');
+  ctx.globalAlpha = 1;
+
+  // what it holds: the runes first, because they are what a chest is for
+  shard(ctx, tx + 6 * U, box.y + 56 * U, 6 * U, Black);
+  write(ctx, String(holds.runes), tx + 18 * U, box.y + 56 * U, 16 * U, 800, 'left');
+
+  const room = (can ? press.x - 12 * U : right) - tx;
+  ctx.globalAlpha = 0.72;
+  fitWrite(ctx, say(UI.chestHolds, holds.exp, holds.gold),
+    tx, box.y + 80 * U, 11 * U, 600, 'left', Black, room);
+  ctx.globalAlpha = 1;
+
+  if (can) {
+    const lit = show.overMenu === 'chest:' + kind;
+    ctx.fillStyle = lit ? Black : Pale;
+    ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 10 * U); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 2.4 * U;
+    ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 10 * U); ctx.stroke();
+    write(ctx, say(UI.chestOpen), press.x + press.w / 2, press.y + press.h / 2,
+      13 * U, 800, 'center', lit ? Pale : Black);
+  } else {
+    ctx.globalAlpha = 0.6;
+    fitWrite(ctx, say(great ? UI.keyGreatFrom : UI.keySmallFrom),
+      right, box.y + box.h - 14 * U, 10 * U, 600, 'right', Black, box.w - 108 * U);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
+ * The rewards tab: the wheel, then the chests under it.
+ *
+ * It scrolls, which is why everything below the heading is drawn inside one shifted and clipped
+ * block. The purse and the scroll mark stay put - a balance that slid off the top of the screen
+ * would be the one number you came here to check.
+ */
 function wheelTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
   const c = wheelBox(w, h, U);
   const sb = spinBox(w, h, U);
   const level = data.level || 1;
   const turning = !!show.spin;
+  const up = show.wheelScroll || 0;
+  const reach = wheelReach(w, h, U);
   const left = Math.max(20 * U, w / 2 - 230 * U);
 
   // --- what is in the bank.
   // Held at the old figure while the wheel turns: the prize is banked the moment the wheel is
   // pressed, so that closing the tab mid-spin cannot lose it, and a number that jumps before
   // the needle lands tells you what you won before the wheel does.
-  const shown = turning ? show.spin.was : (data.bank || 0);
+  const shown = turning && show.spin.was !== undefined ? show.spin.was : null;
   purse(ctx, data, left, b.top + 16 * U, U, shown);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, b.top + 56 * U, w, b.bottom - b.top - 56 * U);
+  ctx.clip();
+  ctx.translate(0, -up);
 
   // --- the wheel
   const step = (Math.PI * 2) / Wedges.length;
@@ -803,14 +915,12 @@ function wheelTab(ctx, data, w, h, U, show) {
     ctx.translate(Math.cos(mid) * c.r * 0.6, Math.sin(mid) * c.r * 0.6);
     ctx.rotate(-turn);
     kindMark(ctx, kindAt(i), 0, -14 * U, 7 * U, ink, dark ? Black : Pale);
-    write(ctx, String(amountAt(i, level)), 0, 6 * U,
-      (big ? 17 : 14) * U, 800, 'center', ink);
+    write(ctx, String(amountAt(i, level)), 0, 6 * U, (big ? 17 : 14) * U, 800, 'center', ink);
     ctx.restore();
   }
   ctx.strokeStyle = Black;
   ctx.lineWidth = 3.4 * U;
   ctx.beginPath(); ctx.arc(0, 0, c.r, 0, Math.PI * 2); ctx.stroke();
-  // the hub, so the middle is not eight points of ink meeting
   ctx.fillStyle = Pale;
   ctx.beginPath(); ctx.arc(0, 0, c.r * 0.17, 0, Math.PI * 2); ctx.fill();
   ctx.lineWidth = 2.6 * U;
@@ -819,8 +929,7 @@ function wheelTab(ctx, data, w, h, U, show) {
 
   // --- the pointer, which does not turn.
   // It sits wholly outside the rim rather than reaching over it. Four of the eight wedges are
-  // solid black, so a black arrow overlapping the wheel is invisible on half the results - and
-  // outlining it in the pale only moved the problem to the other four.
+  // solid black, so a black arrow overlapping the wheel is invisible on half the results.
   ctx.beginPath();
   ctx.moveTo(c.cx, c.cy - c.r - 3 * U);
   ctx.lineTo(c.cx - 12 * U, c.cy - c.r - 25 * U);
@@ -852,71 +961,26 @@ function wheelTab(ctx, data, w, h, U, show) {
     ctx.globalAlpha = 1;
   }
 
-  // --- the chest
-  {
-    const box = chestBox(w, h, U);
-    const full = chestFull(data);
-    const part = chestPart(data);
-    const prize = chestPrize(level, data.loadout || []);
-    const won = show.chestWon !== null && show.chestWon !== undefined;
+  // --- the chests
+  for (const box of chestBoxes(w, h, U)) chestPanel(ctx, data, box, U, show);
 
+  ctx.restore();
+
+  // --- there is more below: say so, and only while there is
+  if (reach > 0) {
+    const atFoot = up >= reach - 2;
+    ctx.globalAlpha = atFoot ? 0.25 : 0.65;
+    const y = b.bottom - 14 * U;
     ctx.strokeStyle = Black;
-    ctx.lineWidth = (full || won ? 3 : 1.6) * U;
-    ctx.globalAlpha = full || won ? 1 : 0.45;
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 14 * U); ctx.stroke();
+    ctx.lineWidth = 2.6 * U;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 9 * U, y - 4 * U);
+    ctx.lineTo(w / 2, y + 4 * U);
+    ctx.lineTo(w / 2 + 9 * U, y - 4 * U);
+    ctx.stroke();
     ctx.globalAlpha = 1;
-
-    // Thrown open both while it is full and just after it was emptied - the chest you have this
-    // second opened should not snap shut because the count behind it has gone back to nothing.
-    chest(ctx, box.x + 44 * U, box.y + 44 * U, 46 * U, full || won, Black, Pale);
-
-    const tx = box.x + 82 * U;
-
-    if (won) {
-      // What it paid, and nothing else. Written over the count and the bar this used to sit on
-      // top of, both of them were unreadable.
-      const got = show.chestWon;
-      const bits = Object.entries(got.shards || {}).filter(([, n]) => n > 0);
-      fitWrite(ctx, `${say(UI.earned, got.exp)}   ${say(UI.earnedGold, got.gold)}`,
-        tx, box.y + box.h / 2 - 10 * U, 17 * U, 800, 'left', Black, box.w - (tx - box.x) - 20 * U);
-      ctx.globalAlpha = 0.75;
-      fitWrite(ctx, bits.length
-        ? bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  ')
-        : say(UI.chestAgain),
-        tx, box.y + box.h / 2 + 16 * U, 11 * U, 700, 'left', Black, box.w - (tx - box.x) - 20 * U);
-      ctx.globalAlpha = 1;
-    } else {
-      write(ctx, say(UI.chest), tx, box.y + 26 * U, 12 * U, 800, 'left');
-      ctx.globalAlpha = 0.7;
-      write(ctx, say(UI.chestKills, Math.min(ChestKills, data.chest || 0), ChestKills),
-        tx, box.y + 46 * U, 11 * U, 600, 'left');
-      ctx.globalAlpha = 1;
-
-      // The bar, stopping clear of the button when there is one: run full width it passes behind
-      // the press, and a bar you cannot see the end of is not telling you anything.
-      const bw = (full ? chestOpen(w, h, U).x - 14 * U : box.x + box.w - 24 * U) - tx;
-      ctx.fillStyle = 'rgba(13,12,11,0.14)';
-      ctx.fillRect(tx, box.y + 58 * U, bw, 7 * U);
-      ctx.fillStyle = Black;
-      ctx.fillRect(tx, box.y + 58 * U, bw * part, 7 * U);
-
-      if (full) {
-        const ob = chestOpen(w, h, U);
-        const lit = show.overMenu === 'chest';
-        ctx.fillStyle = lit ? Black : Pale;
-        ctx.beginPath(); ctx.roundRect(ob.x, ob.y, ob.w, ob.h, 10 * U); ctx.fill();
-        ctx.strokeStyle = Black;
-        ctx.lineWidth = 2.4 * U;
-        ctx.beginPath(); ctx.roundRect(ob.x, ob.y, ob.w, ob.h, 10 * U); ctx.stroke();
-        write(ctx, say(UI.chestOpen), ob.x + ob.w / 2, ob.y + ob.h / 2,
-          13 * U, 800, 'center', lit ? Pale : Black);
-      } else {
-        ctx.globalAlpha = 0.6;
-        fitWrite(ctx, say(UI.chestWorth, prize.exp, prize.gold),
-          box.x + box.w - 16 * U, box.y + box.h - 24 * U, 11 * U, 600, 'right', Black, bw);
-        ctx.globalAlpha = 1;
-      }
-    }
   }
 }
 

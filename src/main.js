@@ -5,7 +5,7 @@
 
 import { begin, advance, click, take, investedIn } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
-import { menu, menuHit, heroHome, heroReach, restFor } from './menu.js';
+import { menu, menuHit, heroHome, heroReach, wheelReach, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
@@ -30,7 +30,7 @@ function fresh() {
     hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null, heroScroll: null,
     // Half a wedge back, so the wheel opens with a wedge under the pointer rather than the seam
     // between two of them - which looks like a spin that landed on nothing.
-    turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null,
+    turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
   };
 }
 
@@ -116,6 +116,10 @@ function tick(now) {
     if (data.tab === 'hero' && show.heroScroll === null) {
       show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
     }
+    // Clamped here rather than only where it is pushed. Turning a phone sideways, or opening the
+    // keyboard, changes how far the tab reaches - and a scroll left over from the taller window
+    // shows an empty screen with the content somewhere above it.
+    if (scrolls(data.tab)) setScroll(data.tab, scrollOf(data.tab));
     spinOn(Math.min(0.25, raw));
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
@@ -195,10 +199,28 @@ function spinOn(dt) {
   }
 }
 
-/** How far the hero ladder may be pushed, given the window it is in. */
-function heroClamp(at) {
-  return Math.max(0, Math.min(heroReach(canvas.width, canvas.height, dpr), at));
+/**
+ * The two tabs that are taller than the screen.
+ *
+ * Both are dragged the same way and both are clamped the same way; only the measure differs, so
+ * the drag below does not have to know which tab it is on.
+ */
+const reachOf = (tab) => (tab === 'hero'
+  ? heroReach(canvas.width, canvas.height, dpr)
+  : wheelReach(canvas.width, canvas.height, dpr));
+
+const scrolls = (tab) => tab === 'hero' || tab === 'wheel';
+
+function clampScroll(tab, at) {
+  return Math.max(0, Math.min(reachOf(tab), at));
 }
+
+function setScroll(tab, at) {
+  if (tab === 'hero') show.heroScroll = clampScroll(tab, at);
+  else show.wheelScroll = clampScroll(tab, at);
+}
+
+const scrollOf = (tab) => (tab === 'hero' ? (show.heroScroll || 0) : (show.wheelScroll || 0));
 
 let drag = null;
 
@@ -212,6 +234,7 @@ function doMenu(hit) {
     show.spinWon = null;
     show.chestWon = null;
     if (hit.key === 'hero') show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
+    if (hit.key === 'wheel') show.wheelScroll = 0;
     meta.save(data);
     return;
   }
@@ -234,7 +257,7 @@ function doMenu(hit) {
     return;
   }
   if (hit.what === 'chest') {
-    const got = meta.openChest(data);
+    const got = meta.openChest(data, hit.key);
     if (!got) return;
     show.chestWon = got;
     sound.prize();
@@ -282,7 +305,7 @@ addEventListener('pointermove', (e) => {
   if (drag) {
     const dy = p.y - drag.y;
     drag.moved = Math.max(drag.moved, Math.abs(dy));
-    show.heroScroll = heroClamp(drag.from - dy);
+    setScroll(drag.tab, drag.from - dy);
     return;
   }
   if (screen === 'menu') {
@@ -293,6 +316,7 @@ addEventListener('pointermove', (e) => {
       : hit.what === 'codexHalf' ? 'codexHalf:' + hit.key
       : hit.what === 'spellHalf' ? 'spellHalf:' + hit.key
       : hit.what === 'buySpell' ? 'buySpell:' + hit.key
+      : hit.what === 'chest' ? 'chest:' + hit.key
       : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';
@@ -309,10 +333,11 @@ addEventListener('pointerdown', (e) => {
   const p = spot(e);
 
   if (screen === 'menu') {
-    // The hero ladder is taller than the screen, so a press there might be a scroll. It is
-    // settled on release: moved a little, it was a tap; moved a lot, it was a drag.
-    if (data.tab === 'hero' && !show.settings) {
-      drag = { y: p.y, from: show.heroScroll || 0, moved: 0 };
+    // The hero comb and the rewards tab are both taller than the screen, so a press on either
+    // might be a scroll. It is settled on release: moved a little, it was a tap; moved a lot, it
+    // was a drag.
+    if (scrolls(data.tab) && !show.settings) {
+      drag = { tab: data.tab, y: p.y, from: scrollOf(data.tab), moved: 0 };
       return;
     }
     doMenu(menuHit(data, show, canvas.width, canvas.height, p.x, p.y, dpr));
@@ -360,9 +385,9 @@ addEventListener('pointerup', (e) => {
 addEventListener('pointercancel', () => { drag = null; });
 
 addEventListener('wheel', (e) => {
-  if (screen !== 'menu' || data.tab !== 'hero' || show.settings) return;
+  if (screen !== 'menu' || !scrolls(data.tab) || show.settings) return;
   e.preventDefault();
-  show.heroScroll = heroClamp((show.heroScroll || 0) + e.deltaY);
+  setScroll(data.tab, scrollOf(data.tab) + e.deltaY);
 }, { passive: false });
 
 addEventListener('keydown', (e) => {

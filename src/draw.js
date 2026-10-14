@@ -568,6 +568,54 @@ export function coin(ctx, x, y, r, colour, back) {
   ctx.restore();
 }
 
+/**
+ * A key, in one of two makes.
+ *
+ * There is no colour in this game, so the two cannot be a grey one and a purple one: the small
+ * one is a plain ring and a single tooth, the great one has a barred bow and a double tooth and
+ * is drawn a little longer. Told apart by shape at the size they are actually seen at, which a
+ * colour code could not have managed in two inks anyway.
+ */
+export function key(ctx, x, y, r, great, colour, back) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = colour;
+  ctx.fillStyle = colour;
+  ctx.lineCap = 'butt';
+
+  const bow = r * (great ? 0.5 : 0.42);
+  const top = -r;
+
+  // the bow
+  ctx.beginPath();
+  ctx.arc(0, top + bow, bow, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, top + bow, bow * (great ? 0.42 : 0.46), 0, Math.PI * 2);
+  ctx.fillStyle = back;
+  ctx.fill();
+  ctx.fillStyle = colour;
+
+  // the great one wears a bar across its bow
+  if (great) {
+    ctx.lineWidth = r * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(-bow * 0.44, top + bow);
+    ctx.lineTo(bow * 0.44, top + bow);
+    ctx.stroke();
+  }
+
+  // the shaft
+  const shaft = r * 0.17;
+  ctx.fillRect(-shaft / 2, top + bow * 1.7, shaft, r * (great ? 1.5 : 1.3));
+
+  // the teeth, on the right of the shaft
+  const foot = top + bow * 1.7 + r * (great ? 1.5 : 1.3);
+  ctx.fillRect(shaft / 2, foot - r * 0.3, r * 0.36, shaft * 0.9);
+  if (great) ctx.fillRect(shaft / 2, foot - r * 0.66, r * 0.26, shaft * 0.9);
+  ctx.restore();
+}
+
 /** A shard: a plain rhombus, chosen because nothing else in the game is one. */
 export function shard(ctx, x, y, r, colour) {
   ctx.save();
@@ -1126,11 +1174,32 @@ function spoils(ctx, won, cx, y, U, room) {
   coin(ctx, left + we + gap + 8 * U, y, 7 * U, Black, Inks.Pale);
   write(ctx, gold, left + we + gap + 22 * U, y, 16 * U, 800, 'left');
 
+  let at = y;
+
+  // The runes, with the mark beside the writing rather than at the edge of the width the writing
+  // is allowed - which is where it sat, alone against the left of the screen.
   const bits = Object.entries(won.shards || {}).filter(([, n]) => n > 0);
-  if (!bits.length) return;
-  const line = bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  ');
-  shard(ctx, cx - room / 2 + 6 * U, y + 24 * U, 6 * U, Black);
-  fitWrite(ctx, line, cx + 8 * U, y + 24 * U, 12 * U, 700, 'center', Black, room - 40 * U);
+  if (bits.length) {
+    at += 24 * U;
+    const line = bits.map(([k, n]) => `${say(Spells[k].name)} ${n}`).join('  ·  ');
+    ctx.font = `700 ${12 * U}px ${Face}`;
+    const wl = Math.min(ctx.measureText(line).width, room - 40 * U);
+    shard(ctx, cx - wl / 2 - 12 * U, at, 6 * U, Black);
+    fitWrite(ctx, line, cx + 6 * U, at, 12 * U, 700, 'center', Black, room - 40 * U);
+  }
+
+  // The keys, which are the only thing here that is not spent on the screen it was won on.
+  const got = Object.entries(won.keys || {}).filter(([, n]) => n > 0);
+  if (got.length) {
+    at += 24 * U;
+    const words = got.map(([k, n]) => say(k === 'great' ? UI.keyGreat : UI.keySmall, n)).join('  ·  ');
+    ctx.font = `800 ${12 * U}px ${Face}`;
+    const ww = Math.min(ctx.measureText(words).width, room - 40 * U);
+    key(ctx, cx - ww / 2 - 14 * U, at, 9 * U, got.some(([k]) => k === 'great'), Black, Inks.Pale);
+    fitWrite(ctx, words, cx + 6 * U, at, 12 * U, 800, 'center', Black, room - 40 * U);
+  }
+
+  return at;
 }
 
 export function frame(ctx, w, h, state, show, dpr = 1) {
@@ -1208,6 +1277,7 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     const won = show.won;
     const row = (n) => h / 2 + (n - 2.6) * 34 * U;
     const part = Math.round((Math.max(0, state.wall) / state.maxWall) * 100);
+    let foot = row(4.7);
 
     write(ctx, say(UI.complete, state.stage), w / 2, row(0) - 18 * U, 34 * U, 800, 'center');
     stars(ctx, w / 2, row(1.4), 26 * U, won ? won.stars : 0, Black);
@@ -1217,15 +1287,17 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
       const need = nextStarAt(won.stars);
       write(ctx, need === null ? say(UI.allStars) : say(UI.starFor, need),
         w / 2, row(3.7), 13 * U, 500, 'center');
-      // Everything the run paid, because three currencies that drop silently are three
-      // currencies the player does not know they have.
-      spoils(ctx, won, w / 2, row(4.7), U, w - 48 * U);
+      // Everything the run paid, because currencies that drop silently are currencies the
+      // player does not know they have. It reports where it finished, so the lines under it
+      // follow rather than being placed at a row that assumed how much there was to say.
+      foot = spoils(ctx, won, w / 2, row(4.7), U, w - 48 * U);
       if (won.opened.length) {
+        foot += 28 * U;
         fitWrite(ctx, say(UI.unlocked, won.level, won.opened.map((k) => say(Spells[k].name)).join(' + ').toUpperCase()),
-          w / 2, row(6.1), 14 * U, 800, 'center', Black, w - 48 * U);
+          w / 2, foot, 14 * U, 800, 'center', Black, w - 48 * U);
       }
     }
-    write(ctx, say(UI.toMenu), w / 2, row(6.6), 15 * U, 700, 'center');
+    write(ctx, say(UI.toMenu), w / 2, Math.max(row(6.6), foot + 30 * U), 15 * U, 700, 'center');
   }
 
   if (state.phase === 'lost') {

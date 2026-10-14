@@ -8,7 +8,8 @@ import { LoadoutSize, Always, UnlockAt, unlocked, spellKeys } from './spells.js'
 import { Languages } from './text.js';
 import { Ladder, Steps as HeroSteps, totals as heroTotals, costOf as heroCost } from './hero.js';
 import {
-  today, canSpin, wedgeFor, amountAt, kindAt, spellFor, chestFull, chestPrize, ChestKills,
+  today, canSpin, wedgeFor, amountAt, kindAt, spellFor,
+  Chests, ChestKinds, chestPrize, keysFor, canOpen,
 } from './rewards.js';
 import { Steps as SpellSteps, stepOf, canStep } from './upgrades.js';
 
@@ -33,7 +34,7 @@ const blank = {
   bank: 0,          // experience still to spend
   spun: null,       // the local date of the last free spin, so tomorrow is another one
   spins: 0,
-  chest: 0,         // bodies towards the next chest
+  keys: null,       // chest kind -> keys held
   chests: 0,
   gold: 0,          // shared, and what decides how many spells you can afford to raise
   shards: null,     // spell -> shards held; they decide which spell you are raising
@@ -115,11 +116,12 @@ export function spin(data, roll = Math.random(), day = today(), pick = Math.rand
   return { at, kind, amount, key };
 }
 
-/** Opens a full chest. Null when it is not full, so the button cannot be hammered. */
-export function openChest(data) {
-  if (!chestFull(data)) return null;
-  const prize = chestPrize(data.level || 1, data.loadout || []);
-  data.chest = 0;
+/** Opens one chest, if there is a key for it. Null otherwise, so the press cannot be hammered. */
+export function openChest(data, kind) {
+  if (!canOpen(data, kind)) return null;
+  const prize = chestPrize(kind, data.level || 1, data.loadout || []);
+  data.keys[kind] -= Chests[kind].keys;
+  if (data.keys[kind] <= 0) delete data.keys[kind];
   data.chests = (data.chests || 0) + 1;
   data.bank = (data.bank || 0) + prize.exp;
   data.gold = (data.gold || 0) + prize.gold;
@@ -207,7 +209,11 @@ export function goldFor(stage, kills) {
  * economy that says WHICH spell is being raised, so it has to answer to what you actually played.
  */
 export function shardsFor(stage, taken) {
-  return 2 + Math.max(0, Math.floor(taken || 0)) + Math.floor((Math.max(1, stage) - 1) / 2);
+  const deep = Math.max(1, Math.floor(stage));
+  // Multiplied by the stage rather than nudged by it. Added, a stage-three clear was worth twelve
+  // per cent more than a stage-one clear for several times the difficulty, which is another way
+  // of saying stay where it is easy.
+  return Math.round((2 + Math.max(0, Math.floor(taken || 0))) * (1 + (deep - 1) * 0.25));
 }
 
 export function load() {
@@ -245,9 +251,14 @@ export function tidy(data) {
   if (data.spellTab !== 'loadout' && data.spellTab !== 'raise') data.spellTab = 'loadout';
   data.hero = Math.max(0, Math.min(HeroSteps, Math.floor(data.hero || 0)));
   data.bank = Math.max(0, Math.round(data.bank || 0));
-  // A chest held open past what it needs would pay twice, and a saved `spun` that is not a date
-  // would either lock the wheel forever or never lock it.
-  data.chest = Math.max(0, Math.min(ChestKills, Math.round(data.chest || 0)));
+  // A key count that is not a whole number, or is for a chest that no longer exists, would be a
+  // press that does nothing and a number nobody can spend.
+  const keys = (data.keys && typeof data.keys === 'object') ? data.keys : {};
+  data.keys = {};
+  for (const k of ChestKinds) {
+    const n = Math.floor(keys[k] || 0);
+    if (n > 0) data.keys[k] = n;
+  }
   data.chests = Math.max(0, Math.floor(data.chests || 0));
   data.spins = Math.max(0, Math.floor(data.spins || 0));
   if (typeof data.spun !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.spun)) data.spun = null;
@@ -313,9 +324,15 @@ export function finish(data, stage, wall, maxWall, kills, taken = null) {
   // just opened is named something else rather than quietly overwriting it.
   const openedStage = had === undefined && stageOpen(data, stage + 1);
   const account = record(data, stage, kills, taken);
+  // Keys are booked here rather than in `record`, because this is the only place that knows how
+  // the stage was finished - and the great key is paid for how, not for whether.
+  const won = keysFor(stars, stage);
+  for (const [k, n] of Object.entries(won)) {
+    if (n > 0) data.keys[k] = (data.keys[k] || 0) + n;
+  }
   if (data.stage < furthestStage(data)) data.stage = Math.min(furthestStage(data), stage + 1);
   save(data);
-  return { stars, had, beat, openedStage, ...account };
+  return { stars, had, beat, openedStage, keys: won, ...account };
 }
 
 export function record(data, stage, kills, taken = null) {
@@ -340,8 +357,6 @@ export function record(data, stage, kills, taken = null) {
   data.bank = (data.bank || 0) + earned;
   data.runs = (data.runs || 0) + 1;
   data.kills = (data.kills || 0) + kills;
-  // The chest fills as you play and is capped, so one enormous run does not bank three of them.
-  data.chest = Math.min(ChestKills, (data.chest || 0) + kills);
   while (data.xp >= needFor(data.level)) {
     data.xp -= needFor(data.level);
     data.level += 1;

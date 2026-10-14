@@ -123,14 +123,15 @@ const rewardAt = (how) => evaluate(`(() => {
   const how = ${JSON.stringify(how)};
   d.tab = 'wheel';
   d.spun = how.spun ?? null;
-  d.chest = how.chest; d.bank = how.bank; d.level = how.level;
+  d.keys = how.keys || {}; d.bank = how.bank; d.gold = how.gold ?? 0; d.level = how.level;
   s.spin = null; s.spinWon = null; s.chestWon = null; s.turn = 0;
+  s.wheelScroll = how.scroll || 0;
   return true;
 })()`);
 
-const press = (what) => evaluate(`(() => { window.ShadowTower.menu({ what: ${JSON.stringify(what)} }); return true; })()`);
+const press = (what, key) => evaluate(`(() => { window.ShadowTower.menu({ what: ${JSON.stringify(what)}, key: ${JSON.stringify(key ?? null)} }); return true; })()`);
 
-await rewardAt({ chest: 240, bank: 1240, level: 8 });
+await rewardAt({ keys: { small: 1 }, bank: 1240, gold: 820, level: 8 });
 await sleep(350);
 await screenshot('oduller_cevirmeye_hazir');
 
@@ -149,15 +150,25 @@ const landed = await evaluate(`(() => {
 })()`);
 console.log('  cark durdu:', JSON.stringify(landed));
 
-await rewardAt({ spun: '2026-01-01', chest: 750, bank: 1435, level: 8 });
-await sleep(350);
-await screenshot('oduller_sandik_dolu');
+// Asagisi: iki sandik. Once hicbirinin anahtari yokken, sonra ikisinin de varken.
+const down = await evaluate(`(() => {
+  const m = window.ShadowTower;
+  return m.reach ? m.reach() : 99999;
+})()`);
 
-await press('chest');
+await rewardAt({ spun: '2026-01-01', keys: {}, bank: 1240, gold: 820, level: 8, scroll: 99999 });
 await sleep(350);
-await screenshot('oduller_sandik_acildi');
+await screenshot('sandiklar_kilitli');
 
-await rewardAt({ chest: 0, bank: 0, level: 1 });
+await rewardAt({ spun: '2026-01-01', keys: { small: 3, great: 2 }, bank: 1240, gold: 820, level: 8, scroll: 99999 });
+await sleep(350);
+await screenshot('sandiklar_acilabilir');
+
+await press('chest', 'great');
+await sleep(350);
+await screenshot('sandik_buyuk_acildi');
+
+await rewardAt({ keys: { small: 1 }, bank: 0, gold: 0, level: 1 });
 await sleep(350);
 await screenshot('oduller_yeni_hesap');
 
