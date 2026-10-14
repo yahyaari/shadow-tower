@@ -1680,7 +1680,7 @@ console.log('  bölüm   yeni hesap   tam donanım   yer                   ailel
   // 24 kosuda %25 civarinda standart hata ~%9. Tabloda bu kadarlik oynamalar gurultudur ve
   // yazmak zorundayiz: bir keresinde burada "3. bolum 4.'den zor" gorundu, 150 kosuda duzgun
   // bir egri cikti. Sayilarin yanina ne kadarina guvenilecegi yazmazsa, yanilmak kacinilmaz.
-  console.log('  (24 koşu · bu tabloda ~%9'dan küçük farklar gürültüdür)');
+  console.log('  (24 koşu · bu tabloda ~9 puandan küçük farklar gürültüdür)');
 
   const g = (a, b) => (b ? g(b, a % b) : a);
   const lcm = (a, b) => (a * b) / g(a, b);
