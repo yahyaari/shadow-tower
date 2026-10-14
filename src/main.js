@@ -3,12 +3,13 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, advance, click, take, investedIn, spawn, carrying } from './rules.js';
+import { begin, advance, click, take, investedIn, spawn, carrying, pressure } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, boardReach, boardShape, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
 import * as sound from './sound.js';
 import * as ads from './ads.js';
+import * as music from './music.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
 
@@ -17,6 +18,7 @@ const ctx = canvas.getContext('2d', { alpha: false });
 
 let data = meta.load();
 sound.setMuted(!!data.muted);
+music.setOn(data.music !== false);
 setLanguage(data.lang);
 
 let screen = 'menu';              // 'menu' | 'run'
@@ -49,6 +51,7 @@ size();
 
 function start() {
   state = begin(Date.now(), data.loadout, data.stage, meta.heroBonus(data), meta.spellLevels(data));
+  music.start('run', Date.now());
   show = fresh();
   show.hint = (data.runs || 0) < 2;
   screen = 'run';
@@ -124,6 +127,7 @@ function tick(now) {
     const what = scroller();
     if (what) setScroll(what, scrollOf(what));
     spinOn(Math.min(0.25, raw));
+    music.start('menu');
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
     return;
@@ -132,6 +136,9 @@ function tick(now) {
   // How fast the whole thing runs. `advance` does the stepping; it is in the rules so it can be
   // tested without a canvas.
   show.speed = data.speed;
+  // The bed keeps time with the same number the wave is spawned from, so it tightens as the
+  // field fills and opens out again when it clears.
+  music.feel(pressure(state));
   const dts = advance(state, dt, data.speed, readEvents);
 
 
@@ -338,6 +345,13 @@ function doMenu(hit) {
     meta.save(data);
     return;
   }
+  if (hit.what === 'music') {
+    data.music = data.music === false;
+    music.setOn(data.music);
+    if (data.music) music.start(screen === 'run' ? 'run' : 'menu');
+    meta.save(data);
+    return;
+  }
   if (hit.what === 'stage') {
     const far = meta.furthestStage(data);
     const want = data.stage + hit.step;
@@ -478,7 +492,7 @@ window.ShadowTower = {
   get show() { return show; },
   get meta() { return data; },
   get screen() { return screen; },
-  start, click, take, sound, setLanguage,
+  start, click, take, sound, music, setLanguage,
   // Lets a tool put a named creature on the field. The families are the one thing a screenshot
   // cannot pose from the outside: they are chosen inside `spawn` from the stage.
   spawnOne: spawn,

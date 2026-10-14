@@ -397,7 +397,7 @@ export function settingsPanel(w, h, dpr = 1) {
   const U = unit(dpr);
   const pw = Math.min(420 * U, w - 48 * U);
   const rowH = 52 * U;
-  const rows = 2;
+  const rows = 3;
   const ph = 86 * U + rows * rowH + 20 * U;
   const x = w / 2 - pw / 2;
   const y = h / 2 - ph / 2;
@@ -406,6 +406,9 @@ export function settingsPanel(w, h, dpr = 1) {
     box: { x, y, w: pw, h: ph },
     lang: row(0),
     sound: row(1),
+    // Music gets its own switch. Plenty of people want the spells to land and the room to be
+    // quiet, and one switch for both makes them choose.
+    music: row(2),
     close: { x: x + pw - 54 * U, y: y + 12 * U, w: 40 * U, h: 40 * U },
   };
 }
@@ -542,6 +545,7 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (inside(sp.close, px, py)) return { what: 'closeSettings' };
     if (inside(sp.lang, px, py)) return { what: 'lang' };
     if (inside(sp.sound, px, py)) return { what: 'sound' };
+    if (inside(sp.music, px, py)) return { what: 'music' };
     if (!inside(sp.box, px, py)) return { what: 'closeSettings' };
     return null;
   }
@@ -2567,5 +2571,6 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
     };
     row(sp.lang, say(UI.language), LanguageNames[language()], show.overMenu === 'lang');
     row(sp.sound, say(UI.sound), say(data.muted ? UI.off : UI.on), show.overMenu === 'sound');
+    row(sp.music, say(UI.music), say(data.music === false ? UI.off : UI.on), show.overMenu === 'music');
   }
 }

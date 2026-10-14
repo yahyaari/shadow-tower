@@ -22,6 +22,7 @@ import {
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
 import { sceneryFor } from '../src/draw.js';
+import { Scale, Bar, Root, hzOf, beatOf, beatAt, walkFrom, nextDegree } from '../src/music.js';
 import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
   Feats, featOf, Week, weekAt, weekDue, nextDay,
@@ -737,6 +738,69 @@ check('her duyurunun tarihi, başlığı ve metni iki dilde',
 check('duyurular yeniden eskiye sıralı',
   News.every((n, i) => i === 0 || News[i - 1].at >= n.at),
   News.map((n) => n.at).join(' '));
+
+// --- müzik --------------------------------------------------------------------------------------
+//
+// Calan ses test edilemiyor, ama muzigin BUTUN KARARLARI aritmetik ve edilebiliyor: hangi notalar
+// var, vurus ne kadar surer, bir barda kac ses cikar. Calan sey o kararlardan ibaret.
+
+check('ölçek minör beşli', Scale[0] === 0 && Scale.includes(3) && Scale.includes(7)
+  && !Scale.includes(2) && !Scale.includes(9), Scale.join(','));
+check('ölçek yükselerek gidiyor', Scale.every((n, i) => i === 0 || n > Scale[i - 1]));
+check('nota frekansları kökten yukarı', hzOf(0) === Root && hzOf(4) > hzOf(0));
+check('ölçek dışına taşmıyor', hzOf(-5) === hzOf(0) && hzOf(99) === hzOf(Scale.length - 1));
+
+// Vurus baskiyla hizlaniyor: muzigin oyunla ilgili olan tek yani bu.
+check('baskı arttıkça vuruş hızlanıyor', beatOf(3) < beatOf(2) && beatOf(2) < beatOf(1),
+  [1, 2, 3].map((p) => beatOf(p).toFixed(2)).join(' > '));
+check('vuruş iki uçtan da duvarlı',
+  beatOf(100) >= 0.3 && beatOf(0.01) <= 1.2,
+  `${beatOf(100)} .. ${beatOf(0.01)}`);
+check('menü koşudan yavaş', beatOf(1, 'menu') > beatOf(1, 'run'));
+
+// ON DAKIKA KURALI. Bir barda dort sesten fazlasi varsa ses bir yatak degil bir sarki olur, ve
+// sarki yirminci dinleyiste cekilmez. Bosluk, muzigin sahip oldugu tek sey.
+{
+  for (const bar of [0, 1, 2, 3]) {
+    const sounds = [...Array(Bar).keys()].filter((b) => beatAt(bar, b, 3)).length;
+    check(`bar ${bar}: barda en çok üç ses`, sounds <= 3 && sounds >= 2, String(sounds));
+  }
+  check('her barın ilk vuruşunda kök var',
+    [0, 1, 2, 3].every((bar) => {
+      const n = beatAt(bar, 0, 3);
+      return n && Math.abs(n.hz - hzOf(0)) < 1e-6;
+    }));
+  check('yürüyen ses her barda çıkmıyor',
+    !beatAt(0, 3, 3) && !!beatAt(1, 3, 3),
+    'tek sesin sürekli çalması tam da kaçınılan şey');
+  check('hiçbir nota yüksek sesli değil',
+    [0, 1, 2, 3].every((bar) => [...Array(Bar).keys()].every((b) => {
+      const n = beatAt(bar, b, 3);
+      return !n || n.loud <= 0.12;
+    })), 'yatak, büyü seslerinin önüne geçmemeli');
+}
+
+// Yurüyüs: rastgele notalar gurultu, sirali notalar calisma parcasi. Birer derece adim atmak,
+// karar gibi duyulan en ucuz sey.
+{
+  const roll = walkFrom(12345);
+  let at = 3;
+  const path = [at];
+  for (let i = 0; i < 400; i++) { at = nextDegree(at, roll); path.push(at); }
+  check('yürüyüş hep bir adım atıyor',
+    path.every((d, i) => i === 0 || Math.abs(d - path[i - 1]) <= 1),
+    'sıçrayan nota melodi değil kaza');
+  check('yürüyüş ölçeğin içinde kalıyor',
+    path.every((d) => d >= 0 && d < Scale.length), `${Math.min(...path)}..${Math.max(...path)}`);
+  check('yürüyüş bir yerde takılıp kalmıyor', new Set(path).size >= 4,
+    [...new Set(path)].join(','));
+  check('yürüyüş aynı tohumda aynı',
+    (() => {
+      const r2 = walkFrom(12345);
+      let a2 = 3;
+      return path.slice(1, 20).every((d) => (a2 = nextDegree(a2, r2)) === d);
+    })());
+}
 
 // --- bölümler ve yerler --------------------------------------------------------------------------
 

@@ -184,6 +184,7 @@ export const UI = {
   settings:     ['SETTINGS', 'AYARLAR'],
   language:     ['LANGUAGE', 'DİL'],
   sound:        ['SOUND', 'SES'],
+  music:        ['MUSIC', 'MÜZİK'],
   on:           ['ON', 'AÇIK'],
   off:          ['OFF', 'KAPALI'],
 };

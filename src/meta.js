@@ -29,6 +29,7 @@ const blank = {
   kills: 0,
   loadout: null,    // filled from whatever is unlocked, so a new account starts with a full hand
   muted: false,
+  music: true,      // the bed, separately from the spell sounds
   lang: 'en',       // English by default; Turkish is chosen, not detected
   speed: 1,
   stars: null,      // stage number -> best stars ever earned there
@@ -399,6 +400,7 @@ export function tidy(data) {
   data.level = Math.max(1, Math.floor(data.level || 1));
   data.xp = Math.max(0, data.xp || 0);
   if (!Languages.includes(data.lang)) data.lang = 'en';
+  data.music = data.music !== false;
   if (!Speeds.includes(data.speed)) data.speed = 1;
 
   data.stars = (data.stars && typeof data.stars === 'object') ? data.stars : {};

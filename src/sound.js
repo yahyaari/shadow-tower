@@ -13,7 +13,16 @@ let ctx = null;
 let out = null;
 let muted = false;
 
-function wake() {
+let music = null;
+
+/**
+ * The one audio context, and a bus of its own for the music.
+ *
+ * Shared rather than opened twice: two contexts on one page is two sets of hardware buffers and a
+ * browser that will suspend one of them while the other plays. The music hangs off its own gain
+ * so it can be turned down without taking the spell sounds with it.
+ */
+export function wake() {
   if (!ctx) {
     const Ctor = window.AudioContext || window.webkitAudioContext;
     if (!Ctor) return null;
@@ -21,6 +30,9 @@ function wake() {
     out = ctx.createGain();
     out.gain.value = 0.5;
     out.connect(ctx.destination);
+    music = ctx.createGain();
+    music.gain.value = 0.34;
+    music.connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -133,6 +145,12 @@ export function tick() {
 /** A prize claimed. Three notes up, and not the same three as a level, which is a bigger thing. */
 export function prize() {
   [660, 880, 1320].forEach((f, i) => tone({ from: f, seconds: 0.18, kind: 'sine', loud: 0.1, delay: i * 0.07 }));
+}
+
+/** Where the music plugs in. Null until something has woken the context. */
+export function voiceOut() {
+  wake();
+  return music;
 }
 
 export function setMuted(m) {

@@ -378,12 +378,27 @@ for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bit
     else { s.bossDone = false; s.stageT = 1e9; }
     return true;
   })()`);
-  for (let i = 0; i < 160; i++) {
+  // Her denemede sahadaki butun patronlari dusuruyoruz. Bir kez oldurup beklemek, ikinci turda
+  // patron yeniden dogdugu icin sonsuza kadar beklemek demekti.
+  for (let i = 0; i < 120; i++) {
     if (await evaluate(`window.ShadowTower.state.phase === 'done'`)) break;
-    await sleep(80);
+    await evaluate(`(() => {
+      const s = window.ShadowTower.state;
+      for (const f of s.foes) if (f.boss) { f.splits = false; f.hp = 0; }
+      return true;
+    })()`);
+    await sleep(60);
   }
   await sleep(500);
   await screenshot(name);
+}
+
+// Muzik gercekten caliyor mu? Duyamiyoruz; ses saatine kac nota verildigini sayabiliyoruz.
+{
+  const before = await evaluate(`JSON.stringify(window.ShadowTower.music.played())`);
+  await sleep(3000);
+  const after = await evaluate(`JSON.stringify(window.ShadowTower.music.played())`);
+  console.log("  muzik:", before, "->", after);
 }
 
 writeFileSync(join(outDir, "console.txt"), log.join("\n"));

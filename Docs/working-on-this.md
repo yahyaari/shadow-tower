@@ -4,14 +4,13 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **430 kontrol geçiyor**.
+> `node Tools/test.mjs` → **448 kontrol geçiyor**.
 >
 > ## SIRADAKİ İŞ — seçilmedi
 >
-> 1. **Müzik** — ses efektleri var, müzik yok. Dosyasız üretilebilir (ses efektleri zaten öyle).
-> 2. **Büyü birleştirme** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
-> 3. **Gerçek parmakla test** — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
-> 4. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
+> 1. **Büyü birleştirme** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
+> 2. **Gerçek parmakla test** — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
+> 3. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
 >
 > ## Enerji — karar verildi, SDK'ya bırakıldı
 >
@@ -118,6 +117,32 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## Müzik
+
+Dosyasız, ses efektleri gibi. İki kural her şeyi belirledi.
+
+**On dakika dayanmalı.** İçinde ezgi olan bir döngü ikinci dinleyişte hoş, yirmincide çekilmez —
+ve bu oyun on dakika istiyor. O yüzden ezgi yok: duran bir drone, ve kulağın bir cümle yakalayıp
+bıkamayacağı kadar seyrek konmuş tek notalar. Melodi yerine **boşluk** var. Bir barda en fazla üç
+ses çıkıyor ve test bunu koruyor.
+
+**Oyunla ilgili olmalı.** Vuruş süresi `pressure`'dan geliyor — dalganın doğduğu aynı sayıdan.
+Alan dolunca müzik sıkışıyor, temizlenince açılıyor. Baskı 1'de vuruş 1,05 sn, 5'te 0,36 sn; iki
+uçta da duvar var, yoksa ya nabız olmaktan çıkıyor ya davul soloya dönüyor. Hiçbir yerde
+duyurulmuyor; sadece doğru, ve oyuncunun fark edeceği tek yanı o.
+
+Notalar minör beşli üzerinde **birer derece adım atan** bir yürüyüşten geliyor. Rastgele nota
+gürültü, sıralı nota çalışma parçası; tek adım, karar gibi duyulan en ucuz şey.
+
+Ses efektleriyle **aynı AudioContext**'i paylaşıyor (bir sayfada iki bağlam, tarayıcının birini
+askıya alması demek) ama kendi gain yolu var, yani ayrı açılıp kapanabiliyor. Ayarlarda üçüncü
+satır: büyülerin düşmesini isteyip odanın sessiz olmasını isteyen çok insan var, tek düğme onları
+seçmeye zorlar.
+
+Çalan ses test edilemiyor ama müziğin **bütün kararları** aritmetik, ve o kararlardan ibaret:
+hangi notalar, vuruş ne kadar, barda kaç ses. Gerçekten çaldığını tarayıcıda ölçtüm — ses saatine
+verilen nota sayısını sayarak.
 
 ## Sahanın bölüme göre değişmesi
 
@@ -562,9 +587,10 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
 | `src/rules.js` | Oyun. DOM yok. `statsOf()` tek hesap yeri, `evoke()` dönüşüm etkileri. |
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
-| `src/sound.js` | Dosyasız ses. |
+| `src/sound.js` | Dosyasız ses + tek AudioContext (müzik de onu paylaşıyor). |
+| `src/music.js` | Dosyasız müzik. Düzenleme saf aritmetik, vuruş baskıdan geliyor. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 430 kontrol + bot. |
+| `Tools/test.mjs` | 448 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
