@@ -1,27 +1,30 @@
 # Shadow Tower — bu projede çalışırken
 
-> **NEREDE KALDIK** — 2026-10-13
+> **NEREDE KALDIK** — 2026-10-14
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **167 kontrol geçiyor**.
+> `node Tools/test.mjs` → **208 kontrol geçiyor**.
 >
-> **Bitmiş olanlar:** oyun döngüsü, bölüm seçimi + yıldızlar, 10 büyü / 48 yükseltme / 41
-> dönüşüm (24'ü kombo kilitli), hesap seviyesi + büyü kilitleri, 50 hücreli kahraman peteği,
-> beş sekmeli menü, Harita / Büyüler / Külliyat sekmeleri, ayarlar paneli, iki dil (EN/TR),
-> 1x-1.5x-2x oyun hızı, dosyasız ses.
+> **Beş sekmenin beşi de çalışıyor.** İskelet kalmadı: Ödüller sekmesi bugün bitti (çark +
+> sandık). Yer tutucu `soon()` fonksiyonu ve onun metinleri silindi.
 >
-> **Sıradaki iş: ÖDÜLLER sekmesi.** Tek iskelet kalan sekme. Kullanıcının tarifi: şans çarkı,
-> sandık, reklam izleyip ödül kazanma. Reklam kısmı CrazyGames SDK'sı gerektirdiği için önce
-> reklamsız kurulup SDK en sona bırakılacak. **Henüz konuşulmadı:** çarkta ne çıkacak,
-> sandıktan ne çıkacak, günde kaç reklam.
+> **Sıradaki iş — üç aday, hiçbiri seçilmedi:**
+> 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
+> 2. **Yıldızlarla büyü geliştirme.** Yıldızlar kazanılıyor ama hiçbir şeye yaramıyor;
+>    "bu yıldızlarla büyü geliştirmesi yaparız" denmişti, yapılmadı. Büyüler sekmesine gelecek.
+> 3. **CrazyGames hazırlığı.** SDK, kapak görseli, tanıtım videosu. Hiçbiri yok.
+>
+> **Ödüllerde eksik kalan tek şey: reklam.** Kullanıcı "reklam izleyip ödül" demişti; o
+> CrazyGames SDK'sı istiyor, o yüzden çark ve sandık reklamsız kuruldu. Reklam geldiğinde
+> doğal yeri: fazladan bir çevirme hakkı.
 >
 > **Kullanıcının cevaplamadığı sorular:** kahraman basamak boyutları ve fiyatları doğru mu;
 > bölüm uzunluğu (~1:45) ve yıldız eşikleri (%60/%95/%100) doğru mu; hangi büyüler zayıf
-> hissettiriyor. **Gerçek parmakla hiç oynanmadı** — bütün denge bot ölçümü.
+> hissettiriyor; çark/sandık ödülleri doğru büyüklükte mi (ölçüm: oturum gelirine %15-25 ekliyor).
 >
 > **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
-> birleşip yeni bir büyü doğurması, Büyüler sekmesindeki koşular arası büyü geliştirme.
+> birleşip yeni bir büyü doğurması.
 
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
@@ -49,11 +52,11 @@ yer yoktu, ve telefonda zaten hesap satırıyla aynı yeri paylaşıyorlardı.
 | --- | --- |
 | Harita | **çalışıyor** — bölüm seçimi, bölüm resmi, yıldızlar, düşman listesi, OYNA |
 | Büyüler | **çalışıyor** — loadout seçimi. Büyü geliştirme buraya gelecek. |
-| Ödüller | iskelet — şans çarkı, sandık, reklam izleyip ödül |
+| Ödüller | **çalışıyor** — günlük çark ve oynadıkça dolan sandık |
 | Kahraman | **çalışıyor** — 50 basamaklı merdiven, deneyimle alınır |
 | Külliyat | **çalışıyor** — iki yarı: BÜYÜLER ve CANAVARLAR |
 
-Bir sekme hâlâ iskelet (Ödüller) — reklam kısmı CrazyGames SDK'sı istediği için en sona.
+İskelet sekme kalmadı. Ödüller'in reklam kısmı CrazyGames SDK'sı istediği için en sona bırakıldı.
 
 ### Kahraman
 
@@ -126,6 +129,43 @@ yoksa kimse tekrar denemezdi. Bir bölümü bitirmek sonrakini açıyor.
 Zorluk bölüm numarasıyla **çarpılıyor** (`StageStep = 0.2`), zamanla toplanmıyor. Çünkü her bölüm
 sıfırdan oynanıyor: 5. bölüm, beş dakikalık bir dalgayla tek büyüyle karşılaşmamalı.
 
+## Ödüller — çark ve sandık
+
+Ödül **deneyim**, başka hiçbir şey değil. Oyunun zaten harcanacak yeri olan bir para birimi var
+(kahraman peteği); çarkın ikinci bir jeton türü dağıtması, oyuncudan bir ödülü anlayabilmek için
+bir ekonomi öğrenmesini istemek olurdu.
+
+İki kaynak, **ritimleri bilerek farklı**:
+
+| | ne zaman | niye |
+| --- | --- | --- |
+| **çark** | günde bir bedava çevirme | yarın oyunu açmanın sebebi — hiçbir oturum bunu veremez |
+| **sandık** | 750 ölüde dolar, oynarken | kazandığın oturumun içinde ödeyen kısım |
+
+Sekizin biri ikramiye, hepsi düz 1/8. "Neredeyse kazandın" ağırlığı yok, ibrenin kaçırdığı dilim
+yok. En küçük dilim de bir işe yaramalı: sekiz oyuncudan biri ona düşüyor ve yeni bir hesapta
+oyuncunun bu sekmeye dair ilk izlenimi o oluyor.
+
+### Çarkın bütün dürüstlüğü tek cümlede
+
+**Kazanan dilim kurallarda çekiliyor, animasyon ona nişan alıyor.** `meta.spin()` dilimi seçip
+ödülü bankaya yazıyor; `restFor(at, from)` çarkın o dilimin üstünde durması için gereken açıyı
+hesaplıyor. Ters kurulsaydı — önce döndür, sonra durduğu yeri oku — çark bir şey gösterip başka
+bir şey ödeyebilirdi ve bunu kimse fark etmezdi. Test her dilim ve yedi farklı başlangıç açısı
+için `wedgeUnder(restFor(at, from)) === at` olduğunu doğruluyor.
+
+Ödül **basıldığı anda** bankaya yazılıyor, animasyon bitince değil: dönerken sekmeyi kapatan
+oyuncu ödülünü kaybetmesin. Bunun yan etkisi, bankadaki sayının ibre durmadan önce zıplamasıydı —
+o yüzden sekme dönerken eski rakamı tutuyor (`show.spin.was`).
+
+### Büyüklük
+
+Testin sonunda duran ölçüm, ödüllerin bir oturumda kazanılan deneyimin yanında ne ettiğini
+söylüyor. Şu an **8 koşuluk bir oturumda %15-25 ekliyor** — ikram, ana yemek değil. İlk kurulumda
+%47'ydi: ödül seviyeye bağlıydı, koşu geliri ise bölüme. Seviye 3'e gelip 1. bölümü tekrar oynayan
+oyuncu, 1. bölüm geliriyle seviye 3 ödülü alıyordu. Düğmelerin hepsi `src/rewards.js`'in başında,
+tek yerde.
+
 ## Kart sistemi
 
 **Kartta sadece büyünün adı ve vereceği güç yazar.** Eskiden yükseltmenin kendi uydurma adı
@@ -174,14 +214,15 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
 | `src/stages.js` | Bölüm adları, görünümleri ve hangi düşmanların geldiği. Saf veri. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
+| `src/rewards.js` | Çark dilimleri, sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
 | `src/menu.js` | Beş sekmeli menü. Çizim ilkelerini `draw.js`'ten alır. |
 | `src/spells.js` | Büyü kitabı. Saf veri: 10 büyü, 50 yükseltme, 41 dönüşüm, kilit seviyeleri. |
 | `src/meta.js` | Hesap: kalıcı deneyim, ana seviye, kilitler, loadout. localStorage. |
 | `src/rules.js` | Oyun. DOM yok. `statsOf()` tek hesap yeri, `evoke()` dönüşüm etkileri. |
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
-| `src/main.js` | İki ekran: loadout ve koşu. |
-| `Tools/test.mjs` | 91 kontrol + bot. |
+| `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
+| `Tools/test.mjs` | 208 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -329,5 +370,6 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 - Müzik yok (ses efektleri var).
 - Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
 - Tek arena, tek patron tipi.
-- CrazyGames SDK bağlanmadı, kapak görseli yok.
+- CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
+- Yıldızlar kazanılıyor ama hiçbir şeye harcanmıyor.
 - Gerçek parmakla oynanmadı.

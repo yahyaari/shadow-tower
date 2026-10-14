@@ -5,7 +5,8 @@
 
 import { begin, advance, click, take } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
-import { menu, menuHit, heroHome, heroReach } from './menu.js';
+import { menu, menuHit, heroHome, heroReach, restFor } from './menu.js';
+import { Wedges } from './rewards.js';
 import * as sound from './sound.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
@@ -27,6 +28,9 @@ function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
     hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null, heroScroll: null,
+    // Half a wedge back, so the wheel opens with a wedge under the pointer rather than the seam
+    // between two of them - which looks like a spin that landed on nothing.
+    turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null,
   };
 }
 
@@ -106,6 +110,7 @@ function tick(now) {
     if (data.tab === 'hero' && show.heroScroll === null) {
       show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
     }
+    spinOn(dt);
     menu(ctx, data, canvas.width, canvas.height, show, dpr);
     requestAnimationFrame(tick);
     return;
@@ -153,6 +158,34 @@ function tick(now) {
 }
 requestAnimationFrame(tick);
 
+/**
+ * Turns the wheel.
+ *
+ * The prize was settled and banked the moment the wheel was pressed; this only carries the
+ * picture to where that prize already is. Easing out, so it slows into the wedge rather than
+ * stopping dead, and a tick for every wedge that passes the pointer - which is the sound that
+ * makes it a wheel and not a rotating picture.
+ */
+function spinOn(dt) {
+  const sp = show.spin;
+  if (!sp) return;
+  sp.t = Math.min(sp.dur, sp.t + dt);
+  const k = sp.t / sp.dur;
+  const eased = 1 - Math.pow(1 - k, 3);
+  show.turn = sp.from + (sp.to - sp.from) * eased;
+
+  const step = (Math.PI * 2) / Wedges.length;
+  const past = Math.floor((show.turn - sp.from) / step);
+  if (past > sp.past) { sp.past = past; sound.tick(); }
+
+  if (sp.t >= sp.dur) {
+    show.turn = sp.to;
+    show.spinWon = sp.prize;
+    show.spin = null;
+    sound.prize();
+  }
+}
+
 /** How far the hero ladder may be pushed, given the window it is in. */
 function heroClamp(at) {
   return Math.max(0, Math.min(heroReach(canvas.width, canvas.height, dpr), at));
@@ -167,6 +200,8 @@ function doMenu(hit) {
   if (hit.what === 'tab') {
     data.tab = hit.key;
     show.codexPick = null;
+    show.spinWon = null;
+    show.chestWon = null;
     if (hit.key === 'hero') show.heroScroll = heroHome(data, canvas.width, canvas.height, dpr);
     meta.save(data);
     return;
@@ -174,6 +209,27 @@ function doMenu(hit) {
   if (hit.what === 'codexHalf') { data.codex = hit.key; meta.save(data); return; }
   if (hit.what === 'codexOpen') { show.codexPick = hit.key; return; }
   if (hit.what === 'codexClose') { show.codexPick = null; return; }
+  if (hit.what === 'spin') {
+    // Banked here, before any of it is drawn: a tab closed mid-spin has still paid out, and the
+    // button is spent the moment it is pressed rather than when the animation finishes.
+    const got = meta.spin(data);
+    if (!got) return;
+    const from = show.turn || 0;
+    show.spinWon = null;
+    show.chestWon = null;
+    show.spin = {
+      at: got.at, prize: got.prize, was: (data.bank || 0) - got.prize,
+      from, to: restFor(got.at, from), t: 0, dur: 3, past: 0,
+    };
+    return;
+  }
+  if (hit.what === 'chest') {
+    const got = meta.openChest(data);
+    if (!got) return;
+    show.chestWon = got.prize;
+    sound.prize();
+    return;
+  }
   if (hit.what === 'heroBuy') {
     if (meta.buyHero(data)) sound.levelled();
     return;
@@ -321,6 +377,10 @@ window.ShadowTower = {
   get meta() { return data; },
   get screen() { return screen; },
   start, click, take, sound, setLanguage,
+  // The menu's presses, so a tool can press a button rather than pose the screen. A posed screen
+  // only ever proves that the poser and the painter agree; this goes through the same handler a
+  // finger does, so a wheel that paid one wedge and stopped on another would show up.
+  menu: doMenu,
 };
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

@@ -13,7 +13,12 @@ import {
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero } from '../src/meta.js';
+import { needFor, worth, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest } from '../src/meta.js';
+import {
+  Wedges, prizeAt, wedgeFor, unitOf, ChestKills, ChestWorth, chestPrize, chestFull, chestPart,
+  today, canSpin, state as rewardState,
+} from '../src/rewards.js';
+import { restFor, wedgeUnder } from '../src/menu.js';
 import { Ladder, Steps as HeroSteps, Bonus, costOf as heroCost, totals as heroTotals, wholeLadder } from '../src/hero.js';
 
 let passed = 0;
@@ -658,6 +663,133 @@ console.log(`kahraman merdiveni: ${HeroSteps} basamak, toplam ${wholeLadder.toLo
     `alan +%${(all.area * 100).toFixed(0)}  onarım ${all.mend.toFixed(2)}/sn  deneyim +%${(all.gain * 100).toFixed(0)}`);
 }
 
+// --- ödüller: çark ve sandık --------------------------------------------------------------------
+
+check('çarkın sekiz dilimi var', Wedges.length === 8, `${Wedges.length} tane`);
+
+check('her dilim bir şey veriyor', Wedges.every((x) => x > 0));
+
+check('ödüller seviyeyle büyüyor',
+  prizeAt(0, 10) > prizeAt(0, 1) && prizeAt(7, 10) > prizeAt(7, 1),
+  `sv1: ${prizeAt(0, 1)}..${prizeAt(7, 1)}  sv10: ${prizeAt(0, 10)}..${prizeAt(7, 10)}`);
+
+// Her dilimin şansı eşit olmalı. Çarkı "neredeyse kazandın" diye ayarlamak kolay ve ucuz bir
+// hile; burada öyle bir şey olmadığını ölçerek gösteriyoruz.
+{
+  const hits = Wedges.map(() => 0);
+  const n = 80000;
+  for (let i = 0; i < n; i++) hits[wedgeFor(i / n)] += 1;
+  const want = n / Wedges.length;
+  check('her dilimin şansı eşit', hits.every((h) => Math.abs(h - want) <= 2), hits.join(','));
+  check('her dilime düşülebiliyor', hits.every((h) => h > 0));
+}
+
+// BU, ÇARKIN BÜTÜN DÜRÜSTLÜĞÜ. Kazanan dilim kurallarda seçiliyor, animasyon ona nişan alıyor.
+// Ters kurulsa - önce döndür, sonra durduğu yeri oku - çark bir şey gösterip başka bir şey
+// verebilir ve bunu kimse fark etmez.
+{
+  let wrong = 0, backwards = 0;
+  for (const from of [0, 0.4, 1.3, 3.9, -4.2, 17.9, 100]) {
+    for (let at = 0; at < Wedges.length; at++) {
+      const to = restFor(at, from);
+      if (wedgeUnder(to) !== at) wrong += 1;
+      if (to <= from) backwards += 1;
+    }
+  }
+  check('çark kazanan dilimin üstünde duruyor', wrong === 0, `${wrong} sapma`);
+  check('çark hep ileri dönüyor', backwards === 0, `${backwards} geri dönüş`);
+  check('çark birkaç tur atıyor', restFor(0, 0) > Math.PI * 2 * 3);
+}
+
+// Günde bir çevirme. İkinci basış aynı gün hiçbir şey vermemeli - animasyon sürerken ikinci
+// kez basmak, harcanmış bir çevirmeyi tekrar istemek olurdu.
+{
+  const d = tidy({ level: 3 });
+  check('yeni hesap çarkı çevirebilir', canSpin(d, '2026-10-14'));
+  const first = spin(d, 0.1, '2026-10-14');
+  check('çevirme bir dilim ve bir ödül döndürüyor',
+    first && first.at === 0 && first.prize === prizeAt(0, 3), JSON.stringify(first));
+  check('ödül bankaya yazıldı', d.bank === prizeAt(0, 3), String(d.bank));
+  check('aynı gün ikinci çevirme yok', spin(d, 0.9, '2026-10-14') === null);
+  check('banka ikinci basıştan etkilenmedi', d.bank === prizeAt(0, 3), String(d.bank));
+  const next = spin(d, 0.99, '2026-10-15');
+  check('yarın yine çevrilebiliyor', next !== null && next.at === 7);
+  check('ikramiye en büyük dilim', next && next.prize === prizeAt(7, 3) && Wedges[7] === Math.max(...Wedges));
+  check('iki çevirme sayıldı', d.spins === 2, String(d.spins));
+}
+
+// Çark kazanılan dilimin ödülünü veriyor, başka bir dilimin ödülünü değil.
+{
+  let bad = 0;
+  for (let at = 0; at < Wedges.length; at++) {
+    const d = tidy({ level: 6 });
+    const got = spin(d, (at + 0.5) / Wedges.length, '2026-01-01');
+    if (!got || got.at !== at || got.prize !== prizeAt(at, 6) || d.bank !== prizeAt(at, 6)) bad += 1;
+  }
+  check('her dilim kendi ödülünü ödüyor', bad === 0, `${bad} dilim yanlış`);
+}
+
+// Sandık oynarken doluyor, beklerken değil. Dolmadan açılmamalı; dolduktan sonra bir kez.
+{
+  const d = tidy({ level: 2 });
+  check('sandık boş başlıyor', (d.chest || 0) === 0 && !chestFull(d));
+  check('boş sandık açılmıyor', openChest(d) === null);
+
+  record(d, 1, 200);
+  check('öldürülenler sandığa işliyor', d.chest === 200, String(d.chest));
+  check('sandık dolmadan açılmıyor', openChest(d) === null && d.chest === 200);
+  check('dolum oranı doğru', Math.abs(chestPart(d) - 200 / ChestKills) < 1e-9);
+
+  record(d, 1, ChestKills);
+  check('sandık taşmıyor', d.chest === ChestKills, String(d.chest));
+  check('dolu sandık dolu görünüyor', chestFull(d) && chestPart(d) === 1);
+
+  const was = d.bank;
+  const got = openChest(d);
+  check('dolu sandık açılıyor ve ödüyor',
+    got && got.prize === chestPrize(d.level) && d.bank === was + got.prize);
+  check('açılan sandık sıfırlanıyor', d.chest === 0 && !chestFull(d));
+  check('aynı sandık iki kez açılmıyor', openChest(d) === null);
+  check('açılan sandık sayıldı', d.chests === 1);
+}
+
+check('sandık çarkın ortalama diliminden değerli',
+  ChestWorth > Wedges.reduce((a, b) => a + b, 0) / Wedges.length * 0.9,
+  `sandık ${ChestWorth}x vs ortalama ${(Wedges.reduce((a, b) => a + b, 0) / Wedges.length).toFixed(2)}x`);
+
+// Bozuk kayıt: elle düzenlenmiş, eski bir sürümden gelmiş, ya da yarı yazılmış olabilir. Hiçbiri
+// oyunun açılmamasının ya da bedava sandık dağıtmasının sebebi olamaz.
+{
+  const d = tidy({ level: 1, chest: 99999, chests: -4, spins: 1.7, spun: 'bugün' });
+  check('taşmış sandık kırpılıyor', d.chest === ChestKills, String(d.chest));
+  check('eksi sayaç düzeltiliyor', d.chests === 0);
+  check('kesirli sayaç yuvarlanıyor', d.spins === 1);
+  check('tarih olmayan çevirme kaydı atılıyor', d.spun === null);
+  check('bozuk kayıttan sonra çark çalışıyor', canSpin(d, today()));
+
+  const e = tidy({ level: 1, chest: -50, spun: '2026-10-14' });
+  check('eksi sandık sıfırlanıyor', e.chest === 0);
+  check('geçerli tarih korunuyor', e.spun === '2026-10-14');
+  check('aynı günse çark kilitli', !canSpin(e, '2026-10-14') && canSpin(e, '2026-10-15'));
+}
+
+// Tek okumada sekmenin ihtiyacı olan her şey.
+{
+  const half = ChestKills / 2;
+  const d = tidy({ level: 4, chest: half });
+  const r = rewardState(d, '2026-10-14');
+  check('sekme durumu tek okumada geliyor',
+    r.spin === true && r.chest === false && Math.abs(r.part - 0.5) < 1e-9
+    && r.kills === half && r.need === ChestKills && r.unit === unitOf(4)
+    && r.chestWorth === chestPrize(4),
+    JSON.stringify(r));
+}
+
+console.log('');
+console.log(`çark: ${Wedges.length} dilim · seviye 1'de ${Wedges.map((_, i) => prizeAt(i, 1)).join('/')} deneyim`);
+console.log(`      seviye 5'te ${Wedges.map((_, i) => prizeAt(i, 5)).join('/')}`);
+console.log(`sandık: ${ChestKills} ölü · seviye 1'de ${chestPrize(1)}, seviye 5'te ${chestPrize(5)} deneyim`);
+
 // --- hesap: ana seviye ve kilitler --------------------------------------------------------------
 
 check('ilk büyü baştan açık', UnlockAt.bolt === 1);
@@ -877,6 +1009,49 @@ check('dolu loadout derin bölümlerde tek büyüden iyi', byStage[2].rate > sol
   `3. bölüm: %${Math.round(byStage[2].rate * 100)} vs %${Math.round(solo.filter(Boolean).length / solo.length * 100)}`);
 check('tıklamak işe yarıyor', byStage[0].rate > lazy.filter(Boolean).length / lazy.length,
   `%${Math.round(byStage[0].rate * 100)} vs %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
+
+// --- ödüller ne kadar ediyor --------------------------------------------------------------------
+//
+// Bir çark, oyunu ne kadar hızlandırdığını söylemediği sürece dengelenmiş sayılmaz. Burada
+// gerçek bot koşularının öldürme sayılarıyla bir oturum oynanıyor ve ödüllerin, koşuların
+// kazandırdığı deneyimin yanında yüzde kaç ettiği ölçülüyor.
+{
+  const Session = 8;                       // ~10 dakika, CrazyGames'in beklediği oturum
+  const rows = [];
+  for (const stage of [1, 3]) {
+    const d = tidy({ level: 1 });
+    let fromRuns = 0, fromChests = 0, chests = 0;
+    for (let i = 1; i <= Session; i++) {
+      const r = botRun(i * 7919, Four, stage);
+      const was = d.bank;
+      record(d, stage, r.kills);
+      fromRuns += d.bank - was;
+      // oyuncu dolu sandığı açar
+      const got = openChest(d);
+      if (got) { fromChests += got.prize; chests += 1; }
+    }
+    // günün tek çevirmesi, ortalama dilim
+    const wheel = Wedges.reduce((a, b) => a + b, 0) / Wedges.length * unitOf(d.level);
+    const extra = fromChests + wheel;
+    rows.push({ stage, level: d.level, fromRuns, fromChests, chests, wheel, extra,
+                part: extra / fromRuns });
+  }
+
+  console.log('');
+  console.log(`ödüllerin ağırlığı (${Session} koşuluk bir oturum):`);
+  for (const r of rows) {
+    console.log(`  bölüm ${r.stage}: koşular ${Math.round(r.fromRuns)} · sandık ${Math.round(r.fromChests)} (${r.chests} tane) · çark ~${Math.round(r.wheel)}  →  ödüller %${Math.round(r.part * 100)} ekliyor`);
+  }
+
+  // Ödül bir ikram olmalı, ana yemek değil. Oyunu oynamak hâlâ deneyimin açık ara en büyük
+  // kaynağı olmazsa, çarkı çevirip kapatmak oynamaktan daha verimli hâle gelir.
+  check('ödüller oynamanın yerini almıyor', rows.every((r) => r.part < 0.3),
+    rows.map((r) => `bölüm ${r.stage}: %${Math.round(r.part * 100)}`).join('  '));
+  check('ödüller hissedilir derecede var', rows.every((r) => r.part > 0.05),
+    rows.map((r) => `bölüm ${r.stage}: %${Math.round(r.part * 100)}`).join('  '));
+  check('bir oturumda sandık açılıyor', rows.every((r) => r.chests >= 1),
+    rows.map((r) => `bölüm ${r.stage}: ${r.chests}`).join('  '));
+}
 
 console.log('');
 if (failures.length) {

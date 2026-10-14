@@ -120,6 +120,21 @@ export function over() {
   [0, 0.14, 0.3].forEach((d, i) => tone({ from: 300 - i * 70, to: 60, seconds: 0.5, kind: 'sawtooth', loud: 0.12, delay: d }));
 }
 
+/**
+ * One wedge of the wheel going past the pointer.
+ *
+ * Quiet and very short, because it fires thirty-odd times in a single spin. The tick is most of
+ * what makes a wheel feel like a wheel rather than a picture that rotates.
+ */
+export function tick() {
+  tone({ from: 1400, to: 1100, seconds: 0.03, kind: 'square', loud: 0.035 });
+}
+
+/** A prize claimed. Three notes up, and not the same three as a level, which is a bigger thing. */
+export function prize() {
+  [660, 880, 1320].forEach((f, i) => tone({ from: f, seconds: 0.18, kind: 'sine', loud: 0.1, delay: i * 0.07 }));
+}
+
 export function setMuted(m) {
   muted = m;
   if (out) out.gain.value = m ? 0 : 0.5;

@@ -7,6 +7,9 @@
 import { LoadoutSize, Always, UnlockAt, unlocked, spellKeys } from './spells.js';
 import { Languages } from './text.js';
 import { Ladder, Steps as HeroSteps, totals as heroTotals, costOf as heroCost } from './hero.js';
+import {
+  today, canSpin, wedgeFor, prizeAt, chestFull, chestPrize, ChestKills,
+} from './rewards.js';
 
 const Key = 'shadowtower';
 
@@ -26,6 +29,10 @@ const blank = {
   codex: 'spells',  // and which half of the codex
   hero: 0,          // how many steps of the hero ladder are bought
   bank: 0,          // experience still to spend
+  spun: null,       // the local date of the last free spin, so tomorrow is another one
+  spins: 0,
+  chest: 0,         // bodies towards the next chest
+  chests: 0,
 };
 
 /**
@@ -47,6 +54,35 @@ export function buyHero(data) {
   data.hero = (data.hero || 0) + 1;
   save(data);
   return true;
+}
+
+/**
+ * Takes the day's free spin.
+ *
+ * The wedge is drawn here and handed back, so the screen is told what was won rather than asked
+ * to work it out from the angle it happens to stop at. Returns null when there is no spin to
+ * take, which is also what stops a second press during the animation from paying twice.
+ */
+export function spin(data, roll = Math.random(), day = today()) {
+  if (!canSpin(data, day)) return null;
+  const at = wedgeFor(roll);
+  const prize = prizeAt(at, data.level || 1);
+  data.spun = day;
+  data.spins = (data.spins || 0) + 1;
+  data.bank = (data.bank || 0) + prize;
+  save(data);
+  return { at, prize };
+}
+
+/** Opens a full chest. Null when it is not full, so the button cannot be hammered. */
+export function openChest(data) {
+  if (!chestFull(data)) return null;
+  const prize = chestPrize(data.level || 1);
+  data.chest = 0;
+  data.chests = (data.chests || 0) + 1;
+  data.bank = (data.bank || 0) + prize;
+  save(data);
+  return { prize };
 }
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
@@ -140,6 +176,12 @@ export function tidy(data) {
   if (data.codex !== 'spells' && data.codex !== 'foes') data.codex = 'spells';
   data.hero = Math.max(0, Math.min(HeroSteps, Math.floor(data.hero || 0)));
   data.bank = Math.max(0, Math.round(data.bank || 0));
+  // A chest held open past what it needs would pay twice, and a saved `spun` that is not a date
+  // would either lock the wheel forever or never lock it.
+  data.chest = Math.max(0, Math.min(ChestKills, Math.round(data.chest || 0)));
+  data.chests = Math.max(0, Math.floor(data.chests || 0));
+  data.spins = Math.max(0, Math.floor(data.spins || 0));
+  if (typeof data.spun !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.spun)) data.spun = null;
 
   const open = unlocked(data.level);
   let kit = (Array.isArray(data.loadout) ? data.loadout : [])
@@ -200,6 +242,8 @@ export function record(data, stage, kills) {
   data.bank = (data.bank || 0) + earned;
   data.runs = (data.runs || 0) + 1;
   data.kills = (data.kills || 0) + kills;
+  // The chest fills as you play and is capped, so one enormous run does not bank three of them.
+  data.chest = Math.min(ChestKills, (data.chest || 0) + kills);
   while (data.xp >= needFor(data.level)) {
     data.xp -= needFor(data.level);
     data.level += 1;

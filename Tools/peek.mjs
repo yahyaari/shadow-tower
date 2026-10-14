@@ -114,11 +114,62 @@ await sleep(400);
 await screenshot('kahraman_tepe');
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.hero = 0; d.bank = 0; return true; })()`);
 
-for (const tab of ['wheel', 'spells']) {
-  await evaluate(`(() => { window.ShadowTower.meta.tab = '${tab}'; return true; })()`);
-  await sleep(350);
-  await screenshot('menu_' + tab);
-}
+// Oduller. Hicbiri poz degil: ekran kurulup "kazandi" diye bir sayi yazilmiyor, SPIN'e gercekten
+// basiliyor ve cark kendi durdugu yerde birakiliyor. Poz verilmis bir ekran yalnizca pozu veren
+// ile cizen kodun ayni fikirde oldugunu gosterir; asil merak edilen, carkin durdugu dilim ile
+// odedigi sayinin ayni olup olmadigi.
+const rewardAt = (how) => evaluate(`(() => {
+  const d = window.ShadowTower.meta, s = window.ShadowTower.show;
+  const how = ${JSON.stringify(how)};
+  d.tab = 'wheel';
+  d.spun = how.spun ?? null;
+  d.chest = how.chest; d.bank = how.bank; d.level = how.level;
+  s.spin = null; s.spinWon = null; s.chestWon = null; s.turn = 0;
+  return true;
+})()`);
+
+const press = (what) => evaluate(`(() => { window.ShadowTower.menu({ what: ${JSON.stringify(what)} }); return true; })()`);
+
+await rewardAt({ chest: 240, bank: 1240, level: 8 });
+await sleep(350);
+await screenshot('oduller_cevirmeye_hazir');
+
+// basiyoruz ve carki donerken yakaliyoruz
+await press('spin');
+await sleep(700);
+await screenshot('oduller_donerken');
+
+// animasyon 3 saniye; bitince durdugu dilim ile yazan sayi karsilastirilabilir
+await sleep(2800);
+await screenshot('oduller_cevrildi');
+
+const landed = await evaluate(`(() => {
+  const s = window.ShadowTower.show;
+  return { won: s.spinWon, turn: s.turn, spinning: !!s.spin };
+})()`);
+console.log('  cark durdu:', JSON.stringify(landed));
+
+await rewardAt({ spun: '2026-01-01', chest: 750, bank: 1435, level: 8 });
+await sleep(350);
+await screenshot('oduller_sandik_dolu');
+
+await press('chest');
+await sleep(350);
+await screenshot('oduller_sandik_acildi');
+
+await rewardAt({ chest: 0, bank: 0, level: 1 });
+await sleep(350);
+await screenshot('oduller_yeni_hesap');
+
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta, s = window.ShadowTower.show;
+  s.spin = null; s.spinWon = null; s.chestWon = null; s.turn = 0;
+  d.spun = null; d.chest = 0; d.bank = 0; d.level = 8;
+  d.tab = 'spells';
+  return true;
+})()`);
+await sleep(350);
+await screenshot('menu_spells');
 
 // Kulliyat: iki yarisi ve acilmis bir buyu
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'codex'; d.codex = 'spells'; return true; })()`);

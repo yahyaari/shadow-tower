@@ -13,6 +13,9 @@ import {
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
 import { needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus } from './meta.js';
+import {
+  Wedges, prizeAt, chestPart, chestFull, chestPrize, ChestKills, canSpin,
+} from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
 import { Kinds, BoostsPerTier, MostEvos } from './rules.js';
@@ -115,6 +118,75 @@ export function spellTiles(w, h, dpr = 1) {
     y: top + Math.floor(i / cols) * (th + gap),
     w: tw, h: th, tall,
   }));
+}
+
+/**
+ * The wheel, the button under it, and the chest panel at the foot of the band.
+ *
+ * The wheel takes whatever is left once the other two have what they need, rather than the other
+ * way round: a wheel that keeps its size and pushes the chest off the bottom of a short screen
+ * loses the half of the tab that pays out while you are actually playing.
+ */
+export function wheelBox(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const head = 62 * U;
+  const chest = 126 * U;
+  const press = 56 * U;
+  const room = b.height - head - chest - press - 40 * U;
+  const r = Math.max(56 * U, Math.min(168 * U, Math.min(room / 2, (w - 76 * U) / 2)));
+  // Centred in the space between the heading and the chest rather than hung from the top: on a
+  // wide screen the leftover room is all at the bottom otherwise, and the wheel looks dropped.
+  const from = b.top + head;
+  const to = b.bottom - chest - press - 16 * U;
+  return { cx: w / 2, cy: Math.max(from + r, (from + to) / 2), r, head };
+}
+
+export function spinBox(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const c = wheelBox(w, h, dpr);
+  const bw = Math.min(240 * U, w - 90 * U);
+  return { x: w / 2 - bw / 2, y: c.cy + c.r + 16 * U, w: bw, h: 52 * U };
+}
+
+export function chestBox(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const b = band(w, h, dpr);
+  const bw = Math.min(460 * U, w - 40 * U);
+  const bh = 110 * U;
+  return { x: w / 2 - bw / 2, y: b.bottom - bh - 4 * U, w: bw, h: bh };
+}
+
+/** The press inside the chest panel, on its right. */
+export function chestOpen(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const c = chestBox(w, h, dpr);
+  const bw = Math.min(150 * U, c.w * 0.4);
+  return { x: c.x + c.w - bw - 14 * U, y: c.y + c.h - 50 * U, w: bw, h: 38 * U };
+}
+
+/**
+ * Where the wheel has to stop for wedge `at` to sit under the pointer, from where it is now.
+ *
+ * This is the whole honesty of the wheel. The wedge is drawn first, by the rules, and the spin is
+ * then aimed at it - so the angle is worked out from the prize rather than the prize being read
+ * off whatever angle the animation happened to stop at. Always at least `turns` whole turns
+ * forward, so it never crawls to the next wedge or runs backwards.
+ */
+export function restFor(at, from = 0, turns = 4) {
+  const full = Math.PI * 2;
+  const step = full / Wedges.length;
+  const want = -(at + 0.5) * step;           // wedge centre under the pointer at the top
+  const base = from + full * turns;
+  return base + (((want - base) % full) + full) % full;
+}
+
+/** Which wedge is under the pointer at a given rotation - the reverse of `restFor`. */
+export function wedgeUnder(turn) {
+  const full = Math.PI * 2;
+  const step = full / Wedges.length;
+  const at = Math.round((((-turn % full) + full) % full) / step - 0.5);
+  return ((at % Wedges.length) + Wedges.length) % Wedges.length;
 }
 
 /** The one button that opens the settings. */
@@ -301,6 +373,13 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
       const near = Math.hypot(px - c.x, py - c.y) <= c.r * 1.15;
       if (c.y > cell.top && c.y < cell.foot && near) return { what: 'heroBuy' };
     }
+  }
+  if (data.tab === 'wheel') {
+    // Nothing on this tab may be pressed while the wheel is turning: the prize is already banked
+    // and a second press would be asking for a spin that has been spent.
+    if (show.spin) return null;
+    if (canSpin(data) && inside(spinBox(w, h, dpr), px, py)) return { what: 'spin' };
+    if (chestFull(data) && inside(chestOpen(w, h, dpr), px, py)) return { what: 'chest' };
   }
   if (data.tab === 'codex') {
     // An open entry is the only thing on the screen, bar the way out of it.
@@ -517,17 +596,206 @@ function portrait(ctx, r, stage, look) {
 
 // --- the tabs ------------------------------------------------------------------------------------
 
-function soon(ctx, w, h, U, title, lines) {
+/**
+ * A chest, shut or thrown open.
+ *
+ * Solid ink with the detail bitten out of it in the pale, like every other shape in the game. The
+ * seam across it is what makes it a chest rather than a postbox, so it is drawn even at the small
+ * size this appears at.
+ */
+function chest(ctx, x, y, s, open, colour, back) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = colour;
+
+  const half = s * 0.5;
+  const lip = s * 0.08;          // the seam between lid and body
+  const bodyTop = -s * 0.04;
+
+  // the body
+  ctx.beginPath();
+  ctx.rect(-half, bodyTop, s, s * 0.44);
+  ctx.fill();
+
+  // The lid. Shut it caps the body; open it is a thinner cap tipped back above it, with daylight
+  // between the two - squashed flat it reads as a line rather than a lid.
+  ctx.save();
+  if (open) ctx.translate(0, -s * 0.3);
+  ctx.beginPath();
+  ctx.moveTo(-half, open ? -s * 0.02 : bodyTop);
+  ctx.lineTo(-half, open ? -s * 0.14 : -s * 0.2);
+  ctx.quadraticCurveTo(0, open ? -s * 0.32 : -s * 0.46, half, open ? -s * 0.14 : -s * 0.2);
+  ctx.lineTo(half, open ? -s * 0.02 : bodyTop);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // the seam, and the strap and lock down the front, cut out of the ink
+  ctx.fillStyle = back;
+  if (!open) ctx.fillRect(-half, bodyTop - lip * 0.5, s, lip * 0.5);
+  ctx.fillRect(-s * 0.09, bodyTop + lip, s * 0.18, s * 0.18);
+  ctx.restore();
+}
+
+/**
+ * The rewards tab.
+ *
+ * A wheel you may turn once a day, and a chest that fills with bodies while you play. Both pay
+ * experience into the same bank the hero comb spends, so neither of them asks the player to
+ * learn a second currency in order to understand a prize.
+ */
+function wheelTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
-  write(ctx, title.toUpperCase(), w / 2, b.top + 40 * U, 26 * U, 800, 'center');
-  let y = b.top + 96 * U;
-  for (const line of lines) {
-    wrap(ctx, line, w / 2, y, Math.min(560 * U, w - 60 * U), 14 * U, 20 * U, Black);
-    y += 54 * U;
+  const c = wheelBox(w, h, U);
+  const sb = spinBox(w, h, U);
+  const level = data.level || 1;
+  const turning = !!show.spin;
+  const left = Math.max(20 * U, w / 2 - 230 * U);
+
+  // --- what is in the bank.
+  // Held at the old figure while the wheel turns: the prize is banked the moment the wheel is
+  // pressed, so that closing the tab mid-spin cannot lose it, and a number that jumps before
+  // the needle lands tells you what you won before the wheel does.
+  const shown = turning ? show.spin.was : (data.bank || 0);
+  write(ctx, say(UI.heroBank), left, b.top + 16 * U, 10 * U, 700, 'left');
+  write(ctx, String(Math.round(shown)), left, b.top + 36 * U, 22 * U, 800, 'left');
+
+  // --- the wheel
+  const step = (Math.PI * 2) / Wedges.length;
+  const turn = show.turn || 0;
+  ctx.save();
+  ctx.translate(c.cx, c.cy);
+  ctx.rotate(turn);
+  for (let i = 0; i < Wedges.length; i++) {
+    const from = i * step - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, c.r, from, from + step);
+    ctx.closePath();
+    const dark = i % 2 === 0;
+    ctx.fillStyle = dark ? Black : Pale;
+    ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 1.6 * U;
+    ctx.stroke();
+
+    // The prize, upright rather than laid along its wedge. Radial text reads at eight different
+    // angles and four of them are upside down; the wheel turns, so there is no angle at which
+    // laying them out radially is right for more than two of them at once.
+    const mid = from + step / 2;
+    const big = Wedges[i] === Math.max(...Wedges);
+    ctx.save();
+    ctx.translate(Math.cos(mid) * c.r * 0.62, Math.sin(mid) * c.r * 0.62);
+    ctx.rotate(-turn);
+    write(ctx, String(prizeAt(i, level)), 0, 0,
+      (big ? 17 : 14) * U, 800, 'center', dark ? Pale : Black);
+    ctx.restore();
   }
-  ctx.globalAlpha = 0.5;
-  write(ctx, '· · ·', w / 2, b.bottom - 40 * U, 22 * U, 800, 'center');
-  ctx.globalAlpha = 1;
+  ctx.strokeStyle = Black;
+  ctx.lineWidth = 3.4 * U;
+  ctx.beginPath(); ctx.arc(0, 0, c.r, 0, Math.PI * 2); ctx.stroke();
+  // the hub, so the middle is not eight points of ink meeting
+  ctx.fillStyle = Pale;
+  ctx.beginPath(); ctx.arc(0, 0, c.r * 0.17, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 2.6 * U;
+  ctx.beginPath(); ctx.arc(0, 0, c.r * 0.17, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  // --- the pointer, which does not turn.
+  // It sits wholly outside the rim rather than reaching over it. Four of the eight wedges are
+  // solid black, so a black arrow overlapping the wheel is invisible on half the results - and
+  // outlining it in the pale only moved the problem to the other four.
+  ctx.beginPath();
+  ctx.moveTo(c.cx, c.cy - c.r - 3 * U);
+  ctx.lineTo(c.cx - 12 * U, c.cy - c.r - 25 * U);
+  ctx.lineTo(c.cx + 12 * U, c.cy - c.r - 25 * U);
+  ctx.closePath();
+  ctx.fillStyle = Black;
+  ctx.fill();
+
+  // --- the press under it, or what it says instead
+  if (turning) {
+    write(ctx, say(UI.spinning), w / 2, sb.y + sb.h / 2, 14 * U, 800, 'center');
+  } else if (show.spinWon !== null && show.spinWon !== undefined) {
+    write(ctx, say(UI.earned, show.spinWon), w / 2, sb.y + sb.h / 2 - 6 * U, 20 * U, 800, 'center');
+    ctx.globalAlpha = 0.6;
+    write(ctx, say(UI.spinTomorrow), w / 2, sb.y + sb.h / 2 + 18 * U, 11 * U, 600, 'center');
+    ctx.globalAlpha = 1;
+  } else if (canSpin(data)) {
+    const lit = show.overMenu === 'spin';
+    ctx.fillStyle = lit ? Black : Pale;
+    ctx.beginPath(); ctx.roundRect(sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.fill();
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 3 * U;
+    ctx.beginPath(); ctx.roundRect(sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.stroke();
+    write(ctx, say(UI.spin), w / 2, sb.y + sb.h / 2, 18 * U, 800, 'center', lit ? Pale : Black);
+  } else {
+    ctx.globalAlpha = 0.55;
+    write(ctx, say(UI.spinTomorrow), w / 2, sb.y + sb.h / 2, 13 * U, 700, 'center');
+    ctx.globalAlpha = 1;
+  }
+
+  // --- the chest
+  {
+    const box = chestBox(w, h, U);
+    const full = chestFull(data);
+    const part = chestPart(data);
+    const prize = chestPrize(level);
+    const won = show.chestWon !== null && show.chestWon !== undefined;
+
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = (full || won ? 3 : 1.6) * U;
+    ctx.globalAlpha = full || won ? 1 : 0.45;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 14 * U); ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Thrown open both while it is full and just after it was emptied - the chest you have this
+    // second opened should not snap shut because the count behind it has gone back to nothing.
+    chest(ctx, box.x + 44 * U, box.y + 44 * U, 46 * U, full || won, Black, Pale);
+
+    const tx = box.x + 82 * U;
+
+    if (won) {
+      // What it paid, and nothing else. Written over the count and the bar this used to sit on
+      // top of, both of them were unreadable.
+      write(ctx, say(UI.earned, show.chestWon), tx, box.y + box.h / 2 - 4 * U,
+        19 * U, 800, 'left');
+      ctx.globalAlpha = 0.6;
+      write(ctx, say(UI.chestAgain), tx, box.y + box.h / 2 + 20 * U, 11 * U, 600, 'left');
+      ctx.globalAlpha = 1;
+    } else {
+      write(ctx, say(UI.chest), tx, box.y + 26 * U, 12 * U, 800, 'left');
+      ctx.globalAlpha = 0.7;
+      write(ctx, say(UI.chestKills, Math.min(ChestKills, data.chest || 0), ChestKills),
+        tx, box.y + 46 * U, 11 * U, 600, 'left');
+      ctx.globalAlpha = 1;
+
+      // The bar, stopping clear of the button when there is one: run full width it passes behind
+      // the press, and a bar you cannot see the end of is not telling you anything.
+      const bw = (full ? chestOpen(w, h, U).x - 14 * U : box.x + box.w - 24 * U) - tx;
+      ctx.fillStyle = 'rgba(13,12,11,0.14)';
+      ctx.fillRect(tx, box.y + 58 * U, bw, 7 * U);
+      ctx.fillStyle = Black;
+      ctx.fillRect(tx, box.y + 58 * U, bw * part, 7 * U);
+
+      if (full) {
+        const ob = chestOpen(w, h, U);
+        const lit = show.overMenu === 'chest';
+        ctx.fillStyle = lit ? Black : Pale;
+        ctx.beginPath(); ctx.roundRect(ob.x, ob.y, ob.w, ob.h, 10 * U); ctx.fill();
+        ctx.strokeStyle = Black;
+        ctx.lineWidth = 2.4 * U;
+        ctx.beginPath(); ctx.roundRect(ob.x, ob.y, ob.w, ob.h, 10 * U); ctx.stroke();
+        write(ctx, say(UI.chestOpen, prize), ob.x + ob.w / 2, ob.y + ob.h / 2,
+          13 * U, 800, 'center', lit ? Pale : Black);
+      } else {
+        ctx.globalAlpha = 0.6;
+        fitWrite(ctx, say(UI.chestWorth, prize), box.x + box.w - 16 * U, box.y + box.h - 24 * U,
+          11 * U, 600, 'right', Black, bw);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
 }
 
 function mapTab(ctx, data, w, h, U, show) {
@@ -1029,7 +1297,7 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   // --- the chosen tab
   if (data.tab === 'map') mapTab(ctx, data, w, h, U, show);
   else if (data.tab === 'spells') spellsTab(ctx, data, w, h, U, show);
-  else if (data.tab === 'wheel') soon(ctx, w, h, U, say(UI.tabWheel), [say(UI.wheelSoon)]);
+  else if (data.tab === 'wheel') wheelTab(ctx, data, w, h, U, show);
   else if (data.tab === 'hero') heroTab(ctx, data, w, h, U, show);
   else codexTab(ctx, data, w, h, U, show);
 
