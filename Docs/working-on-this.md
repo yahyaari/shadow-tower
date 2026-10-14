@@ -4,7 +4,7 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **337 kontrol geçiyor**.
+> `node Tools/test.mjs` → **340 kontrol geçiyor**.
 >
 > **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
 > var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
@@ -158,6 +158,19 @@ fırtına, ve örümcek onu gerçekten umursamıyor.
 Doğru ölçüm: **aynı tohumlarda, elemente göre kurulmuş iki ayrı loadout.** Ateş yığını sürüye
 karşı %11, örümceğe karşı %13 önde; kurtlara karşı bıçak yığını %19 önde. Sıralama tersine
 dönüyor — ailelerin anlamı bu.
+
+### "Bıçak diye bir büyü yok"
+
+İlk hâlinde harita "BIÇAK ×2.1" yazıyordu ama oyuncunun bunu bağlayabileceği hiçbir şey yoktu:
+oyunda Bıçak adında bir büyü yok, **Kıymıklar** ve **Yörünge** var ve ikisinin de bıçak olduğu
+hiçbir yerde yazmıyordu. Okunamaz bir sayıydı.
+
+Artık her büyünün adının yanında elementi bir rozet olarak duruyor — loadout kartlarında,
+külliyat ızgarasında, açılmış büyü sayfasında ve yükseltme satırlarında. Test de bunu koruyor:
+**bir ailenin saydığı her elementin, oyuncunun görebileceği bir karşılığı olmak zorunda.**
+
+Bu, Çağırıcı'nın "üç çağırır" demesiyle aynı sınıftan bir hataydı — ekran, oyunda karşılığı
+olmayan bir şey söylüyordu.
 
 ### Oyuncu bunu nereden bilecek
 
@@ -408,7 +421,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 337 kontrol + bot. |
+| `Tools/test.mjs` | 340 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

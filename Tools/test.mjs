@@ -526,6 +526,29 @@ check('ilk aile tamamen nötr', Object.keys(Families.folk.takes).length === 0,
     bad.map((k) => `${k} -> ${weakness(k).element}`).join(', '));
 }
 
+// BU KONTROL BIR HATADAN DOGDU. Harita "BIÇAK x2.1" yaziyordu ama oyunda Biçak diye bir buyu
+// yok - Kiymiklar ve Yorunge var. Element hicbir buyunun ustunde yazmadigi icin o sayi okunamaz
+// bir sayiydi. Ailenin soyledigi her elementin, oyuncunun gorebilecegi bir karsiligi olmali.
+{
+  const named = new Set();
+  for (const k of FamilyKeys) {
+    const w = weakness(k), a = armour(k);
+    if (w) named.add(w.element);
+    if (a) named.add(a.element);
+  }
+  const carried = new Set(spellKeys.map((k) => Spells[k].element));
+  const orphan = [...named].filter((e) => !carried.has(e));
+  check('ailelerin saydığı her elementi taşıyan bir büyü var', orphan.length === 0,
+    orphan.join(', '));
+
+  // ve her birinin iki dilde de bir adi olmali, cunku ekranda o ad yaziyor
+  const unnamed = [...new Set([...named, ...carried])].filter((e) => !UI['el_' + e]);
+  check('her elementin iki dilde adı var', unnamed.length === 0, unnamed.join(', '));
+  check('element adları iki dilde de dolu',
+    Elements.every((e) => UI['el_' + e] && UI['el_' + e][0] && UI['el_' + e][1]),
+    Elements.filter((e) => !UI['el_' + e] || !UI['el_' + e][1]).join(','));
+}
+
 check('her büyünün bir elementi var',
   spellKeys.every((k) => Elements.includes(Spells[k].element)),
   spellKeys.filter((k) => !Elements.includes(Spells[k].element)).join(','));

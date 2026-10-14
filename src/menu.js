@@ -115,7 +115,7 @@ export function spellTiles(w, h, dpr = 1) {
   const tw = Math.min(tall ? 300 * U : 200 * U, (w - 40 * U - (cols - 1) * gap) / cols);
   const th = Math.min(tall ? 72 * U : 92 * U, (b.height - 70 * U - (rows - 1) * gap) / rows);
   const left = w / 2 - (cols * tw + (cols - 1) * gap) / 2;
-  const top = b.top + 56 * U;
+  const top = b.top + 78 * U;
   const order = [...spellKeys].sort((a, c) => UnlockAt[a] - UnlockAt[c]);
   return order.map((key, i) => ({
     key,
@@ -1123,6 +1123,34 @@ function half(ctx, box, label, on, lit, U) {
   write(ctx, label, box.x + box.w / 2, box.y + box.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
 }
 
+/**
+ * A spell's element, as a small badge.
+ *
+ * The map and the codex say a family takes twice the damage from BLADE. Nothing said which spells
+ * ARE blade, so that number was unreadable - there is no spell called Blade, there is Shards and
+ * there is Orbit. The badge goes wherever a spell is named, which is the only thing that makes
+ * the family tables mean anything.
+ */
+function elementTag(ctx, key, x, y, U, ink = Black, back = Pale, align = 'left') {
+  const el = Spells[key] && Spells[key].element;
+  if (!el) return 0;
+  const words = say(UI['el_' + el]);
+  const size = 9 * U;
+  ctx.font = `800 ${size}px ${Face}`;
+  const tw = ctx.measureText(words).width;
+  const pad = 6 * U;
+  const bw = tw + pad * 2;
+  const left = align === 'right' ? x - bw : x;
+
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1.3 * U;
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.roundRect(left, y - 8 * U, bw, 16 * U, 5 * U); ctx.stroke();
+  ctx.globalAlpha = 1;
+  write(ctx, words, left + pad, y, size, 800, 'left', ink);
+  return bw;
+}
+
 /** The level a spell has been raised to, as pips rather than a number you have to read. */
 function pips(ctx, x, y, at, gap, ink) {
   const r = gap * 0.38;
@@ -1187,8 +1215,14 @@ function raiseTab(ctx, data, w, h, U, show) {
     sigil(ctx, r.key, r.x + 24 * U, r.y + r.h / 2, Math.min(24 * U, r.h * 0.42), ink);
 
     const tx = r.x + 44 * U;
+    const nameW = Math.min(13 * U, r.h * 0.24);
     fitWrite(ctx, open ? say(Spells[r.key].name) : say(UI.locked),
-      tx, hi, Math.min(13 * U, r.h * 0.24), 800, 'left', ink, r.w * 0.42);
+      tx, hi, nameW, 800, 'left', ink, r.w * 0.3);
+    if (open) {
+      ctx.font = `800 ${nameW}px ${Face}`;
+      elementTag(ctx, r.key, tx + Math.min(ctx.measureText(say(Spells[r.key].name)).width, r.w * 0.3) + 8 * U,
+        hi, U, ink, back);
+    }
 
     if (!open) {
       fitWrite(ctx, say(UI.opensAt, UnlockAt[r.key]), tx, lo,
@@ -1274,17 +1308,30 @@ function spellsTab(ctx, data, w, h, U, show) {
     const at = levelOf(data, t.key);
     const under = fixed ? say(UI.always) : open ? say(sp.tells) : say(UI.opensAt, UnlockAt[t.key]);
     if (t.tall) {
-      const fits = t.w - 92 * U;
       sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 28 * U, ink);
-      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 74 * U, t.y + 26 * U, 16 * U, 800, 'left', ink, fits);
-      fitWrite(ctx, under, t.x + 74 * U, t.y + 48 * U, 10 * U, fixed ? 800 : 500, 'left', ink, fits);
-      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 14 * U, t.y + 26 * U, 12 * U, 800, 'right', ink);
+      // The badge is drawn first and measured, and the name gets what is left. Guessing at the
+      // room it would need shrank "Magic Bolt" to nothing on a phone.
+      const badge = open ? elementTag(ctx, t.key, t.x + t.w - 14 * U, t.y + 26 * U, U, ink, Pale, 'right') : 0;
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 74 * U, t.y + 26 * U,
+        16 * U, 800, 'left', ink, t.w - 96 * U - badge);
+      fitWrite(ctx, under, t.x + 74 * U, t.y + 48 * U, 10 * U, fixed ? 800 : 500, 'left', ink, t.w - 92 * U);
+      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 14 * U, t.y + 50 * U, 12 * U, 800, 'right', ink);
     } else {
       const fits = t.w - 16 * U;
-      sigil(ctx, t.key, t.x + t.w / 2, t.y + 28 * U, 28 * U, ink);
-      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 58 * U, 13 * U, 800, 'center', ink, fits);
-      fitWrite(ctx, fixed ? say(UI.always) : open ? '' : say(UI.levelledPlain, UnlockAt[t.key]),
-        t.x + t.w / 2, t.y + 76 * U, 9 * U, fixed ? 800 : 600, 'center', ink, fits);
+      sigil(ctx, t.key, t.x + t.w / 2, t.y + 30 * U, 26 * U, ink);
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + t.w / 2, t.y + 54 * U, 13 * U, 800, 'center', ink, fits);
+      if (open) {
+        ctx.font = `800 ${9 * U}px ${Face}`;
+        const words = say(UI['el_' + sp.element]);
+        const bw = ctx.measureText(words).width + 12 * U;
+        elementTag(ctx, t.key, t.x + t.w / 2 - bw / 2, t.y + 74 * U, U, ink, Pale);
+      } else {
+        fitWrite(ctx, say(UI.levelledPlain, UnlockAt[t.key]),
+          t.x + t.w / 2, t.y + 74 * U, 9 * U, 600, 'center', ink, fits);
+      }
+      // ALWAYS goes along the top edge, which is otherwise empty. Under the name it sat on the
+      // element badge, and the fixed spell is the one tile where both have to be readable.
+      if (fixed) fitWrite(ctx, say(UI.always), t.x + t.w / 2, t.y + 11 * U, 9 * U, 800, 'center', ink, fits);
       if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 10 * U, t.y + 14 * U, 11 * U, 800, 'right', ink);
     }
     ctx.globalAlpha = 1;
@@ -1334,7 +1381,14 @@ function codexTab(ctx, data, w, h, U, show) {
       ctx.globalAlpha = 1;
       const ink = lit ? Pale : Black;
       sigil(ctx, t.key, t.x + t.w / 2, t.y + t.h * 0.36, 30 * U, ink);
-      fitWrite(ctx, say(Spells[t.key].name), t.x + t.w / 2, t.y + t.h * 0.76, 13 * U, 800, 'center', ink, t.w - 12 * U);
+      fitWrite(ctx, say(Spells[t.key].name), t.x + t.w / 2, t.y + t.h * 0.7, 13 * U, 800, 'center', ink, t.w - 12 * U);
+      {
+        // centred under the name, so the grid can be read as "which of these is fire?"
+        ctx.font = `800 ${9 * U}px ${Face}`;
+        const words = say(UI['el_' + Spells[t.key].element]);
+        const bw = ctx.measureText(words).width + 12 * U;
+        elementTag(ctx, t.key, t.x + t.w / 2 - bw / 2, t.y + t.h * 0.93, U, ink, Pale);
+      }
     }
   } else {
     const rows = codexRows(w, h, U);
@@ -1415,6 +1469,9 @@ function codexTab(ctx, data, w, h, U, show) {
 
     sigil(ctx, key, box.x + 46 * U, box.y + 44 * U, 34 * U, Black);
     write(ctx, say(sp.name), box.x + 76 * U, box.y + 34 * U, 22 * U, 800, 'left');
+    ctx.font = `800 ${22 * U}px ${Face}`;
+    elementTag(ctx, key, box.x + 76 * U + ctx.measureText(say(sp.name)).width + 12 * U,
+      box.y + 34 * U, U);
     fitWrite(ctx, say(sp.tells), box.x + 76 * U, box.y + 58 * U, 12 * U, 500, 'left', Black, box.w - 150 * U);
 
     {
