@@ -65,6 +65,30 @@ export function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
   write(ctx, text, x, y, wide > room ? Math.max(8, px * room / wide) : px, weight, align, colour);
 }
 
+/**
+ * Wrapped writing that fits a box, by shrinking until it does.
+ *
+ * `wrap` centres a block on a point and will happily run out of the bottom of whatever it is in -
+ * which is what the codex did the moment seven rows had to share the height six used to. This one
+ * is told how much room it has and finds a size that lives in it.
+ */
+export function wrapIn(ctx, text, x, top, width, height, most, colour) {
+  for (let size = most; size >= most * 0.45; size -= Math.max(0.5, most * 0.06)) {
+    const lead = size * 1.34;
+    ctx.font = `500 ${size}px ${Face}`;
+    let lines = 1, line = '';
+    for (const word of String(text).split(' ')) {
+      const next = line ? line + ' ' + word : word;
+      if (ctx.measureText(next).width > width && line) { lines += 1; line = word; }
+      else line = next;
+    }
+    if (lines * lead <= height || size <= most * 0.5) {
+      wrap(ctx, text, x, top + height / 2, width, size, lead, colour);
+      return;
+    }
+  }
+}
+
 export function wrap(ctx, text, x, y, width, size, lead, colour) {
   ctx.fillStyle = colour;
   ctx.font = `500 ${size}px ${Face}`;
@@ -262,10 +286,23 @@ function wizard(ctx, S, state) {
  * them. Two copies of a silhouette is two copies that stop matching the first time one is
  * changed, and the codex exists precisely to show you what you are about to meet.
  */
-export function body(ctx, key, swing = 0, colour = Black) {
+/**
+ * One creature, in the game's own units: feet on the line at y = 0, head somewhere above it.
+ *
+ * `key` is the ROLE - walker, runner, brute - or a boss's own name. `family` says what kind of
+ * thing it is. The three bosses have no family and are drawn as themselves; everything else is
+ * drawn by its family, with the role changing the proportions inside it.
+ */
+export function body(ctx, key, swing = 0, colour = Black, family = 'folk') {
   ctx.fillStyle = colour;
   ctx.strokeStyle = colour;
   ctx.lineCap = 'round';
+
+  if (family && family !== 'folk' && (key === 'walker' || key === 'runner' || key === 'brute')) {
+    if (family === 'swarm') return swarmBody(ctx, key, swing);
+    if (family === 'spider') return spiderBody(ctx, key, swing);
+    if (family === 'wurm') return wurmBody(ctx, key, swing);
+  }
 
 if (key === 'warden') {
   // Bigger than everything, and built so you can tell at a glance it is not one of the crowd:
@@ -379,13 +416,135 @@ if (key === 'warden') {
 
 }
 
+/**
+ * The swarm: wings, and nothing on the ground.
+ *
+ * Drawn clear of the line the others stand on, because that is the whole read - at a glance you
+ * should know this one is in the air. The wings beat with the same `swing` the others walk with.
+ */
+function swarmBody(ctx, key, swing) {
+  const big = key === 'brute' ? 1.32 : key === 'runner' ? 0.72 : 1;
+  const lift = -30 - (key === 'runner' ? 10 : 0);
+  const beat = 0.45 + Math.abs(swing) * 0.55;
+
+  ctx.save();
+  ctx.translate(0, lift);
+  ctx.scale(big, big);
+
+  // the wings, one pair, opening and closing
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side * 5, -6);
+    ctx.quadraticCurveTo(side * 30, -14 - beat * 16, side * 34, 2 - beat * 10);
+    ctx.quadraticCurveTo(side * 22, 6, side * 5, 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // body: two lumps and a head
+  ctx.beginPath(); ctx.ellipse(0, 2, 8, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -13, 7, 0, Math.PI * 2); ctx.fill();
+
+  // antennae
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(-3, -18); ctx.lineTo(-10, -30);
+  ctx.moveTo(3, -18); ctx.lineTo(10, -30);
+  ctx.stroke();
+
+  // the tail, which the brute drags longer
+  if (key === 'brute') {
+    ctx.beginPath(); ctx.ellipse(0, 18, 6, 9, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * Spiders: low, wide, and all legs.
+ *
+ * The body sits barely off the ground and the legs reach further out than anything else in the
+ * game is wide, so a field of them reads as a different kind of crowd even in silhouette.
+ */
+function spiderBody(ctx, key, swing) {
+  const big = key === 'brute' ? 1.3 : key === 'runner' ? 0.74 : 1;
+  const reach = key === 'runner' ? 1.25 : 1;
+
+  ctx.save();
+  ctx.scale(big, big);
+  ctx.lineWidth = key === 'brute' ? 4.2 : 3;
+  ctx.lineJoin = 'round';
+
+  // four legs a side, each a knee out and a foot down
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const out = (14 + i * 7) * reach;
+      const up = -26 + i * 4;
+      const wave = Math.sin(swing * Math.PI + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(side * 5, -20);
+      ctx.lineTo(side * out, up - 8 + wave);
+      ctx.lineTo(side * (out + 5), 0);
+      ctx.stroke();
+    }
+  }
+
+  // abdomen and head
+  ctx.beginPath(); ctx.ellipse(0, -18, 13, 11, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -30, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
+  // two fangs
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(-4, -26); ctx.lineTo(-6, -18);
+  ctx.moveTo(4, -26); ctx.lineTo(6, -18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Wurms: one long body, arched, in segments.
+ *
+ * No legs and no head to speak of - a line of lumps rising out of the ground and back into it.
+ * The arch moves with `swing`, which is what makes it read as crawling rather than lying there.
+ */
+function wurmBody(ctx, key, swing) {
+  const parts = key === 'brute' ? 7 : key === 'runner' ? 4 : 5;
+  const fat = key === 'brute' ? 13 : key === 'runner' ? 8 : 10;
+  const span = key === 'runner' ? 12 : 13;
+
+  ctx.save();
+  for (let i = 0; i < parts; i++) {
+    const at = i / (parts - 1);
+    const x = (at - 0.5) * span * parts * 0.55;
+    const arch = Math.sin(at * Math.PI) * (key === 'brute' ? 34 : 26);
+    const ripple = Math.sin(swing * Math.PI + at * 3) * 4;
+    const r = fat * (0.6 + 0.4 * Math.sin(at * Math.PI));
+    ctx.beginPath();
+    ctx.ellipse(x, -r - arch - ripple, r, r * 1.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // the head end, raised and blunt, with a mouth bitten out of it
+  const hx = (0.5 - 0.5) * 0 + (span * parts * 0.55) / 2;
+  const hy = -fat - (key === 'brute' ? 10 : 8);
+  ctx.beginPath(); ctx.ellipse(hx + fat * 0.5, hy, fat * 0.95, fat * 1.15, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(hx + fat * 1.1, hy - fat * 0.5);
+  ctx.lineTo(hx + fat * 1.9, hy - fat * 0.9);
+  ctx.moveTo(hx + fat * 1.1, hy + fat * 0.2);
+  ctx.lineTo(hx + fat * 1.9, hy + fat * 0.6);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** A creature standing still, for a list or a card. */
-export function creatureMark(ctx, key, x, y, size, colour = Black) {
+export function creatureMark(ctx, key, x, y, size, colour = Black, family = 'folk') {
   ctx.save();
   ctx.translate(x, y);
   const k = size / 70;
   ctx.scale(k, k);
-  body(ctx, key, 0.35, colour);
+  body(ctx, key, 0.35, colour, family);
   ctx.restore();
 }
 
@@ -418,7 +577,7 @@ function figure(ctx, S, f) {
   ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
 
-  body(ctx, f.key, swing);
+  body(ctx, f.key, swing, Black, f.family);
 
   ctx.restore();
 }

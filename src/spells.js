@@ -83,7 +83,7 @@ export const Spells = {
   bolt: {
     name: ['Magic Bolt', 'Sihirli Ok'],
     tells: ['a homing bolt at the nearest', 'en yakındakini takip eden bir ok'],
-    every: 0.85, damage: 7, seeks: 'near', homing: true,
+    every: 0.85, damage: 7, seeks: 'near', homing: true, element: 'arcane',
     boosts: [
       { key: 'more', name: ['Twin Bolt', 'İkiz Ok'], tells: ['+1 bolt each cast', 'her atışta +1 ok'], does: { count: 1 }, most: 1 },
       { key: 'flank', name: ['Flanking', 'Kanat Ateşi'], tells: ['+1 bolt, out to the side', 'yana doğru +1 ok'], does: { count: 1, spread: 0.5 }, most: 1 },
@@ -102,7 +102,7 @@ export const Spells = {
   shards: {
     name: ['Shards', 'Kıymıklar'],
     tells: ['three splinters in a fan', 'yelpaze şeklinde üç kıymık'],
-    every: 1.7, damage: 5, seeks: 'near', count: 3, spread: 0.42,
+    every: 1.7, damage: 5, seeks: 'near', count: 3, spread: 0.42, element: 'blade',
     boosts: [
       { key: 'more', name: ['More Shards', 'Daha Çok Kıymık'], tells: ['+1 shard', '+1 kıymık'], does: { count: 1 }, most: 1 },
       { key: 'fan', name: ['Wide Fan', 'Geniş Yelpaze'], tells: ['a wider spread', 'daha geniş açılır'], does: { spread: 0.25 }, most: 1 },
@@ -120,7 +120,7 @@ export const Spells = {
   wisp: {
     name: ['Wisp', 'Ruh Ateşi'],
     tells: ['hunts whatever is toughest', 'en dayanıklı olanı avlar'],
-    every: 1.5, damage: 11, seeks: 'strong', homing: true,
+    every: 1.5, damage: 11, seeks: 'strong', homing: true, element: 'arcane',
     boosts: [
       { key: 'more', name: ['Second Wisp', 'İkinci Ruh'], tells: ['+1 wisp', '+1 ruh ateşi'], does: { count: 1 }, most: 1 },
       { key: 'pierce', name: ['Relentless', 'Yılmaz'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
@@ -137,7 +137,7 @@ export const Spells = {
   fireball: {
     name: ['Fireball', 'Ateş Topu'],
     tells: ['bursts where it lands', 'düştüğü yerde patlar'],
-    every: 2.6, damage: 12, seeks: 'crowd', blast: 86,
+    every: 2.6, damage: 12, seeks: 'crowd', blast: 86, element: 'fire',
     boosts: [
       { key: 'more', name: ['Twin Flame', 'İkiz Alev'], tells: ['+1 fireball', '+1 ateş topu'], does: { count: 1, spread: 0.3 }, most: 1 },
       area(0.2, 3), hit(0.19), fast(0.13),
@@ -154,7 +154,7 @@ export const Spells = {
   frost: {
     name: ['Frost Orb', 'Buz Küresi'],
     tells: ['bursts, and what it touches slows', 'patlar, değdiğini yavaşlatır'],
-    every: 2.3, damage: 7, seeks: 'near', blast: 76, chill: 2.4,
+    every: 2.3, damage: 7, seeks: 'near', blast: 76, chill: 2.4, element: 'ice',
     boosts: [
       { key: 'deep', name: ['Deep Cold', 'Derin Soğuk'], tells: ['+1.4s of slow', '+1.4sn yavaşlatma'], does: { chill: 1.4 }, most: 2 },
       { key: 'more', name: ['Second Orb', 'İkinci Küre'], tells: ['+1 orb', '+1 küre'], does: { count: 1, spread: 0.3 }, most: 1 },
@@ -171,7 +171,7 @@ export const Spells = {
   lightning: {
     name: ['Lightning', 'Yıldırım'],
     tells: ['leaps between them', 'aralarında sıçrar'],
-    every: 2.5, damage: 10, instant: 'chain', jumps: 3,
+    every: 2.5, damage: 10, instant: 'chain', jumps: 3, element: 'storm',
     boosts: [
       { key: 'jump', name: ['Further Leap', 'Uzun Sıçrayış'], tells: ['+1 jump', '+1 sıçrayış'], does: { jumps: 1 }, most: 2 },
       { key: 'twice', name: ['Double Strike', 'Çifte Vuruş'], tells: ['strikes twice', 'iki kere vurur'], does: { count: 1 }, most: 1 },
@@ -188,7 +188,7 @@ export const Spells = {
   laser: {
     name: ['Beam', 'Işın'],
     tells: ['burns a line clean through', 'bir hattı boydan boya yakar'],
-    every: 3.4, damage: 20, instant: 'beam', wide: 34,
+    every: 3.4, damage: 20, instant: 'beam', wide: 34, element: 'fire',
     boosts: [
       { key: 'more', name: ['Second Beam', 'İkinci Işın'], tells: ['+1 beam, elsewhere', 'başka bir yöne +1 ışın'], does: { count: 1 }, most: 1 },
       area(0.18, 3), hit(0.32), fast(0.2),
@@ -204,7 +204,7 @@ export const Spells = {
   nova: {
     name: ['Nova', 'Nova'],
     tells: ['everything near the wall, at once', 'duvara yakın ne varsa, hepsi birden'],
-    every: 3.8, damage: 15, instant: 'nova', blast: 190,
+    every: 3.8, damage: 15, instant: 'nova', blast: 190, element: 'arcane',
     boosts: [
       area(0.12, 3), hit(0.13), fast(0.08),
       { key: 'more', name: ['Second Pulse', 'İkinci Dalga'], tells: ['pulses twice', 'iki kere dalgalanır'], does: { count: 1 }, most: 1 },
@@ -221,7 +221,7 @@ export const Spells = {
   meteor: {
     name: ['Meteor', 'Meteor'],
     tells: ['falls on the thickest part of the crowd', 'kalabalığın en yoğun yerine düşer'],
-    every: 5, damage: 34, seeks: 'crowd', falls: true, blast: 110,
+    every: 5, damage: 34, seeks: 'crowd', falls: true, blast: 110, element: 'fire',
     boosts: [
       { key: 'more', name: ['Shower', 'Yağmur'], tells: ['+1 meteor', '+1 meteor'], does: { count: 1 }, most: 1 },
       area(0.14, 3), hit(0.14), fast(0.1),
@@ -238,7 +238,7 @@ export const Spells = {
   blade: {
     name: ['Orbit', 'Yörünge'],
     tells: ['a blade circling you, always', 'çevrende sürekli dönen bir bıçak'],
-    every: 0.55, damage: 9, orbit: true,
+    every: 0.55, damage: 9, orbit: true, element: 'blade',
     boosts: [
       { key: 'more', name: ['Second Blade', 'İkinci Bıçak'], tells: ['+1 blade', '+1 bıçak'], does: { count: 1 }, most: 1 },
       { key: 'whirl', name: ['Faster', 'Daha Hızlı'], tells: ['+25% orbit speed', '+%25 dönüş hızı'], does: { whirl: 0.25 }, most: 2 },

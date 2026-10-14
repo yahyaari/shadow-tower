@@ -8,7 +8,7 @@
 // first; what goes inside each tab is a conversation per tab.
 
 import {
-  Inks, Face, write, fitWrite, wrap, sigil, star, stars, creatureMark, coin, shard, gem,
+  Inks, Face, write, fitWrite, wrap, wrapIn, sigil, star, stars, creatureMark, coin, shard, gem,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
@@ -22,7 +22,8 @@ import {
 } from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
-import { Kinds, BoostsPerTier, MostEvos, HeraldCalls, ShadeKeeps } from './rules.js';
+import { Families, FamilyKeys, Roles, familiesOn, weakness, armour } from './foes.js';
+import { Kinds, BoostsPerTier, MostEvos, HeraldCalls, ShadeKeeps, Bosses } from './rules.js';
 
 const { Black, Pale } = Inks;
 
@@ -320,16 +321,18 @@ export function codexGrid(w, h, dpr = 1) {
 export function codexRows(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  // Read from the creature table rather than written out here. A hand-kept list goes out of step
-  // with the thing it describes the first time either changes - and it did, the moment two more
-  // bosses arrived and the codex went on saying there was one.
-  const keys = Object.keys(Kinds);
-  const gap = 10 * U;
+  // Families first, then the bosses. Both lists are read from their own tables rather than
+  // written out here: a hand-kept list goes out of step with the thing it describes the first
+  // time either changes - and it did, the moment two more bosses arrived and the codex went on
+  // saying there was one.
+  const keys = [...FamilyKeys.map((k) => ({ key: k, family: true })),
+    ...Bosses.map((k) => ({ key: k, family: false }))];
+  const gap = 8 * U;
   const rw = Math.min(680 * U, w - 36 * U);
-  const rh = Math.min(104 * U, (b.height - 80 * U - (keys.length - 1) * gap) / keys.length);
-  const top = b.top + 60 * U;
-  return keys.map((key, i) => ({
-    key, x: w / 2 - rw / 2, y: top + i * (rh + gap), w: rw, h: rh,
+  const rh = Math.min(104 * U, (b.height - 92 * U - (keys.length - 1) * gap) / keys.length);
+  const top = b.top + 72 * U;
+  return keys.map((k, i) => ({
+    ...k, x: w / 2 - rw / 2, y: top + i * (rh + gap), w: rw, h: rh,
   }));
 }
 
@@ -1046,15 +1049,55 @@ function mapTab(ctx, data, w, h, U, show) {
   y += 26 * U;
   fitWrite(ctx, say(info.blurb), w / 2, y, 13 * U, 500, 'center', Black, w - 60 * U);
 
-  // --- what walks in on this one. The marks stand on a line, so nothing overlaps the writing
-  // above them however tall the Warden is.
-  const kinds = kindsOn(data.stage);
-  const feet = Math.min(y + 100 * U, playBox(w, h, U).y - 26 * U);
-  const step = Math.min(104 * U, (w - 60 * U) / kinds.length);
-  let x = w / 2 - ((kinds.length - 1) * step) / 2;
-  for (const key of kinds) {
-    creatureMark(ctx, key, x, feet, (key === 'warden' ? 44 : 34) * U, Black);
-    write(ctx, say(UI['foe_' + key] || key), x, feet + 16 * U, 10 * U, 700, 'center');
+  // --- who lives here, and what hurts them.
+  //
+  // This sits beside the PLAY button on purpose. Which spells to bring is the one decision the
+  // menu asks for, and a weakness the player can only discover by losing a run is not a decision,
+  // it is a guess.
+  const here = familiesOn(data.stage);
+  const boss = kindsOn(data.stage).slice(-1)[0];
+  const cols = [...here.map((f) => ({ family: f })), { boss }];
+  const feet = Math.min(y + 92 * U, playBox(w, h, U).y - 58 * U);
+  const step = Math.min(138 * U, (w - 40 * U) / cols.length);
+  let x = w / 2 - ((cols.length - 1) * step) / 2;
+
+  for (const col of cols) {
+    if (col.boss) {
+      creatureMark(ctx, col.boss, x, feet, 44 * U, Black);
+      write(ctx, say(UI['foe_' + col.boss] || col.boss), x, feet + 15 * U, 10 * U, 700, 'center');
+    } else {
+      creatureMark(ctx, 'walker', x, feet, 36 * U, Black, col.family);
+      fitWrite(ctx, say(Families[col.family].name).toUpperCase(), x, feet + 15 * U,
+        10 * U, 800, 'center', Black, step - 8 * U);
+
+      const w0 = weakness(col.family);
+      const a0 = armour(col.family);
+      let at = feet + 32 * U;
+      // The triangle and the words are centred as one group. Hung off a fixed offset they
+      // drifted left out of their own column and into the family beside them.
+      const line = (mark, el, much) => {
+        const words = `${say(UI['el_' + el])} ×${much}`;
+        ctx.font = `700 ${10 * U}px ${Face}`;
+        const ww = Math.min(ctx.measureText(words).width, step - 30 * U);
+        const tx = x - (ww + 14 * U) / 2;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = Black;
+        ctx.beginPath();
+        if (mark > 0) { ctx.moveTo(tx, at - 4 * U); ctx.lineTo(tx - 4 * U, at + 3 * U); ctx.lineTo(tx + 4 * U, at + 3 * U); }
+        else { ctx.moveTo(tx, at + 4 * U); ctx.lineTo(tx - 4 * U, at - 3 * U); ctx.lineTo(tx + 4 * U, at - 3 * U); }
+        ctx.closePath(); ctx.fill();
+        fitWrite(ctx, words, tx + 10 * U, at, 10 * U, 700, 'left', Black, step - 30 * U);
+        ctx.globalAlpha = 1;
+        at += 15 * U;
+      };
+      if (w0) line(1, w0.element, w0.much);
+      if (a0) line(-1, a0.element, a0.much);
+      if (!w0 && !a0) {
+        ctx.globalAlpha = 0.55;
+        fitWrite(ctx, say(UI.noElement), x, at, 9 * U, 600, 'center', Black, step - 8 * U);
+        ctx.globalAlpha = 1;
+      }
+    }
     x += step;
   }
 
@@ -1294,39 +1337,64 @@ function codexTab(ctx, data, w, h, U, show) {
       fitWrite(ctx, say(Spells[t.key].name), t.x + t.w / 2, t.y + t.h * 0.76, 13 * U, 800, 'center', ink, t.w - 12 * U);
     }
   } else {
-    for (const r of codexRows(w, h, U)) {
-      const k = Kinds[r.key];
+    const rows = codexRows(w, h, U);
+    // Said once, at the top: the three roles behave the same whichever family they belong to.
+    ctx.globalAlpha = 0.6;
+    fitWrite(ctx, say(UI.roleLine), w / 2, rows[0].y - 14 * U, 10 * U, 600, 'center',
+      Black, w - 40 * U);
+    ctx.globalAlpha = 1;
+
+    for (const r of rows) {
+      const fam = r.family ? Families[r.key] : null;
+      const k = fam ? null : Kinds[r.key];
+
       ctx.strokeStyle = Black;
       ctx.lineWidth = 1.5 * U;
       ctx.globalAlpha = 0.5;
       ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 9 * U); ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // Bosses are drawn smaller here than their size in the game would suggest: horns, crowns
-      // and hoods reach further above the feet than anything else and were leaving the top of
-      // the row. Sized from the row too, because six creatures share the height four used to.
-      const mark = (k.boss ? Math.min(46, r.h * 0.46) : Math.min(58, r.h * 0.6)) * U;
-      creatureMark(ctx, r.key, r.x + 46 * U, r.y + r.h - 14 * U, mark, Black);
       const nameAt = r.y + Math.min(24 * U, r.h * 0.26);
       const nameSize = Math.min(17 * U, r.h * 0.24);
-      write(ctx, say(UI['foe_' + r.key]), r.x + 92 * U, nameAt, nameSize, 800, 'left');
+      const feet = r.y + r.h - 12 * U;
 
-      // the numbers, said in the same breath as the name
-      const bits = [
-        `${say(UI.statHealth)} ${k.hp}`,
-        `${say(UI.statSpeed)} ${k.speed}`,
-        `${say(UI.statBite)} ${k.bite}`,
-        `${say(UI.statXp)} ${k.xp}`,
-      ].join('   ·   ');
-      fitWrite(ctx, bits, r.x + r.w - 16 * U, nameAt, 10 * U, 600, 'right', Black, r.w - 220 * U);
+      if (fam) {
+        // all three roles, so the shape of the family is seen rather than described
+        const mark = Math.min(44, r.h * 0.46) * U;
+        Roles.forEach((role, i) => {
+          creatureMark(ctx, role, r.x + (26 + i * 30) * U, feet, mark, Black, r.key);
+        });
+        write(ctx, say(fam.name), r.x + 118 * U, nameAt, nameSize, 800, 'left');
 
-      // The description is centred in what is LEFT of the row under the name, not at a fraction
-      // of the whole row. `wrap` centres its block on the y it is given, so a four-line entry
-      // placed at a fixed fraction grew upwards into the name - which is exactly what the two
-      // new bosses, who have more to explain than the others, did.
-      const under = nameAt + nameSize * 0.7 + 4 * U;
-      wrap(ctx, about(r.key), r.x + 92 * U + (r.w - 108 * U) / 2, (under + r.y + r.h - 8 * U) / 2,
-        r.w - 108 * U, Math.min(11 * U, r.h * 0.16), Math.min(15 * U, r.h * 0.2), Black);
+        // what hurts them, in the same words the map uses
+        const bits = [];
+        const w0 = weakness(r.key);
+        const a0 = armour(r.key);
+        if (w0) bits.push(`▲ ${say(UI['el_' + w0.element])} ×${w0.much}`);
+        if (a0) bits.push(`▼ ${say(UI['el_' + a0.element])} ×${a0.much}`);
+        fitWrite(ctx, bits.length ? bits.join('   ') : say(UI.noElement),
+          r.x + r.w - 16 * U, nameAt, 11 * U, 800, 'right', Black, r.w * 0.44);
+
+        const under = nameAt + nameSize * 0.7 + 4 * U;
+        wrapIn(ctx, say(fam.about), r.x + 118 * U + (r.w - 134 * U) / 2, under,
+          r.w - 134 * U, r.y + r.h - 8 * U - under, 11 * U, Black);
+
+      } else {
+        const mark = Math.min(46, r.h * 0.46) * U;
+        creatureMark(ctx, r.key, r.x + 46 * U, feet, mark, Black);
+        write(ctx, say(UI['foe_' + r.key]), r.x + 92 * U, nameAt, nameSize, 800, 'left');
+
+        const bits = [
+          `${say(UI.statHealth)} ${k.hp}`,
+          `${say(UI.statSpeed)} ${k.speed}`,
+          `${say(UI.statBite)} ${k.bite}`,
+        ].join('   ·   ');
+        fitWrite(ctx, bits, r.x + r.w - 16 * U, nameAt, 10 * U, 600, 'right', Black, r.w * 0.42);
+
+        const under = nameAt + nameSize * 0.7 + 4 * U;
+        wrapIn(ctx, about(r.key), r.x + 92 * U + (r.w - 108 * U) / 2, under,
+          r.w - 108 * U, r.y + r.h - 8 * U - under, 11 * U, Black);
+      }
     }
   }
 

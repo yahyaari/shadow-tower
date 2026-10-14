@@ -4,23 +4,23 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **307 kontrol geçiyor**.
+> `node Tools/test.mjs` → **337 kontrol geçiyor**.
 >
-> **Üç patron var artık**, sırayla geliyorlar: Gardiyan (düello), Çağırıcı (durduğu yerden
-> koşucu çağırır), Gölge (ölünce kenarda ikiye ayrılır). Farkları istatistik değil davranış.
+> **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
+> var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
+> ateşten ×2.1, yıldırımdan ×0.55 alır). **Bu, loadout'u bölüme göre bir karar yapıyor** —
+> ölçüm: kurtlara karşı bıçak yığını ateş yığınından %19 fazla öldürüyor, örümceklere karşı tersi.
 >
-> **Dört para birimi:** deneyim (kahraman peteği), altın (ortak), parça (büyüye özel), gem
-> (sandıklar). **Gem farmlanamaz** — sadece bir bölümü ilk kez geçmek üretir.
+> **Üç patron:** Gardiyan, Çağırıcı, Gölge. Patronların ailesi yok, nötr.
+>
+> **Dört para birimi:** deneyim, altın, parça, gem. Gem farmlanamaz.
 >
 > **Sıradaki iş — hiçbiri seçilmedi:**
 > 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
-> 2. **Reklam.** CrazyGames SDK'sı gerekiyor. Doğal yeri: fazladan bir çark çevirme hakkı.
-> 3. **CrazyGames hazırlığı.** SDK, kapak görseli, tanıtım videosu.
-> 4. **Müzik.** Ses efektleri var, müzik yok.
+> 2. **Reklam** (CrazyGames SDK) · 3. **CrazyGames hazırlığı** · 4. **Müzik**
 >
-> **Kullanıcının cevaplamadığı sorular:** kahraman basamak fiyatları; bölüm uzunluğu (~1:45);
-> gem temposu; yeni patronlar nasıl hissettiriyor; 3. ve 5. bölümde üç yıldız neredeyse imkânsız
-> (Çağırıcı ve Gölge duvarı daha çok yiyor) — bu kabul edilebilir mi?
+> **Kullanıcının cevaplamadığı sorular:** ailelerin zayıflık/zırh oranları (×2.1 / ×0.55) doğru
+> mu; 4. aile "Kurtlar" olarak seçildi, uygun mu; bölüm-aile eşlemesi doğru mu.
 >
 > **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
 > birleşip yeni bir büyü doğurması.
@@ -110,6 +110,60 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## Dört düşman ailesi
+
+İki şey kasten ayrı tutuluyor:
+
+- **Rol** — yürüyen, koşucu, gladyatör. Dalgada ne yaptığı. Dalga kuralı sadece rollerden
+  konuşuyor, o yüzden yeni bir aile dengeye hiçbir şey mal olmuyor.
+- **Aile** — insanlar, sürü, örümcekler, kurtlar. Ne olduğu. Nasıl göründüğünü ve hangi
+  hasardan ne kadar aldığını değiştiriyor, başka hiçbir şeyi değil.
+
+| aile | nerede | zayıf | zırhlı |
+| --- | --- | --- | --- |
+| **İnsanlar** | 1. bölüm | — | — |
+| **Sürü** (uçan) | 2. bölüm | ateş ×2.1 | bıçak ×0.6 |
+| **Örümcekler** | 3. bölüm | ateş ×2.1 | yıldırım ×0.55 |
+| **Kurtlar** | 4. bölüm | bıçak ×2.1 | ateş ×0.55 |
+
+5. bölümden sonra karışıyorlar (sürü+insan, örümcek+insan, kurt+sürü…), ve liste bittiğinde
+bitmiyor — her tur bir aile daha ekleniyor, yani 20. bölümde hepsi birden geliyor.
+
+**İki sayı kasten dengesiz:** zayıflık iki katından fazla, zırh yarıdan az kesiyor. Tablo, doğru
+büyüyü getireni **ödüllendirmeli**, yanlış getireni cezalandırmamalı. Eşit yaptığımda 4. bölüm,
+sadece haritayı henüz okumamış bir oyuncu için %30'dan %15'e düştü.
+
+### Hasarın tek kapıdan geçmesi
+
+Oyundaki her şey tek bir `wound()`'dan geçiyor, o yüzden direnç tablosu yedi ayrı yere değil tek
+bir yere uygulanıyor. Yeni bir aile eklemek bu yüzden bedava: bir tablo satırı, bir dal değil.
+
+Her büyünün bir **elementi** var (gizem / ateş / buz / yıldırım / bıçak). Dönüşümlerin yere
+bıraktığı şeyler kendi elementlerini taşıyor: Lightning'den ödünç alınmış bir fırtına gerçekten
+fırtına, ve örümcek onu gerçekten umursamıyor.
+
+### Burada üç kere yanlış ölçtüm
+
+1. **Bitirme oranıyla ölçtüm.** %20 civarında, 40 koşuda standart hata ~6 puan — aradığım etki
+   gürültünün içinde kayboldu. İki kez "fark yok" çıktı; yanlış olan ölçümdü, oyun değil.
+2. **Tabloyu açıp kapatarak ölçtüm** (aynı tohum, aynı loadout). Bu doğru izolasyondu ama yine
+   "+%0" dedi — çünkü **bot bütün kartları tek bir büyüye yığıyor**, ve o loadout'ta ateş toplam
+   hasarın yüzde dördüydü. Bir elementi iki katına çıkarmak, o element hasarın %4'üyse hiçbir şey
+   yapmaz.
+3. **Zayıflığı Buz'a koydum.** Buz Küresi 7 hasarlık bir fayda büyüsü; iki katı da hiçbir şey.
+   Zayıflık, gerçekten hasar taşıyan bir elemente bakmalı. Ateş ve bıçak öyle — Yörünge tek
+   başına bir koşunun hasarının dörtte birini yapıyor.
+
+Doğru ölçüm: **aynı tohumlarda, elemente göre kurulmuş iki ayrı loadout.** Ateş yığını sürüye
+karşı %11, örümceğe karşı %13 önde; kurtlara karşı bıçak yığını %19 önde. Sıralama tersine
+dönüyor — ailelerin anlamı bu.
+
+### Oyuncu bunu nereden bilecek
+
+**Haritada, OYNA'nın yanında.** Bölümün aileleri gerçek siluetleriyle, altlarında ▲ zayıflık ve
+▼ zırh. Oyuncunun ancak kaybederek öğrenebileceği bir zayıflık bir karar değil, bir tahmindir.
+Külliyat da dört aileyi üç rolüyle birlikte gösteriyor.
 
 ## Üç patron
 
@@ -342,7 +396,8 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | yol | ne yapar |
 | --- | --- |
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
-| `src/stages.js` | Bölüm adları, görünümleri ve hangi düşmanların geldiği. Saf veri. |
+| `src/stages.js` | Bölüm adları ve görünümleri. Saf veri. |
+| `src/foes.js` | Düşman aileleri, elementler, direnç tablosu, bölüm→aile eşlemesi. Saf veri. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
 | `src/upgrades.js` | Büyülerin kalıcı seviye çizgisi: 10 basamak, maliyetler. Saf veri. |
@@ -353,7 +408,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 307 kontrol + bot. |
+| `Tools/test.mjs` | 337 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -500,7 +555,7 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 
 - Müzik yok (ses efektleri var).
 - Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
-- Tek arena (patron artık üç tane).
+- Tek arena (patron üç tane, düşman ailesi dört tane).
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
 - Yıldızlar hiçbir şey satın almıyor; sadece bir geçişin kaç gem getireceğini belirliyorlar.
 - Gerçek parmakla oynanmadı.

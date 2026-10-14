@@ -11,6 +11,7 @@
 // card that changes what the spell does rather than how much of it there is.
 
 import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always } from './spells.js';
+import { takes, familyFor, Roles } from './foes.js';
 import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
 
@@ -236,6 +237,7 @@ export function statsOf(s, key) {
   return {
     tier: kit.tier,
     size,
+    element: sp.element || null,
     // Three sources, and they multiply: the cards taken this run, the hero comb, and the
     // permanent level this spell has been raised to. The level is the smallest of the three on
     // purpose - it is the one that never goes away.
@@ -266,10 +268,14 @@ export function spawn(s, kindKey = null, angle = null) {
   const key = kindKey || (p > 1.5 && r < 0.12 ? 'brute' : r < 0.2 + Math.min(0.25, p * 0.1) ? 'runner' : 'walker');
   const k = Kinds[key];
   const tough = Math.pow(p, 1.4);
+  // Which family it belongs to, drawn from the stage's list. Bosses have none: they are single
+  // creatures with their own identity, and a Warden that resisted fire because the stage happened
+  // to be full of wurms would be a boss fight decided by the wallpaper.
   const foe = {
     id: s.id++,
     key,
     boss: !!k.boss,
+    family: k.boss ? null : familyFor(s.stage, s.roll()),
     a: angle == null ? s.roll() * Math.PI * 2 : angle,
     r: Arena,
     hp: k.hp * tough, maxHp: k.hp * tough,
@@ -329,9 +335,16 @@ const aimAt = (s, how) => (how === 'strong' ? strongest(s) : how === 'crowd' ? c
 
 // --- doing damage -----------------------------------------------------------------------------
 
-function wound(s, f, amount, chill = 0) {
+/**
+ * Damage, and the one place a creature's family can change it.
+ *
+ * Everything that hurts anything comes through here, so the resistance table is applied once
+ * rather than at each of the seven places that do damage - which is also why adding a family
+ * costs nothing: it is a row in a table, not a branch in the combat code.
+ */
+function wound(s, f, amount, chill = 0, element = null) {
   if (f.hp <= 0) return;
-  f.hp -= amount;
+  f.hp -= amount * takes(f.family, element);
   f.hurt = 1;
   if (chill) f.chill = Math.max(f.chill, chill);
   const p = placeOf(f);
@@ -344,11 +357,11 @@ function wound(s, f, amount, chill = 0) {
   }
 }
 
-function splash(s, x, y, radius, amount, chill = 0) {
+function splash(s, x, y, radius, amount, chill = 0, element = null) {
   for (const f of s.foes) {
     if (f.hp <= 0) continue;
     const p = placeOf(f);
-    if (Math.hypot(p.x - x, p.y - y) <= radius) wound(s, f, amount, chill);
+    if (Math.hypot(p.x - x, p.y - y) <= radius) wound(s, f, amount, chill, element);
   }
 }
 
@@ -362,11 +375,13 @@ function splash(s, x, y, radius, amount, chill = 0) {
 function evoke(s, key, x, y, damage) {
   const kit = s.kit[key];
   if (!kit || !kit.evos.length) return;
-  const size = statsOf(s, key).size;
+  const st = statsOf(s, key);
+  const size = st.size;
+  const element = st.element;
 
   for (const evo of kit.evos) {
     if (evo === 'burst') {
-      splash(s, x, y, 74 * size, damage * 0.55);
+      splash(s, x, y, 74 * size, damage * 0.55, 0, element);
       s.fx.push({ kind: 'burst', x, y, r: 74 * size, life: 0.3, max: 0.3 });
 
     } else if (evo === 'split') {
@@ -380,25 +395,28 @@ function evoke(s, key, x, y, damage) {
         s.shots.push({
           key, child: true,
           x, y, z: 0, a: 0,
-          at: mark.id, damage: damage * 0.45, blast: 0, chill: 0,
+          at: mark.id, damage: damage * 0.45, blast: 0, chill: 0, element,
           pierce: 0, hits: new Set(), falls: false, life: 1.4,
         });
       }
 
     } else if (evo === 'fire') {
       s.grounds.push({
-        kind: 'fire', x, y, r: 62 * size, life: 3.2, max: 3.2,
+        // The pool is fire and the storm is storm, whichever spell dropped them. A Fireball
+        // that borrowed Lightning's storm really does leave a storm - and a spider really does
+        // shrug it off.
+        kind: 'fire', x, y, r: 62 * size, life: 3.2, max: 3.2, element: 'fire',
         every: 0.4, next: 0, damage: damage * 0.3,
       });
 
     } else if (evo === 'storm') {
       s.grounds.push({
-        kind: 'storm', x, y, r: 150 * size, life: 2.2, max: 2.2,
+        kind: 'storm', x, y, r: 150 * size, life: 2.2, max: 2.2, element: 'storm',
         every: 0.34, next: 0, damage: damage * 0.42,
       });
 
     } else if (evo === 'freeze') {
-      splash(s, x, y, 86 * size, damage * 0.3, 2.2);
+      splash(s, x, y, 86 * size, damage * 0.3, 2.2, 'ice');
       s.fx.push({ kind: 'frost', x, y, r: 86 * size, life: 0.32, max: 0.32 });
     }
   }
@@ -414,6 +432,7 @@ function throwOne(s, key, st, from, a, markId) {
     a,
     at: markId,
     damage: st.damage,
+    element: st.element,
     blast: st.blast,
     chill: st.chill,
     pierce: st.pierce,
@@ -431,7 +450,7 @@ function castSpell(s, key) {
   if (sp.instant === 'nova') {
     for (let i = 0; i < st.count; i++) {
       const ring = Math.max(60, st.blast * (1 + i * 0.4));
-      splash(s, 0, 0, ring, st.damage * (i ? 0.7 : 1), st.chill);
+      splash(s, 0, 0, ring, st.damage * (i ? 0.7 : 1), st.chill, st.element);
       s.fx.push({ kind: 'nova', x: 0, y: 0, r: ring, life: 0.42, max: 0.42 });
       evoke(s, key, 0, 0, st.damage);
     }
@@ -452,7 +471,7 @@ function castSpell(s, key) {
         const p = placeOf(from);
         points.push(p);
         hit.add(from.id);
-        wound(s, from, st.damage, st.chill);
+        wound(s, from, st.damage, st.chill, st.element);
         evoke(s, key, p.x, p.y, st.damage);
         let next = null, best = Infinity;
         for (const f of s.foes) {
@@ -484,7 +503,7 @@ function castSpell(s, key) {
         const along = q.x * Math.cos(a) + q.y * Math.sin(a);
         const off = Math.abs(-q.x * Math.sin(a) + q.y * Math.cos(a));
         if (along > 0 && off <= wide / 2) {
-          wound(s, f, st.damage, st.chill);
+          wound(s, f, st.damage, st.chill, st.element);
           evoke(s, key, q.x, q.y, st.damage);
         }
       }
@@ -766,7 +785,7 @@ export function step(s, dt) {
         const p = placeOf(f);
         if (Math.hypot(p.x - bx, p.y - by) < 34 + f.size * 12) {
           s.bladeHits[f.id] = s.t + 0.45;
-          wound(s, f, st.damage, st.chill);
+          wound(s, f, st.damage, st.chill, st.element);
           evoke(s, 'blade', p.x, p.y, st.damage);
         }
       }
@@ -781,14 +800,14 @@ export function step(s, dt) {
     if (g.next <= 0) {
       g.next = g.every;
       if (g.kind === 'fire') {
-        splash(s, g.x, g.y, g.r, g.damage);
+        splash(s, g.x, g.y, g.r, g.damage, 0, g.element);
       } else {
         // a storm takes one at a time rather than everything, which is what makes it a storm
         const mark = nearest(s, g.x, g.y);
         if (mark) {
           const p = placeOf(mark);
           if (Math.hypot(p.x - g.x, p.y - g.y) <= g.r) {
-            wound(s, mark, g.damage);
+            wound(s, mark, g.damage, 0, g.element);
             s.fx.push({ kind: 'chain', points: [{ x: g.x, y: g.y - 120 }, p], life: 0.2, max: 0.2 });
           }
         }
@@ -832,13 +851,13 @@ export function step(s, dt) {
 
     if (landed) {
       if (b.blast > 0) {
-        splash(s, b.x, b.y, b.blast, b.damage, b.chill);
+        splash(s, b.x, b.y, b.blast, b.damage, b.chill, b.element);
         s.fx.push({ kind: b.chill ? 'frost' : 'burst', x: b.x, y: b.y, r: b.blast, life: 0.34, max: 0.34 });
       } else {
         const mark = nearest(s, b.x, b.y, b.hits);
         if (mark) {
           const p = placeOf(mark);
-          if (Math.hypot(p.x - b.x, p.y - b.y) < 36) { wound(s, mark, b.damage, b.chill); b.hits.add(mark.id); }
+          if (Math.hypot(p.x - b.x, p.y - b.y) < 36) { wound(s, mark, b.damage, b.chill, b.element); b.hits.add(mark.id); }
         }
       }
       if (!b.child) evoke(s, b.key, where ? where.x : b.x, where ? where.y : b.y, b.damage);

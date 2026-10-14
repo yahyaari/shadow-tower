@@ -102,6 +102,14 @@ await evaluate(`(() => {
 await sleep(400);
 await screenshot('menu_map');
 
+// Harita, bolum bolum: ailelerin ve zayifliklarinin OYNA'nin yaninda gorunmesi gerekiyor.
+for (const stage of [2, 4, 6]) {
+  await evaluate(`(() => { const d = window.ShadowTower.meta; d.stars[${stage - 1}] = 1; d.stage = ${stage}; return true; })()`);
+  await sleep(350);
+  await screenshot('harita_bolum' + stage);
+}
+await evaluate(`(() => { window.ShadowTower.meta.stage = 3; return true; })()`);
+
 // Kahraman merdiveni: uc ayri noktada
 await evaluate(`(() => { const d = window.ShadowTower.meta; d.tab = 'hero'; d.hero = 0; d.bank = 600; window.ShadowTower.show.heroScroll = null; return true; })()`);
 await sleep(400);
@@ -265,6 +273,28 @@ for (let i = 0; i < 120; i++) {
 await sleep(900);
 await screenshot('patron');
 
+// Dort aile, uc rol. Bir ailenin digerinden ayrilip ayrilmadigi ancak yan yana gorulunce bilinir.
+for (const [stage, name] of [[1, 'aile_insanlar'], [2, 'aile_suru'], [3, 'aile_orumcek'], [4, 'aile_kurt']]) {
+  await evaluate(`(() => {
+    const m = window.ShadowTower, s = m.state;
+    s.stage = ${stage};
+    s.foes.length = 0;
+    s.boss = null; s.bossDone = false; s.stageT = 0; s.t = 2;
+    s.wall = s.maxWall;
+    s.phase = 'playing';
+    m.show.booked = false; m.show.won = null; m.show.hint = false;
+    // uc rolu de, ayni yarim cemberde, buyukten kucuge
+    const roles = ['brute', 'walker', 'runner'];
+    for (let i = 0; i < 9; i++) {
+      const f = m.spawnOne(s, roles[i % 3], (i / 9) * Math.PI * 2 + 0.3);
+      f.r = 230 + (i % 3) * 55;
+    }
+    return true;
+  })()`);
+  await sleep(500);
+  await screenshot(name);
+}
+
 // Uc patron, uc ayri silüet. Hepsini ayri ayri cagiriyoruz: bir patronu digerinden ayiran sey
 // once nasil gorundugu, ve ucu de ayni ciziliyorsa cesitlilik diye bir sey yok.
 for (const [stage, name] of [[1, 'patron_gardiyan'], [2, 'patron_cagirici'], [3, 'patron_golge']]) {
@@ -302,7 +332,10 @@ for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bit
     window.ShadowTower.show.won = null;
     s.phase = 'playing';
     s.wall = s.maxWall * ${part};
-    if (s.boss) s.boss.hp = 0;
+    // Golge olunce ikiye ayriliyor, yani "patronun canini sifirla" tek basina bolumu bitirmiyor
+    // ve bu dongu sonsuza kadar bekliyordu. Once bolunmeyi kapatip hepsini birden dusuruyoruz.
+    const bosses = s.foes.filter((f) => f.boss);
+    if (bosses.length) { for (const f of bosses) { f.splits = false; f.hp = 0; } }
     else { s.bossDone = false; s.stageT = 1e9; }
     return true;
   })()`);

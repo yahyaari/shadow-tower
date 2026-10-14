@@ -3,7 +3,7 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, advance, click, take, investedIn } from './rules.js';
+import { begin, advance, click, take, investedIn, spawn } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
@@ -418,6 +418,9 @@ window.ShadowTower = {
   get meta() { return data; },
   get screen() { return screen; },
   start, click, take, sound, setLanguage,
+  // Lets a tool put a named creature on the field. The families are the one thing a screenshot
+  // cannot pose from the outside: they are chosen inside `spawn` from the stage.
+  spawnOne: spawn,
   // The menu's presses, so a tool can press a button rather than pose the screen. A posed screen
   // only ever proves that the poser and the painter agree; this goes through the same handler a
   // finger does, so a wheel that paid one wedge and stopped on another would show up.

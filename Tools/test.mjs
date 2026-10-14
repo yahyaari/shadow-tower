@@ -23,6 +23,9 @@ import {
 import { restFor, wedgeUnder } from '../src/menu.js';
 import { kindsOn } from '../src/stages.js';
 import {
+  Families, FamilyKeys, Elements, Roles, takes, weakness, armour, familiesOn, StageFamilies,
+} from '../src/foes.js';
+import {
   Steps as SpellSteps, Lift, liftAt, Line as SpellLine, stepOf, canStep,
   wholeGold, wholeShards,
 } from '../src/upgrades.js';
@@ -488,6 +491,108 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   easy.t = 72; hard.t = 72;
   check('ama sıfırdan oynanamayacak kadar değil', pressure(hard) < pressure(easy) * 2.5,
     `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
+}
+
+// --- düşman aileleri ------------------------------------------------------------------------------
+
+check('dört aile var', FamilyKeys.length === 4, FamilyKeys.join(', '));
+check('her ailenin adı ve açıklaması var',
+  FamilyKeys.every((k) => Families[k].name && Families[k].about));
+
+// Her aile tam bir şeye zayıf, tam bir şeye dayanıklı. İkişer tane olsa kimse okumaz.
+for (const k of FamilyKeys) {
+  const t = Families[k].takes;
+  const up = Object.values(t).filter((n) => n > 1).length;
+  const down = Object.values(t).filter((n) => n < 1).length;
+  check(`${k}: en fazla bir zayıflık, en fazla bir zırh`, up <= 1 && down <= 1,
+    JSON.stringify(t));
+  check(`${k}: sadece gerçek elementler`,
+    Object.keys(t).every((e) => Elements.includes(e)), Object.keys(t).join(','));
+}
+check('ilk aile tamamen nötr', Object.keys(Families.folk.takes).length === 0,
+  'ilk bölümde öğrenilen şey temel olmalı');
+
+// BU KURAL ÖNEMLİ: zayıflık hep hesabın ilk seviyesinde elde olan bir elemente bakmalı. Bir
+// bölüm, oyuncunun henüz açamadığı bir büyüyü istiyorsa o bölüm bir duvar olur.
+{
+  const early = new Set(Object.values(Spells)
+    .filter((sp) => UnlockAt[spellKeys.find((k) => Spells[k] === sp)] === 1)
+    .map((sp) => sp.element));
+  const bad = FamilyKeys.filter((k) => {
+    const w = weakness(k);
+    return w && !early.has(w.element);
+  });
+  check('her zayıflığın karşılığı birinci seviyede açık', bad.length === 0,
+    bad.map((k) => `${k} -> ${weakness(k).element}`).join(', '));
+}
+
+check('her büyünün bir elementi var',
+  spellKeys.every((k) => Elements.includes(Spells[k].element)),
+  spellKeys.filter((k) => !Elements.includes(Spells[k].element)).join(','));
+
+check('direnç tablosu dışı her şey nötr',
+  takes('folk', 'fire') === 1 && takes('spider', 'arcane') === 1 && takes(null, 'fire') === 1);
+check('örümcek ateşten fazla, yıldırımdan az alıyor',
+  takes('spider', 'fire') > 1 && takes('spider', 'storm') < 1,
+  `ateş ${takes('spider', 'fire')} · yıldırım ${takes('spider', 'storm')}`);
+
+// Bölüm → aile eşlemesi: ilk dördü tek tek öğretiyor, sonrası karışıyor.
+check('ilk dört bölüm birer aile',
+  [1, 2, 3, 4].every((n) => familiesOn(n).length === 1));
+check('ilk dört bölümde dört ailenin hepsi var',
+  new Set([1, 2, 3, 4].flatMap(familiesOn)).size === 4,
+  [1, 2, 3, 4].map((n) => familiesOn(n)[0]).join(','));
+check('beşinci bölümden sonra karışıyor',
+  [5, 6, 7, 8].every((n) => familiesOn(n).length >= 2),
+  [5, 6, 7, 8].map((n) => familiesOn(n).join('+')).join(' · '));
+check('listenin sonu gelmiyor, kalınlaşıyor',
+  familiesOn(13).length > familiesOn(5).length
+  && familiesOn(100).length <= FamilyKeys.length,
+  `13. ${familiesOn(13).join('+')} · 100. ${familiesOn(100).join('+')}`);
+check('hiçbir bölüm aynı aileyi iki kez saymıyor',
+  [...Array(40)].every((_, i) => new Set(familiesOn(i + 1)).size === familiesOn(i + 1).length));
+
+// Sahada gerçekten o aileler mi var?
+{
+  let wrong = 0;
+  for (const stage of [1, 2, 3, 4, 6]) {
+    const s = begin(5, ['bolt'], stage);
+    for (let i = 0; i < 60; i++) spawn(s);
+    const want = new Set(familiesOn(stage));
+    for (const f of s.foes) if (!f.boss && !want.has(f.family)) wrong += 1;
+  }
+  check('sahaya sadece o bölümün aileleri geliyor', wrong === 0, `${wrong} yabancı`);
+}
+
+check('patronların ailesi yok', (() => {
+  const s = begin(5, ['bolt'], 3);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  return s.boss && s.boss.family === null;
+})(), 'patron, bölümün duvar kâğıdına göre direnç kazanmamalı');
+
+// Direnç gerçekten hasara dönüşüyor mu - tabloda değil, canda.
+{
+  const hit = (family, element) => {
+    const s = begin(5, ['bolt'], 1);
+    const f = spawn(s, 'walker');
+    f.family = family;
+    const was = f.hp;
+    // tek bir ateş: dogrudan wound degil, oyunun kendi yolu
+    s.shots.push({
+      key: 'x', child: true, x: 0, y: 0, z: 0, a: 0, at: f.id,
+      damage: 100, element, blast: 0, chill: 0, pierce: 0,
+      hits: new Set(), falls: false, life: 1,
+    });
+    for (let i = 0; i < 60 && f.hp === was; i++) step(s, 1 / 60);
+    return was - f.hp;
+  };
+  const plain = hit('folk', 'fire');
+  const weak = hit('spider', 'fire');
+  const tough = hit('spider', 'storm');
+  check('zayıflık gerçekten daha çok vuruyor', weak > plain * 1.3, `${plain} -> ${weak}`);
+  check('zırh gerçekten daha az yediriyor', tough < plain * 0.8, `${plain} -> ${tough}`);
+  check('nötr aile tam hasar alıyor', Math.abs(plain - 100) < 1, String(plain));
 }
 
 // --- patronlar ------------------------------------------------------------------------------------
@@ -1263,7 +1368,15 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
 // --- the bot ---------------------------------------------------------------------------------
 
 /** Makul bir oyuncu: saniyede altı tıklar ve kartları puanlar. Tek bir bölüm oynar. */
-function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt = 1) {
+/**
+ * `neutral` scrubs every creature back to the family with no resistances, frame by frame.
+ *
+ * It is the only way to measure what a family is actually worth. Comparing two loadouts conflates
+ * the resistance with the raw power of the spells they differ by; comparing two stages conflates
+ * it with how hard those stages are. The same seed, the same loadout, the same stage, with the
+ * table on and off, conflates it with nothing.
+ */
+function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt = 1, neutral = false) {
   const levels = Object.fromEntries(loadout.map((k) => [k, spellAt]));
   const s = begin(seed, loadout, stage, heroTotals(hero), levels);
   const dt = 1 / 60;
@@ -1286,6 +1399,7 @@ function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt
     since += dt;
     if (since >= 1 / clicksPerSecond) { since = 0; click(s); }
     step(s, dt);
+    if (neutral) for (const f of s.foes) if (!f.boss) f.family = 'folk';
     s.events.length = 0;
   }
   return {
@@ -1386,6 +1500,106 @@ for (const stage of [3, 5]) {
     deep.map((d) => `${d.stage}. bölüm %${d.pc}`).join(', '));
   check('bölümler tam donanımda da zorlaşıyor', deep[0].pc > deep[deep.length - 1].pc,
     deep.map((d) => `${d.stage}. %${d.pc}`).join(' '));
+}
+
+// Aileler bir KARAR mi, yoksa sadece bir sus mu?
+//
+// Bitirme orani bu soru icin fazla korelmis bir alet: %20 civarinda, 40 kosuda standart hata
+// ~6 puan, yani aradigimiz etki gurultunun icinde kayboluyor. Iki kez olctum, iki kez "fark yok"
+// cikti - olcum yanlisti, oyun degil.
+//
+// Bunun yerine ESLI olcum: ayni tohum, ayni loadout, ayni bolum, sabit sure, tablo acik ve
+// kapali. Dalga aynisi (aile zarini her iki halde de atiyoruz), oyuncu aynisi, tek degisen
+// direnc tablosu. Oldurulen sayisi surekli bir sayi, ve esli fark varyansin cogunu siliyor.
+function sweep(kit, stage, seconds, neutral) {
+  let kills = 0;
+  for (let i = 1; i <= 25; i++) {
+    const s = begin(i * 7919, kit, stage);
+    const dt = 1 / 60;
+    let since = 0;
+    while (s.t < seconds && s.phase !== 'lost') {
+      if (s.phase === 'picking') { take(s, 0); continue; }
+      since += dt;
+      if (since >= 1 / 6) { since = 0; click(s); }
+      step(s, dt);
+      if (neutral) for (const f of s.foes) if (!f.boss) f.family = 'folk';
+      s.events.length = 0;
+    }
+    kills += s.kills;
+  }
+  return kills;
+}
+
+console.log('');
+console.log('element eşleşmesi — iki ayrı loadout, aynı tohumlar (25 koşu × 60 sn):');
+{
+  // Esli olcum (tablo acik/kapali) tek basina yaniltiyordu: bot kartlarin hepsini TEK bir buyuye
+  // yigiyor, o yuzden "ates x2.1" dedigimde ates bu loadout'un hasarinin yuzde dordu oldugu icin
+  // hicbir sey degismiyordu. Olculmesi gereken, oyuncunun gercekten verecegi karar: elemente gore
+  // kurulmus bir loadout, o elemente zayif ve dayanikli ailelere karsi.
+  const fireKit = ['bolt', 'fireball', 'laser', 'meteor'];   // ateş yığını
+  const bladeKit = ['bolt', 'shards', 'blade', 'wisp'];      // bıçak yığını
+  const rows = [];
+  for (const stage of [2, 3, 4]) {
+    rows.push({
+      stage, family: familiesOn(stage).join('+'),
+      fire: sweep(fireKit, stage, 60, false),
+      blade: sweep(bladeKit, stage, 60, false),
+    });
+  }
+  for (const r of rows) {
+    const lead = r.fire > r.blade ? 'ateş' : 'bıçak';
+    const by = Math.round(Math.abs(r.fire / r.blade - 1) * 100);
+    console.log(`  ${r.stage}. bölüm (${r.family}): ateş yığını ${r.fire} ölü · bıçak yığını ${r.blade} ölü  → ${lead} %${by} önde`);
+  }
+
+  const swarm = rows.find((r) => r.family.includes('swarm'));   // ateşe zayıf, bıçağa dayanıklı
+  const spider = rows.find((r) => r.family.includes('spider')); // ateşe zayıf
+  const wurm = rows.find((r) => r.family.includes('wurm'));     // bıçağa zayıf, ateşe dayanıklı
+
+  check('ateşe zayıf ailelere karşı ateş yığını önde',
+    swarm.fire > swarm.blade && spider.fire > spider.blade,
+    `sürü ${swarm.fire}/${swarm.blade} · örümcek ${spider.fire}/${spider.blade}`);
+  check('ateşe dayanıklı aileye karşı sıralama tersine dönüyor',
+    wurm.blade > wurm.fire,
+    `kurt: ateş ${wurm.fire} · bıçak ${wurm.blade}`);
+
+  // Fark hissedilmezse ailelerin bir anlami yok; fark ezici olursa loadout bir secim degil bir
+  // sinav olur. Ikisinin arasinda bir yerde olmali.
+  const gap = (r) => Math.abs(r.fire / r.blade - 1);
+  check('fark hissedilir ama ezici değil',
+    rows.every((r) => gap(r) < 1.2) && Math.max(...rows.map(gap)) > 0.15,
+    rows.map((r) => `${r.stage}. %${Math.round(gap(r) * 100)}`).join(' · '));
+}
+
+// Harita, her bolumun neye zayif oldugunu OYNA'nin yaninda yaziyor. O yaziyi okuyup loadout'unu
+// degistiren oyuncu icin bolum gecilebilir olmali - yoksa yazi bir tavsiye degil, bir alay olur.
+console.log('');
+console.log('haritanın söylediğini yapan oyuncu (40 koşu):');
+{
+  const rate = (kit, stage) => {
+    const runs = [];
+    for (let i = 1; i <= 40; i++) runs.push(botRun(i * 7919, kit, stage).done);
+    return Math.round(runs.filter(Boolean).length / runs.length * 100);
+  };
+  // 4. bolum kurtlar: atese dayanikli, bicaga zayif. Botun varsayilan eli tam tersi.
+  //
+  // Bitirme orani burada yine kor: iki loadout sadece elementte degil guc olarak da farkli, ve
+  // %15 civarinda 40 kosunun standart hatasi 6 puan. Olcum oldurulene bakiyor - surekli bir sayi,
+  // ve ayni tohumlarda esli.
+  const wrongKit = ['bolt', 'fireball', 'frost', 'lightning'];
+  const rightKit = ['bolt', 'shards', 'blade', 'frost'];
+  const wrong = sweep(wrongKit, 4, 60, false);
+  const right = sweep(rightKit, 4, 60, false);
+  console.log(`  4. bölüm (kurtlar): ters loadout ${wrong} ölü · haritayı okuyan ${right} ölü`);
+  // Esik sadece "one gecer" - cunku bu iki loadout element disinda da farkli ve kagit uzerinde
+  // uygun olan daha ZAYIF: Yildirim, Kiymiklar'dan guclu. Soylenen sudur: kagit uzerinde daha
+  // zayif ama elemente uygun bir el, kagit uzerinde guclu ama ters olani geciyor. Elementin tek
+  // basina ne ettigi yukarida, ayni gucte iki yiginla olculuyor.
+  check('elemente uygun el, kâğıt üzerinde güçlü olan ters eli geçiyor', right > wrong,
+    `ters ${wrong} vs uygun ${right}`);
+  check('bölüm uyum sağlamayanı da tamamen dışlamıyor',
+    rate(wrongKit, 4) >= 15, `ters loadout ile %${rate(wrongKit, 4)}`);
 }
 
 const solo = [];
