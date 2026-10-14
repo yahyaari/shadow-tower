@@ -21,6 +21,7 @@ import {
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
+import { sceneryFor } from '../src/draw.js';
 import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
   Feats, featOf, Week, weekAt, weekDue, nextDay,
@@ -750,6 +751,32 @@ check('her yerin adı farklı',
 check('her yerin görünümü çizilebiliyor',
   Stages.every((st) => Looks.includes(st.look)),
   Stages.filter((st) => !Looks.includes(st.look)).map((st) => st.look).join(', '));
+// MENUNUN VERDIGI SOZU OYUN TUTMALI. Uzun sure on iki yer menude cizildi ama sahanin icinde
+// hepsi ayniydi: "Kum Denizi"ni secip OYNA'ya basinca ayni olu ormandaydin. Sahne modul
+// seviyesinde, sabit tohumlu, bolumden habersiz tek bir sabitti.
+{
+  const scenes = Looks.map((l) => ({ l, at: sceneryFor(l) }));
+  check('her yerin kendi sahnesi var',
+    scenes.every((s0) => s0.at.length > 10),
+    scenes.filter((s0) => s0.at.length <= 10).map((s0) => s0.l).join(', '));
+
+  const sig = (at) => [...new Set(at.map((t) => t.kind))].sort().join('+');
+  const same = [];
+  for (let i = 0; i < scenes.length; i++) {
+    for (let j = i + 1; j < scenes.length; j++) {
+      if (sig(scenes[i].at) === sig(scenes[j].at)) same.push(`${scenes[i].l}=${scenes[j].l}`);
+    }
+  }
+  check('hiçbir iki yer aynı şeylerden kurulu değil', same.length === 0, same.join(', '));
+
+  check('sahne yer başına bir kez üretiliyor', sceneryFor('wood') === sceneryFor('wood'),
+    'her karede yeniden üretilirse ağaçlar titrer');
+  check('ön yay açık kalıyor', scenes.every((s0) => s0.at.every((t) => {
+    const front = Math.abs(((t.a - Math.PI / 2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    return front >= 0.72;
+  })), 'düşmanların girdiği yerde bir şey duramaz');
+}
+
 check('her görünüm en az bir yerde kullanılıyor',
   Looks.every((l) => Stages.some((st) => st.look === l)),
   Looks.filter((l) => !Stages.some((st) => st.look === l)).join(', '));

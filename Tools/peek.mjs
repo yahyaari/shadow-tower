@@ -293,6 +293,25 @@ for (let i = 0; i < 120; i++) {
 await sleep(900);
 await screenshot('patron');
 
+// On iki yer, sahanin icinden. Menu bir yer vaat ediyor; oyun onu tutuyor mu?
+for (const [stage, name] of [[1,'saha01_orman'],[2,'saha02_ova'],[3,'saha03_yol'],[4,'saha04_taslar'],
+                             [5,'saha05_cukur'],[6,'saha06_sirt'],[7,'saha07_bataklik'],[8,'saha08_magara'],
+                             [9,'saha09_koy'],[10,'saha10_buzul'],[11,'saha11_kemik'],[12,'saha12_kum']]) {
+  await evaluate(`(() => {
+    const m = window.ShadowTower, s = m.state;
+    s.stage = ${stage};
+    s.foes.length = 0;
+    s.boss = null; s.bossDone = false; s.stageT = 0; s.t = 2;
+    s.wall = s.maxWall;
+    s.phase = 'playing';
+    m.show.booked = false; m.show.won = null; m.show.hint = false;
+    for (let i = 0; i < 5; i++) { const f = m.spawnOne(s, 'walker', (i / 5) * Math.PI * 2 + 0.3); f.r = 260; }
+    return true;
+  })()`);
+  await sleep(420);
+  await screenshot(name);
+}
+
 // Dort aile, uc rol. Bir ailenin digerinden ayrilip ayrilmadigi ancak yan yana gorulunce bilinir.
 for (const [stage, name] of [[1, 'aile_insanlar'], [2, 'aile_suru'], [3, 'aile_orumcek'], [4, 'aile_kurt']]) {
   await evaluate(`(() => {

@@ -4,30 +4,9 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **426 kontrol geçiyor**.
+> `node Tools/test.mjs` → **430 kontrol geçiyor**.
 >
-> ## SIRADAKİ İŞ: SAHANIN BÖLÜME GÖRE DEĞİŞMESİ
->
-> **Bu, oyunun şu anki en büyük açığı ve kullanıcı bunu yapmamı istedi.**
->
-> Menüde 12 ayrı yer var (orman, ova, yol, taşlar, çukur, sırt, bataklık, mağara, yıkık köy,
-> buzul, kemik tarlası, kum denizi) ve her birinin kendi çizimi var. **Ama oyunun içindeki saha
-> hepsinde aynı.** Menü "Kum Denizi" diyor, OYNA'ya basıyorsun, aynı ölü ormandasın.
->
-> Sebebi: `src/draw.js` içindeki `Trees` sabiti. Modül seviyesinde, **sabit bir tohumla bir kez**
-> üretiliyor (`let s = 20260413`), ve bölümden hiç haberi yok. 52 öğe: %30 kaya, %70 ağaç.
-> Ön yay (oyuncuya en yakın 0.72 radyan) kasten boş bırakılıyor — oradaki bir ağaç en büyük
-> çiziliyor, yazının üstüne biniyor ve düşmanların girdiği yere denk geliyor.
->
-> **Yapılacak:** sahne bölümün `look`'una göre üretilsin. 12 görünümün çizim kuralları
-> `src/menu.js` içindeki `portrait()`'te zaten var (`Hills`, `Count`, ve her `look` için bir dal)
-> — sıfırdan yazmak değil, uyarlamak. `stageOf(n).look` ile `src/stages.js`'ten geliyor,
-> `Looks` listesi de orada.
->
-> Dikkat: `Trees` modül seviyesinde sabit olduğu için `begin()` çağrıldığında yeniden
-> üretilmesi gerekir; `frame()` her karede çağrılıyor, orada üretmek olmaz.
->
-> ## Bundan sonrası (hiçbiri seçilmedi)
+> ## SIRADAKİ İŞ — seçilmedi
 >
 > 1. **Müzik** — ses efektleri var, müzik yok. Dosyasız üretilebilir (ses efektleri zaten öyle).
 > 2. **Büyü birleştirme** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
@@ -139,6 +118,41 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## Sahanın bölüme göre değişmesi
+
+Uzun süre menüde on iki yer çizildi ama **oyunun içindeki saha hepsinde aynıydı**: "Kum Denizi"ni
+seçip OYNA'ya basınca kendini aynı ölü ormanda buluyordun. Sebebi, `draw.js` içindeki sahnenin
+modül seviyesinde, sabit tohumlu, bölümden habersiz **tek bir sabit** olmasıydı.
+
+Artık her yerin kendi sahnesi var ve menüdeki resimle aynı kelime dağarcığını kullanıyor:
+
+| yer | sahada ne var |
+| --- | --- |
+| orman | ağaç + kaya |
+| ova | alçak tümsek |
+| yol | ağaç + taş |
+| taşlar | dikilitaş |
+| çukur | saz + kaya |
+| sırt | kaya + taş |
+| bataklık | saz |
+| mağara | sarkıt demeti |
+| yıkık köy | pencereli duvar parçası |
+| buzul | buz kıymığı |
+| kemik tarlası | kaburga + kafatası |
+| kum | eğilmiş sap + kum sırtı |
+
+Sahne **yer başına bir kez** üretiliyor ve saklanıyor (`frame` saniyede altmış kez çalışıyor,
+bu çalışmıyor). Ön yay — oyuncuya en yakın 0,72 radyan — her yerde boş bırakılıyor: oradaki bir
+şey en büyük çiziliyor, yazının üstüne biniyor ve düşmanların girdiği yere denk geliyor.
+
+İki yer birbirine fazla benzeyince düzeltildi: **mağara sarkıtları** tek geniş üçgenken buz
+kıymığının aynısı okunuyordu, demet hâline getirildi; **kaburgalar** ince çizgi demeti olarak
+örümceğe benziyordu (ki örümcekler bir sonraki bölümde o tarlada yürüyor), yanlarına kafatası
+kondu.
+
+Test artık bunu koruyor: her yerin bir sahnesi var, **hiçbir iki yer aynı şeylerden kurulu değil**,
+sahne yer başına bir kez üretiliyor, ve ön yay her yerde açık.
 
 ## On iki yer
 
@@ -550,7 +564,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 426 kontrol + bot. |
+| `Tools/test.mjs` | 430 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

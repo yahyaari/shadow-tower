@@ -20,6 +20,7 @@ import {
   BoostsPerTier, MostEvos, LoadoutSize, Always, spellKeys, statsOf, carrying, describe,
 } from './rules.js';
 import { UnlockAt, nextUnlock } from './spells.js';
+import { stageOf } from './stages.js';
 import { say, UI, LanguageNames, Languages, language } from './text.js';
 import { needFor, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from './meta.js';
 
@@ -108,13 +109,48 @@ export function wrap(ctx, text, x, y, width, size, lead, colour) {
 
 // --- the scenery ------------------------------------------------------------------------------
 
-const Trees = (() => {
-  let s = 20260413;
-  const roll = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+/**
+ * What stands around the ring, by place.
+ *
+ * The menu draws twelve places and for a long time the arena was one: you chose The Sand Sea,
+ * pressed PLAY, and found yourself in the same dead wood as every other stage. The scenery was a
+ * module-level constant built once from a fixed seed and never told which stage it was.
+ *
+ * `kinds` is what grows there, as weights. `many` is how many. The vocabulary is the same one the
+ * stage portrait uses in `menu.js`, so the picture on the menu and the ground under your feet
+ * agree about where you are.
+ */
+const Places = {
+  wood:   { many: 52, kinds: { tree: 7, rock: 3 } },
+  field:  { many: 34, kinds: { mound: 6, tree: 1, rock: 3 } },
+  road:   { many: 56, kinds: { tree: 5, stone: 3, rock: 2 } },
+  stones: { many: 34, kinds: { monolith: 6, rock: 4 } },
+  hollow: { many: 48, kinds: { reed: 5, rock: 4, tree: 1 } },
+  ridge:  { many: 40, kinds: { rock: 6, stone: 4 } },
+  marsh:  { many: 58, kinds: { reed: 8, mound: 2 } },
+  cave:   { many: 46, kinds: { spike: 7, rock: 3 } },
+  ruin:   { many: 40, kinds: { wall: 6, rock: 3, stone: 1 } },
+  ice:    { many: 46, kinds: { shard: 8, rock: 2 } },
+  bones:  { many: 38, kinds: { ribs: 6, rock: 2, mound: 2 } },
+  dunes:  { many: 26, kinds: { stalk: 4, mound: 6 } },
+};
+
+/** Builds one place's scenery. Seeded off the look, so the same place is the same place. */
+function makeScene(look) {
+  const place = Places[look] || Places.wood;
+  let seed = 20260413;
+  for (const ch of look) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const roll = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+  const bag = [];
+  for (const [kind, weight] of Object.entries(place.kinds)) {
+    for (let i = 0; i < weight; i++) bag.push(kind);
+  }
+
   const out = [];
-  for (let i = 0; i < 52; i++) {
-    const a = (i / 52) * Math.PI * 2 + (roll() - 0.5) * 0.07;
-    // Nothing in the near arc: a tree at the front of the ring is drawn biggest, lands across the
+  for (let i = 0; i < place.many; i++) {
+    const a = (i / place.many) * Math.PI * 2 + (roll() - 0.5) * 0.07;
+    // Nothing in the near arc: a thing at the front of the ring is drawn biggest, lands across the
     // writing and stands where the creatures walk in. An open near edge reads as a clearing.
     const front = Math.abs(((a - Math.PI / 2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     if (front < 0.72) continue;
@@ -123,12 +159,19 @@ const Trees = (() => {
       r: Arena * (1.17 + roll() * 0.12),
       h: 40 + roll() * 74,
       lean: (roll() - 0.5) * 0.5,
-      kind: roll() < 0.3 ? 'rock' : 'tree',
+      kind: bag[Math.floor(roll() * bag.length)],
       limbs: [roll(), roll(), roll()],
     });
   }
   return out;
-})();
+}
+
+// Built once per place and kept, because `frame` runs sixty times a second and this does not.
+const scenes = new Map();
+export function sceneryFor(look) {
+  if (!scenes.has(look)) scenes.set(look, makeScene(look));
+  return scenes.get(look);
+}
 
 function tree(ctx, S, t) {
   const x = Math.cos(t.a) * t.r, y = Math.sin(t.a) * t.r;
@@ -149,6 +192,102 @@ function tree(ctx, S, t) {
     ctx.lineTo(h * 0.2, -h); ctx.lineTo(h * 0.95, -h * 0.3);
     ctx.lineTo(h * 0.8, 0);
     ctx.closePath(); ctx.fill();
+
+  } else if (t.kind === 'mound') {
+    // a low swell of ground, wider than it is tall
+    const h = t.h * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(-h * 2.2, 0);
+    ctx.quadraticCurveTo(-h * 0.8, -h * 1.3, h * 0.4, -h * 0.9);
+    ctx.quadraticCurveTo(h * 1.6, -h * 0.5, h * 2.1, 0);
+    ctx.closePath(); ctx.fill();
+
+  } else if (t.kind === 'monolith' || t.kind === 'stone') {
+    const h = t.h * (t.kind === 'monolith' ? 0.8 : 0.34);
+    const wd = h * (t.kind === 'monolith' ? 0.2 : 0.3);
+    ctx.rotate(t.lean * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(-wd, 0); ctx.lineTo(-wd * 0.8, -h);
+    ctx.lineTo(wd * 0.8, -h * 0.94); ctx.lineTo(wd, 0);
+    ctx.closePath(); ctx.fill();
+
+  } else if (t.kind === 'reed') {
+    ctx.lineWidth = 3;
+    for (let n = 0; n < 4; n++) {
+      const rx = (n - 1.5) * 5;
+      const rh = t.h * (0.3 + t.limbs[n % 3] * 0.4);
+      const bend = (t.limbs[(n + 1) % 3] - 0.5) * 16;
+      ctx.beginPath();
+      ctx.moveTo(rx, 0);
+      ctx.quadraticCurveTo(rx + bend * 0.4, -rh * 0.6, rx + bend, -rh);
+      ctx.stroke();
+    }
+
+  } else if (t.kind === 'spike') {
+    // Stalagmites, in a clump and thin. One wide triangle apiece read as the same thing as an ice
+    // shard, and the two places are three stages apart.
+    const h = t.h * 0.78;
+    for (let n = 0; n < 3; n++) {
+      const at = (n - 1) * h * 0.2;
+      const up = h * (n === 1 ? 1 : 0.5 + t.limbs[n] * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(at - h * 0.1, 0);
+      ctx.lineTo(at + t.lean * h * 0.06, -up);
+      ctx.lineTo(at + h * 0.1, 0);
+      ctx.closePath(); ctx.fill();
+    }
+
+  } else if (t.kind === 'wall') {
+    // a standing piece of wall with the window gone out of it
+    const h = t.h * 0.5;
+    const wd = h * (0.5 + t.limbs[0] * 0.4);
+    ctx.beginPath(); ctx.rect(-wd / 2, -h, wd, h); ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillRect(-wd * 0.16, -h * 0.76, wd * 0.32, h * 0.3);
+    ctx.restore();
+    ctx.fillStyle = Black;
+
+  } else if (t.kind === 'shard') {
+    const h = t.h * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.26, 0); ctx.lineTo(-h * 0.07, -h);
+    ctx.lineTo(h * 0.12, -h * 0.62); ctx.lineTo(h * 0.28, 0);
+    ctx.closePath(); ctx.fill();
+
+  } else if (t.kind === 'ribs') {
+    const span = t.h * 0.42;
+    const wide = 7;
+    ctx.lineWidth = 3.4;
+    for (let n = 0; n < 5; n++) {
+      const at = (n - 2) * wide;
+      const rise = span * (1 - Math.abs(n - 2) * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(at, 0);
+      ctx.quadraticCurveTo(at + 9, -rise * 0.7, at + 4, -rise);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 2.8;
+    ctx.beginPath();
+    ctx.moveTo(-2 * wide + 4, -span * 0.64);
+    ctx.quadraticCurveTo(4, -span * 1.04, 2 * wide + 4, -span * 0.64);
+    ctx.stroke();
+    // A skull beside about half of them. Ribs alone are a fan of thin lines, and so is a spider -
+    // which walks through this very field on the stage after it.
+    if (t.limbs[0] < 0.55) {
+      ctx.beginPath();
+      ctx.ellipse(-3 * wide, -span * 0.2, span * 0.22, span * 0.19, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+  } else if (t.kind === 'stalk') {
+    // one bent stalk, leaning hard with the wind
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(10, -t.h * 0.34, 24, -t.h * 0.38);
+    ctx.stroke();
+
   } else {
     ctx.rotate(t.lean * 0.2);
     ctx.lineWidth = 5;
@@ -1451,7 +1590,9 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   grounds(ctx, S, state);
 
   const things = [];
-  for (const t of Trees) things.push({ y: Math.sin(t.a) * t.r, draw: () => tree(ctx, S, t) });
+  for (const t of sceneryFor(stageOf(state.stage).look)) {
+    things.push({ y: Math.sin(t.a) * t.r, draw: () => tree(ctx, S, t) });
+  }
   for (const f of state.foes) things.push({ y: placeOf(f).y, draw: () => figure(ctx, S, f) });
   things.push({ y: -Wall, draw: () => wallHalf(ctx, S, state, false) });
   things.push({ y: 0, draw: () => wizard(ctx, S, state) });
