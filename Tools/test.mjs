@@ -7,11 +7,11 @@
 
 import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
-  tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps,
+  tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps, fusionsFor, FuseAt,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
   spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure, Reach,
 } from '../src/rules.js';
-import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
+import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry, Fusions, fusionKeys, fusionOf, anySpell } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
 import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs, week, claimWeek, feats, claimFeat, lifetime, adsLeft, useAd } from '../src/meta.js';
 import {
@@ -612,6 +612,90 @@ check('koşudan koşuya değişiyor',
   const weak = finish(e, 1, 1, 100, 0, { bolt: 0 }, { level: 1, evos: 0 });
   check('hiçbir şey yapılmayan koşu her görevi bitirmiyor',
     weak.jobs.some((j) => !j.done), JSON.stringify(weak.jobs.map((j) => j.done)));
+}
+
+// --- birleşmeler ----------------------------------------------------------------------------------
+
+check('dört birleşme var', fusionKeys.length === 4, fusionKeys.join(', '));
+check('her birleşmenin iki ebeveyni var',
+  fusionKeys.every((k) => Fusions[k].of.length === 2 && Fusions[k].of.every((p) => all.includes(p))),
+  fusionKeys.filter((k) => !Fusions[k].of.every((p) => all.includes(p))).join(','));
+check('her birleşmenin adı, açıklaması, elementi var',
+  fusionKeys.every((k) => Fusions[k].name && Fusions[k].name[1] && Fusions[k].tells && Fusions[k].element));
+check('her birleşmenin kendi yükseltmeleri ve dönüşümleri var',
+  fusionKeys.every((k) => Fusions[k].boosts.length >= 3 && Fusions[k].evolutions.length >= 2));
+check('eşleştirme iki yönlü de çalışıyor',
+  fusionKeys.every((k) => fusionOf(Fusions[k].of[0], Fusions[k].of[1]) === k
+    && fusionOf(Fusions[k].of[1], Fusions[k].of[0]) === k));
+check('hiçbir büyü iki birleşmeye birden girmiyor', (() => {
+  const seen = new Set();
+  for (const k of fusionKeys) for (const p of Fusions[k].of) { if (seen.has(p)) return false; seen.add(p); }
+  return true;
+})(), 'aynı büyü iki yerde olursa biri alınınca öteki ölü kalır');
+
+// BIRLESMELER `Spells`'IN DISINDA. Icine konsaydi loadout ekrani, kulliyat, kilit seviyeleri,
+// kalici buyu seviyeleri ve parcalar - hicbiriyle ilgisi olmayan bes sistem - dort satir buyurdu.
+check('birleşmeler getirilebilir büyü sayılmıyor',
+  fusionKeys.every((k) => !all.includes(k)) && all.length === 10, String(all.length));
+check('ama koşu içinde her büyü gibi okunuyor',
+  fusionKeys.every((k) => anySpell(k) === Fusions[k]) && anySpell('bolt') === Spells.bolt);
+
+// Hak edilmeden cikmiyor: iki ebeveyn de tasinacak VE ikisi de kademe atlamis olacak.
+{
+  const s = begin(5, ['bolt', 'fireball', 'frost', 'lightning'], 1);
+  check('başlangıçta hiçbir birleşme yok', fusionsFor(s).length === 0);
+
+  for (const k of ['fireball', 'lightning']) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+  check('sadece taşımak yetmiyor', fusionsFor(s).length === 0, fusionsFor(s).join(','));
+
+  s.kit.fireball.taken = FuseAt - 1;
+  check('eşiğin bir altında çıkmıyor', fusionsFor(s).length === 0);
+
+  s.kit.lightning.taken = 1;
+  check('ikisine konan toplam yatırım eşiği geçince çıkıyor',
+    fusionsFor(s).join() === 'tempest', fusionsFor(s).join());
+}
+
+// Alinca: sahada bir buyu daha, ama iki ebeveyn bir daha beslenemez. Tek birakilan slot degil,
+// yatirim yapilacak yer.
+{
+  const s = begin(5, ['bolt', 'fireball', 'frost', 'lightning'], 1);
+  for (const k of ['fireball', 'lightning']) {
+    s.kit[k] = { tier: 2, boosts: {}, evos: ['burst'], taken: FuseAt };
+    s.cools[k] = 0;
+  }
+  const before = carrying(s).length;
+  const fireWas = Math.round(statsOf(s, 'fireball').damage);
+
+  s.phase = 'picking';
+  s.choices = [{ what: 'fusion', key: 'tempest' }];
+  take(s, 0);
+
+  check('sahada bir büyü daha var', carrying(s).length === before + 1,
+    `${before} -> ${carrying(s).length}`);
+  check('yeni büyü ateşliyor', !!s.kit.tempest && statsOf(s, 'tempest').damage > 0);
+  check('iki ebeveyn de mühürlendi',
+    s.sealed.includes('fireball') && s.sealed.includes('lightning'), s.sealed.join(','));
+  check('mühürlü büyü hâlâ ateşliyor',
+    Math.round(statsOf(s, 'fireball').damage) === fireWas, 'mühür susturmak değil');
+  check('mühürlü büyüye yükseltme çıkmıyor',
+    boostsFor(s, 'fireball').length === 0 && evolutionsFor(s, 'fireball').length === 0);
+  check('mühürlenmemiş büyü etkilenmedi', boostsFor(s, 'bolt').length > 0);
+  check('aynı birleşme ikinci kez çıkmıyor', fusionsFor(s).length === 0);
+  check('kart ne verdiğini VE ne harcadığını söylüyor', (() => {
+    const d = describe(s, { what: 'fusion', key: 'tempest' });
+    return d && d.title && d.text && d.spends && d.badge;
+  })(), 'sadece verdiğini söyleyen kart, seçimi hediye diye satar');
+}
+
+// Hak edilmis bir birlesme kurayla degil garantiyle gelir - kademe karti gibi.
+{
+  const s = begin(9, ['bolt', 'fireball', 'frost', 'lightning'], 1);
+  for (const k of ['fireball', 'lightning']) s.kit[k] = { tier: 2, boosts: {}, evos: [], taken: FuseAt };
+  const out = offer(s);
+  check('hak edilen birleşme kartlarda görünüyor',
+    out.some((c) => c.what === 'fusion' && c.key === 'tempest'),
+    out.map((c) => c.what).join(','));
 }
 
 // --- yedi günlük seri -----------------------------------------------------------------------------
@@ -1774,6 +1858,10 @@ function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt
       s.choices.forEach((c, j) => {
         let score;
         if (c.what === 'spell') score = 120;
+        // A fusion scores like the big pick it is. Left out, it fell through to the boost branch
+        // at 18 and the bot went whole runs without ever taking one - and a feature the bot never
+        // touches is a feature no measurement in this file covers.
+        else if (c.what === 'fusion') score = 110;
         else if (c.what === 'evolution') score = 100;
         else if (c.what === 'passive') score = 34 - (s.passives[c.key] || 0) * 8;
         else score = 18 + (s.kit[c.key] ? s.kit[c.key].taken * 4 : 0);
@@ -1790,6 +1878,7 @@ function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt
   }
   return {
     done: s.phase === 'done',
+    fused: (s.fused || []).length,
     t: s.t,
     level: s.level,
     kills: s.kills,
@@ -2035,6 +2124,34 @@ console.log('  bölüm   yeni hesap   tam donanım   yer                   ailel
   const bumps = rows.slice(0, 8).filter((r, i, all) => i > 0 && r.full > all[i - 1].full + 8);
   check('zorluk sırası tersine dönmüyor', bumps.length === 0,
     bumps.map((r) => `${r.n}. bölüm öncekinden kolay`).join(', '));
+}
+
+// Birlesme gercekten OLUYOR mu? Yukaridaki butun bitirme oranlari, bot hic birlesme almiyorsa
+// birlesmesiz oyunun oranlaridir - ve bu projede ozelligi hic denemeyen bir olcume uc kere
+// kanmistim.
+console.log('');
+{
+  const runs = [];
+  for (let i = 1; i <= 40; i++) runs.push(botRun(i * 7919, Four, 3));
+  const made = runs.filter((r) => r.fused > 0).length;
+  console.log(`birleşme: 40 koşunun ${made} tanesinde en az bir tane yapıldı`);
+  check('bot gerçekten birleşme yapıyor', made > 0,
+    'hiç yapılmıyorsa yukarıdaki bütün oranlar birleşmesiz oyunun oranları');
+  // Ama her kosuda olmamali: iki buyuyu birden kademeye cikarmak uzun bir yol, ve her kosuda
+  // olan sey secim degil adimdir.
+  check('ama her koşuda olmuyor', made < runs.length,
+    `${made}/${runs.length}`);
+
+  // Bot hedef gozetmiyor, eline ne gecerse aliyor. Asil soru: BILEREK birlesmeye oynayan bir
+  // oyuncu alabiliyor mu? Ayni bot, kadrosunda cifti tasiyan ve yayilacak az yeri olan bir elle.
+  const aimed = [];
+  for (let i = 1; i <= 40; i++) aimed.push(botRun(i * 7919, ['bolt', 'fireball', 'lightning'], 3));
+  const hit = aimed.filter((r) => r.fused > 0).length;
+  console.log(`  çifti kadrosuna alan oyuncu: 40 koşunun ${hit} tanesinde`);
+  // Esik "iki kati" idi ve kapi genisletilince aritmetik olarak imkansiz hale geldi: rastgele
+  // oyuncu 20/40 alinca iki kati 40/40 demek. Olculen fark, oranin kendisi degil.
+  check('birleşmeye oynayan oyuncu belirgin şekilde daha sık alıyor', hit >= made + 8,
+    `rastgele ${made}/40 vs hedefli ${hit}/40`);
 }
 
 const solo = [];

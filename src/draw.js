@@ -19,7 +19,7 @@ import {
   Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives,
   BoostsPerTier, MostEvos, LoadoutSize, Always, spellKeys, statsOf, carrying, describe,
 } from './rules.js';
-import { UnlockAt, nextUnlock } from './spells.js';
+import { UnlockAt, nextUnlock, anySpell } from './spells.js';
 import { stageOf } from './stages.js';
 import { say, UI, LanguageNames, Languages, language } from './text.js';
 import { needFor, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from './meta.js';
@@ -1002,7 +1002,55 @@ export function sigil(ctx, key, x, y, s, colour) {
     ctx.closePath();
   };
 
-  if (key === 'bolt') { star(4, 0.14, 0.5); ctx.fill(); }
+  // The four fusions first. Each one says what it came from: a ring around the thing it does, so
+  // a fused spell never reads as just another spell.
+  if (key === 'tempest') {
+    ctx.lineWidth = s * 0.11;
+    ctx.beginPath();
+    ctx.moveTo(-0.34 * s, -0.46 * s); ctx.lineTo(0.02 * s, -0.06 * s);
+    ctx.lineTo(-0.16 * s, -0.02 * s); ctx.lineTo(0.3 * s, 0.46 * s);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 0.5 * s, 2.1, 5.6); ctx.stroke();
+
+  } else if (key === 'hail') {
+    for (const dx of [-0.3, 0, 0.3]) {
+      ctx.beginPath();
+      ctx.moveTo(dx * s, -0.5 * s); ctx.lineTo(dx * s + 0.09 * s, -0.02 * s);
+      ctx.lineTo(dx * s - 0.09 * s, -0.02 * s);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.lineWidth = s * 0.1;
+    ctx.beginPath(); ctx.arc(0, 0.18 * s, 0.42 * s, 0.25, 2.9); ctx.stroke();
+
+  } else if (key === 'halo') {
+    ctx.lineWidth = s * 0.1;
+    ctx.beginPath(); ctx.arc(0, 0, 0.42 * s, 0, Math.PI * 2); ctx.stroke();
+    for (const a of [-Math.PI / 2, Math.PI / 2]) {
+      ctx.save();
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.moveTo(0, -0.42 * s);
+      ctx.lineTo(0.16 * s, -0.56 * s); ctx.lineTo(-0.16 * s, -0.56 * s);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 0.12 * s, 0, Math.PI * 2); ctx.fill();
+
+  } else if (key === 'collapse') {
+    for (const r of [0.5, 0.34]) {
+      ctx.lineWidth = s * 0.09;
+      ctx.beginPath(); ctx.arc(0, 0, r * s, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 0.16 * s, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 0.62 * s, Math.sin(a) * 0.62 * s);
+      ctx.lineTo(Math.cos(a) * 0.26 * s, Math.sin(a) * 0.26 * s);
+      ctx.stroke();
+    }
+
+  } else if (key === 'bolt') { star(4, 0.14, 0.5); ctx.fill(); }
   else if (key === 'shards') {
     for (const dx of [-0.32, 0, 0.32]) {
       ctx.beginPath();
@@ -1211,7 +1259,13 @@ function panel(ctx, state, w, h, U, show) {
   write(ctx, say(UI.spells), 22 * U, y - 26 * U, 11 * U, 700);
   for (const key of owned) {
     const kit = state.kit[key];
-    write(ctx, say(Spells[key].name), 22 * U, y, 14 * U, 600);
+    // A spell a fusion has used up is named faintly and marked: it is still firing, which is why
+    // it is still on the list, but nothing more will ever go into it.
+    const spent = (state.sealed || []).includes(key);
+    ctx.globalAlpha = spent ? 0.45 : 1;
+    write(ctx, say(anySpell(key).name), 22 * U, y, 14 * U, 600);
+    if (spent) write(ctx, say(UI.sealedTell), 150 * U, y, 9 * U, 700, 'left');
+    ctx.globalAlpha = 1;
     if (kit.tier > 1) {
       // a filled tag, so a spell that has become something reads differently at a glance
       ctx.fillStyle = Black;
@@ -1277,7 +1331,12 @@ function picking(ctx, state, w, h, show, U) {
 
     // The one extra line that survives: which other spell lent this. It is not bookkeeping - it
     // is the only place the player is ever told the combinations exist.
-    if (card.borrows) {
+    // `borrows` is an evolution leaning on another spell and is written "with X". `spends` is a
+    // fusion using two up, which is a sentence of its own - prefixing it with "with" made the
+    // card say "with Fireball and Lightning are spent on it".
+    if (card.spends) {
+      fitWrite(ctx, card.spends, cx, top + 1.08 * f, 0.05 * f, 700, 'center', ink, room);
+    } else if (card.borrows) {
       fitWrite(ctx, say(UI.withSpell, card.borrows), cx, top + 1.08 * f, 0.05 * f, 600, 'center', ink, room);
     }
   }

@@ -11,6 +11,7 @@
 // card that changes what the spell does rather than how much of it there is.
 
 import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always } from './spells.js';
+import { Fusions, fusionKeys, fusionOf, anySpell } from './spells.js';
 import { takes, familyFor, Roles } from './foes.js';
 import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
@@ -158,6 +159,10 @@ export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = N
     phase: 'playing',             // 'playing' | 'picking' | 'done' | 'lost'
     hero: { ...NoHero, ...hero },
     levels: { ...levels },
+    // Spells a fusion has used up. They go on firing exactly as they are and can never be fed
+    // again - that, and not a lost slot, is what a fusion costs.
+    sealed: [],
+    fused: [],
     wall: Base.wall + (hero.wall || 0), maxWall: Base.wall + (hero.wall || 0),
     level: 1, xp: 0, need: xpFor(1),
     kills: 0,
@@ -217,7 +222,7 @@ export const waiting = (s) => s.loadout.filter((k) => !s.kit[k]);
  * that works out damage is a second place that drifts out of step with the first.
  */
 export function statsOf(s, key) {
-  const sp = Spells[key];
+  const sp = anySpell(key);
   const kit = s.kit[key];
   if (!sp || !kit) return null;
 
@@ -437,13 +442,13 @@ function throwOne(s, key, st, from, a, markId) {
     chill: st.chill,
     pierce: st.pierce,
     hits: new Set(),
-    falls: !!Spells[key].falls,
+    falls: !!anySpell(key).falls,
     life: 3,
   });
 }
 
 function castSpell(s, key) {
-  const sp = Spells[key];
+  const sp = anySpell(key);
   const st = statsOf(s, key);
   if (!st) return false;
 
@@ -545,7 +550,8 @@ export const tierDue = (s, key) => !!s.kit[key] && s.kit[key].taken >= s.kit[key
 export function evolutionsFor(s, key) {
   const kit = s.kit[key];
   if (!kit || kit.evos.length >= MostEvos) return [];
-  return Spells[key].evolutions.filter(
+  if ((s.sealed || []).includes(key)) return [];
+  return (anySpell(key).evolutions || []).filter(
     (e) => !kit.evos.includes(e.onHit) && (!e.needs || carries(s, e.needs))
   );
 }
@@ -554,7 +560,8 @@ export function evolutionsFor(s, key) {
 export function boostsFor(s, key) {
   const kit = s.kit[key];
   if (!kit) return [];
-  return Spells[key].boosts.filter((b) => (kit.boosts[b.key] || 0) < (b.most || 3));
+  if ((s.sealed || []).includes(key)) return [];
+  return (anySpell(key).boosts || []).filter((b) => (kit.boosts[b.key] || 0) < (b.most || 3));
 }
 
 /**
@@ -564,12 +571,49 @@ export function boostsFor(s, key) {
  * be crowded out by a stack of small ones. Everything else goes in together: ordinary boosts for
  * what you carry, and the passives.
  */
+/**
+ * How much has to have gone into the pair before it can be put together.
+ *
+ * Counted as picks spread over the two of them rather than a tier each. A tier each was the first
+ * rule and it was unreachable: a tier costs five boosts, so two of them is ten picks into exactly
+ * those two spells, and a run hands out about twenty across four. Measured, it happened in four
+ * runs out of forty - and in four out of forty for a player who had deliberately brought the pair,
+ * which is the part that made it wrong. A gate nobody can aim at is not a gate, it is weather.
+ */
+export const FuseAt = 8;
+
+/**
+ * The fusions this run could still make.
+ *
+ * Both parents have to be carried, both have to have reached a tier - a fusion is a reward for
+ * having built two spells, not a shortcut past building either - and neither can already have
+ * been used up by an earlier one.
+ */
+export function fusionsFor(s) {
+  const have = carrying(s);
+  const sealed = s.sealed || [];
+  const out = [];
+  for (const key of fusionKeys) {
+    if (s.kit[key]) continue;
+    const [a, b] = Fusions[key].of;
+    if (!have.includes(a) || !have.includes(b)) continue;
+    if (sealed.includes(a) || sealed.includes(b)) continue;
+    if ((s.kit[a].taken || 0) + (s.kit[b].taken || 0) < FuseAt) continue;
+    out.push(key);
+  }
+  return out;
+}
+
 export function offer(s) {
   // One entry per spell, not one per upgrade. Built the other way round - every available boost
   // its own entry - a spell with five boosts put five tickets in the hat and its tier card put
   // one, so tiers almost never came up: the bot finished a whole run having taken none.
   const pool = [];
   const due = [];
+
+  // A fusion that has been earned is shown rather than rolled for, like a tier. Two spells built
+  // to a tier each is a long way to come, and a lottery ticket at the end of it is not a reward.
+  for (const key of fusionsFor(s)) due.push({ what: 'fusion', key });
 
   // A spell you brought but have not taken yet. These are the cards that turn one spell into
   // four, so they go in the pool in their own right rather than competing with a boost.
@@ -631,10 +675,24 @@ export function describe(s, pick) {
     return { title: say(p.name), text: say(p.tells), mark: pick.key };
   }
 
-  const sp = Spells[pick.key];
+  const sp = anySpell(pick.key);
 
   if (pick.what === 'spell') {
     return { badge: say(UI.newSpell), title: say(sp.name), text: say(sp.tells), mark: pick.key, big: true };
+  }
+
+  if (pick.what === 'fusion') {
+    const [a, b] = Fusions[pick.key].of;
+    return {
+      badge: say(UI.fusion),
+      title: say(sp.name),
+      text: say(sp.tells),
+      mark: pick.key,
+      big: true,
+      // What it costs, said on the card. A fusion that only mentioned what it gives would be
+      // selling a choice as a present.
+      spends: say(UI.fuseOf, say(anySpell(a).name), say(anySpell(b).name)),
+    };
   }
 
   if (pick.what === 'evolution') {
@@ -644,7 +702,7 @@ export function describe(s, pick) {
       text: say(evo.tells),
       mark: pick.key,
       big: true,
-      borrows: evo.needs ? say(Spells[evo.needs].name) : null,
+      borrows: evo.needs ? say(anySpell(evo.needs).name) : null,
     };
   }
 
@@ -666,6 +724,13 @@ export function take(s, index) {
       const kit = s.kit[pick.key];
       kit.boosts[pick.boost] = (kit.boosts[pick.boost] || 0) + 1;
       kit.taken += 1;
+    } else if (pick.what === 'fusion') {
+      const [a, b] = Fusions[pick.key].of;
+      s.kit[pick.key] = { tier: 1, boosts: {}, evos: [], taken: 0 };
+      s.cools[pick.key] = 0.15;
+      s.loadout.push(pick.key);
+      s.sealed.push(a, b);
+      s.fused.push(pick.key);
     } else if (pick.what === 'evolution') {
       const kit = s.kit[pick.key];
       kit.evos.push(pick.evo);
@@ -764,7 +829,7 @@ export function step(s, dt) {
 
   // --- the spells, each on its own clock
   for (const key of carrying(s)) {
-    if (Spells[key].orbit) continue;
+    if (anySpell(key).orbit) continue;
     s.cools[key] -= dt;
     if (s.cools[key] <= 0) {
       const went = castSpell(s, key);

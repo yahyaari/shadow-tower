@@ -300,6 +300,99 @@ export const Always = 'bolt';
  * each one changes what the first five can become, because a third of the tier cards are borrowed
  * from another spell.
  */
+/**
+ * What two spells become when they are put together.
+ *
+ * These live in their own table rather than in `Spells`, and that is the whole of the design
+ * decision. A spell in `Spells` is a thing you can bring: it has an unlock level, a tile on the
+ * loadout screen, a page in the codex, a permanent level, and shards of its own. A fusion has
+ * none of that - it only exists inside a run, so putting it in the same table would have added
+ * four rows to five systems that have nothing to do with it.
+ *
+ * Each one reuses a casting behaviour that already exists. A fusion is meant to be a new thing on
+ * the field, not a new engine underneath it.
+ *
+ * Taking one does NOT cost you a slot. It adds a fifth spell to the field and seals both parents:
+ * they keep firing exactly as they are and can never be fed again. That is the choice - more in
+ * the air now, fewer places to put the rest of your picks. Measured over days, concentrating
+ * picks multiplies and spreading them adds, so a fusion that simply replaced two spells with one
+ * would have been the obvious move every time.
+ */
+export const Fusions = {
+  tempest: {
+    name: ['Tempest', 'Fırtına'],
+    tells: ['a storm that leaps from one to the next', 'birinden ötekine sıçrayan bir fırtına'],
+    of: ['fireball', 'lightning'],
+    every: 2.2, damage: 22, instant: 'chain', jumps: 5, element: 'storm',
+    boosts: [
+      { key: 'jump', name: ['Forking', 'Çatallanma'], tells: ['+2 jumps', '+2 sıçrama'], does: { jumps: 2 }, most: 2 },
+      hit(0.16), fast(0.14),
+      { key: 'chill', name: ['Shocked', 'Şoklu'], tells: ['what it hits slows', 'vurduğunu yavaşlatır'], does: { chill: 1.4 }, most: 1 },
+    ],
+    evolutions: [
+      { key: 'storm', name: ['Downburst', 'Hortum'], tells: ['leaves a storm on the ground', 'yere bir fırtına bırakır'], onHit: 'storm' },
+      { key: 'burst', name: ['Thunderclap', 'Gök Gürültüsü'], tells: ['bursts where it lands', 'düştüğü yerde patlar'], onHit: 'burst' },
+    ],
+  },
+  hail: {
+    name: ['Hail', 'Dolu'],
+    tells: ['a fan of freezing splinters', 'donduran kıymıklardan bir yelpaze'],
+    of: ['frost', 'shards'],
+    every: 1.3, damage: 9, seeks: 'near', count: 5, spread: 0.62, chill: 2.4, element: 'ice',
+    boosts: [
+      { key: 'more', name: ['Thicker', 'Yoğun'], tells: ['+2 splinters', '+2 kıymık'], does: { count: 2 }, most: 2 },
+      { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 2 },
+      hit(0.3), fast(0.18),
+    ],
+    evolutions: [
+      { key: 'freeze', name: ['Whiteout', 'Tipi'], tells: ['freezes everything near where it lands', 'düştüğü yerin çevresini dondurur'], onHit: 'freeze' },
+      { key: 'split', name: ['Shatter', 'Parçalanma'], tells: ['splits into two where it lands', 'düştüğü yerde ikiye ayrılır'], onHit: 'split' },
+    ],
+  },
+  halo: {
+    name: ['Halo', 'Hale'],
+    tells: ['two blades circling, always', 'çevrende sürekli dönen iki bıçak'],
+    of: ['bolt', 'blade'],
+    every: 0.5, damage: 15, orbit: true, count: 2, element: 'blade',
+    boosts: [
+      { key: 'more', name: ['Third Blade', 'Üçüncü Bıçak'], tells: ['+1 blade', '+1 bıçak'], does: { count: 1 }, most: 2 },
+      { key: 'ring', name: ['Wider Ring', 'Geniş Halka'], tells: ['+30% orbit', '+%30 yörünge'], does: { ring: 0.3 }, most: 2 },
+      hit(0.2), fast(0.12),
+    ],
+    evolutions: [
+      { key: 'burst', name: ['Scatter', 'Saçılma'], tells: ['bursts where it strikes', 'vurduğu yerde patlar'], onHit: 'burst' },
+      { key: 'fire', name: ['Searing', 'Kavurucu'], tells: ['leaves fire where it strikes', 'vurduğu yerde ateş bırakır'], onHit: 'fire' },
+    ],
+  },
+  collapse: {
+    name: ['Collapse', 'Çöküş'],
+    tells: ['everything near the wall, and then some', 'duvara yakın ne varsa, ve biraz fazlası'],
+    of: ['nova', 'meteor'],
+    every: 4.4, damage: 34, instant: 'nova', blast: 250, element: 'fire',
+    boosts: [
+      area(0.22, 3), hit(0.14), fast(0.12),
+      { key: 'chill', name: ['Cold Heart', 'Soğuk Çekirdek'], tells: ['what it touches slows', 'değdiğini yavaşlatır'], does: { chill: 1.6 }, most: 1 },
+    ],
+    evolutions: [
+      { key: 'fire', name: ['Cinders', 'Kor'], tells: ['leaves fire behind it', 'ardında ateş bırakır'], onHit: 'fire' },
+      { key: 'storm', name: ['Aftershock', 'Artçı'], tells: ['leaves a storm behind it', 'ardında bir fırtına bırakır'], onHit: 'storm' },
+    ],
+  },
+};
+
+export const fusionKeys = Object.keys(Fusions);
+
+/** Any spell by key, brought or made. The one lookup everything inside a run should use. */
+export const anySpell = (key) => Spells[key] || Fusions[key] || null;
+
+/** What a pair of carried spells could become, if anything. */
+export function fusionOf(a, b) {
+  for (const [key, f] of Object.entries(Fusions)) {
+    if ((f.of[0] === a && f.of[1] === b) || (f.of[0] === b && f.of[1] === a)) return key;
+  }
+  return null;
+}
+
 export const UnlockAt = {
   bolt: 1,
   shards: 1,

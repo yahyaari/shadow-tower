@@ -4,13 +4,13 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **448 kontrol geçiyor**.
+> `node Tools/test.mjs` → **472 kontrol geçiyor**.
 >
 > ## SIRADAKİ İŞ — seçilmedi
 >
-> 1. **Büyü birleştirme** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
-> 2. **Gerçek parmakla test** — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
-> 3. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
+> 1. **Gerçek parmakla test** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
+>    — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
+> 2. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
 >
 > ## Enerji — karar verildi, SDK'ya bırakıldı
 >
@@ -117,6 +117,39 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## Büyü birleştirme
+
+Dört birleşme: **Fırtına** (ateş topu + yıldırım), **Dolu** (buz + kıymık), **Hale** (ok + yörünge),
+**Çöküş** (nova + meteor). Hepsi mevcut bir atış davranışını yeniden kullanıyor — birleşme sahada
+yeni bir şey olmalı, altında yeni bir motor değil.
+
+**`Spells` tablosunun dışındalar** ve bütün tasarım kararı bu. `Spells` içindeki bir büyü
+getirilebilen bir şeydir: kilit seviyesi, loadout karesi, külliyat sayfası, kalıcı seviyesi ve
+kendi parçaları vardır. Birleşme bunların hiçbirine sahip değil — sadece koşunun içinde var. Aynı
+tabloya koymak, ilgisiz beş sisteme dört satır büyütmek olurdu.
+
+**Slot almıyor.** Sahaya beşinci bir büyü ekliyor ve iki ebeveyni **mühürlüyor**: olduğu gibi
+ateşlemeye devam ediyorlar ama bir daha beslenemiyorlar. Seçim bu — şimdi havada daha çok şey,
+sonra yatırım yapacak daha az yer. Günlerce ölçülen şey şuydu: seçimleri yoğunlaştırmak çarpıyor,
+yaymak topluyor. İki büyüyü birle değiştiren bir birleşme her seferinde bariz hamle olurdu.
+
+### Kapı iki kez ayarlandı
+
+İlk kural "iki ebeveyn de kademe atlamış olsun"du. Ulaşılamazdı: bir kademe beş yükseltme, yani o
+iki büyüye on kart, ve bir koşu dört büyüye yirmi kart dağıtıyor. Ölçüm: 40 koşunun **4**'ünde
+oluyordu — ve **çifti bilerek kuşanan** bir oyuncu için de 4'ünde. Nişan alınamayan bir kapı kapı
+değil, hava durumudur.
+
+Kapı "ikisine konan toplam kart ≥ 8"e çevrildi. Yeni ölçüm: rastgele **20/40**, çifti kuşanan
+**37/40**. Niyet artık fark ediyor, bitirme oranları ise kıpırdamadı.
+
+### Bot da bilmeliydi
+
+Bot kart puanlamasında `fusion` yoktu, yani 18 puanla sıradan bir yükseltme gibi değerlendiriliyor
+ve neredeyse hiç alınmıyordu. Yukarıdaki bütün bitirme oranları birleşmesiz oyunun oranları
+olacaktı — bu projede özelliği hiç denemeyen bir ölçüme üç kere kanmıştım. Artık 110 puan alıyor ve
+test "bot gerçekten birleşme yapıyor mu" diye ayrıca soruyor.
 
 ## Müzik
 
@@ -590,7 +623,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/sound.js` | Dosyasız ses + tek AudioContext (müzik de onu paylaşıyor). |
 | `src/music.js` | Dosyasız müzik. Düzenleme saf aritmetik, vuruş baskıdan geliyor. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 448 kontrol + bot. |
+| `Tools/test.mjs` | 472 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

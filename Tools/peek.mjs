@@ -272,6 +272,23 @@ for (let i = 0; i < 60; i++) {
 await sleep(500);
 console.log('  acilista atesleyen: ' + await evaluate(`Object.keys(window.ShadowTower.state.kit).join('+')`));
 await screenshot('kartlar');
+
+// Birlesme karti: iki ebeveyn de beslenmis, kart hem ne verdigini hem ne harcadigini soylemeli.
+await evaluate(`(() => {
+  const m = window.ShadowTower, s = m.state;
+  for (const k of ['fireball', 'lightning']) {
+    if (!s.kit[k]) { s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 }; s.cools[k] = 0; s.loadout.includes(k) || s.loadout.push(k); }
+    s.kit[k].taken = 6;
+  }
+  s.choices = m.offerCards ? m.offerCards(s) : s.choices;
+  s.phase = 'picking';
+  s.choices = [{ what: 'fusion', key: 'tempest' },
+               { what: 'boost', key: 'bolt', boost: 'sharper' },
+               { what: 'spell', key: 'frost' }];
+  return true;
+})()`);
+await sleep(400);
+await screenshot('kart_birlesme');
 await evaluate(`window.ShadowTower.take(window.ShadowTower.state, 0); true`);
 
 // Patron ani
