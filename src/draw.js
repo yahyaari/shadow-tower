@@ -1401,6 +1401,22 @@ function spoils(ctx, won, cx, y, U, room) {
     ctx.globalAlpha = 1;
   }
 
+  // What the run's own three came to. One line, with the ones that were met ticked - the list
+  // itself was read on the map before the run, so this only has to say how it went.
+  const jobs = (won.jobs || []).filter((j) => j.job);
+  if (jobs.length) {
+    at += 26 * U;
+    const met = jobs.filter((j) => j.done).length;
+    const words = `${met}/${jobs.length}  ${jobs.map((j) => (j.done ? '\u25CF' : '\u25CB')).join(' ')}`;
+    ctx.font = `800 ${12 * U}px ${Face}`;
+    const line = won.runGold > 0
+      ? `${words}    ${say(UI.runJobsPaid, won.runGold)}`
+      : `${words}    ${say(UI.runJobs)}`;
+    ctx.globalAlpha = won.runGold > 0 ? 1 : 0.55;
+    fitWrite(ctx, line, cx, at, 12 * U, 800, 'center', Black, room - 40 * U);
+    ctx.globalAlpha = 1;
+  }
+
   return at;
 }
 

@@ -4,7 +4,7 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **348 kontrol geçiyor**.
+> `node Tools/test.mjs` → **381 kontrol geçiyor**.
 >
 > **Dört düşman ailesi:** İnsanlar, Sürü (uçan), Örümcekler, Kurtlar. Her bölümün kendi ailesi
 > var; 5. bölümden sonra karışıyorlar. Her ailenin bir zayıflığı ve bir zırhı var (örn. örümcek
@@ -341,6 +341,39 @@ söylüyor. Şu an **8 koşuluk bir oturumda %15-25 ekliyor** — ikram, ana yem
 oyuncu, 1. bölüm geliriyle seviye 3 ödülü alıyordu. Düğmelerin hepsi `src/rewards.js`'in başında,
 tek yerde.
 
+## Görevler
+
+İki ritim:
+
+| | ne zaman | ödül | niye |
+| --- | --- | --- | --- |
+| **günlük** | üç tane, gece yarısı yenilenir | **gem** + altın | yarın oyunu açmanın sebebi |
+| **koşu** | üç tane, her koşu | **sadece altın** | anlık hedef |
+
+**Koşu görevleri gem veremez** ve bu bir tercih değil, zorunluluk: koşu görevi her koşuda
+yenileniyor, gem verseydi aynı bölümü tekrar tekrar geçerek sonsuz gem üretilebilirdi — oysa
+gem'in tek özelliği tam olarak bunun yapılamaması. Test bu kuralı ayrıca kontrol ediyor.
+
+Günlük görevler **alınmak için dokunulur** (Ödüller sekmesinde), koşu görevleri **kendiliğinden
+ödenir**. Koşu görevi zaten koşuya ait; gidip toplanması gereken bir koşu ödülü iş olur.
+
+Koşunun üçü **haritada, OYNA'ya basmadan önce** yazıyor. Sonradan söylenen bir hedef hedef değil,
+sürprizdir.
+
+Görevler hiçbir şeyi koşunun içinden saymıyor: hepsi `finish`'in zaten bildiği sayılardan
+(öldürülen, duvar, seviye, dönüşüm, taşınan büyü) ölçülüyor. Yani yeni bir görev eklemek
+`rules.js`'te tek satır değiştirmiyor.
+
+### Enerji — SDK'ya bırakıldı
+
+Enerji sistemi konuşuldu ve **bilerek ertelendi**. CrazyGames enerji/zamanlayıcı yasaklamıyor
+(kurallarda böyle bir madde yok, kontrol edildi), ama orada gelir **oynanma süresine** bağlı:
+mobilde kapıyı satabildiğin için mantıklı, burada satacak bir şey yok, dolayısıyla kapı sadece
+maliyet. Üstelik web portalında bildirim yok — duvara çarpıp çıkanı geri çağıracak hiçbir şey yok.
+
+Enerjinin anlamlı olduğu tek hâl, bitince **reklam izleyip doldurmak**. O yüzden SDK ile birlikte
+gelecek. Karar verilen sayılar: **depo 60, koşu 5, %100 bitirişte +5 iade, dakikada 2 yenilenme.**
+
 ## Üç para birimi
 
 Her bölüm sonu üçü birden düşüyor, ve üçünün harcandığı yer ayrı:
@@ -432,6 +465,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/text.js` | İki dil. Her yazı bir çift: `['Magic Bolt', 'Sihirli Ok']`. `say()` seçer. |
 | `src/stages.js` | 12 yerin adı, tanıtımı ve görünümü + çizilebilen `Looks` listesi. |
 | `src/foes.js` | Düşman aileleri, elementler, direnç tablosu, bölüm→aile eşlemesi. Saf veri. |
+| `src/missions.js` | Günlük ve koşu görevleri, seçim, ilerleme, ödül. Saf veri + aritmetik. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
 | `src/upgrades.js` | Büyülerin kalıcı seviye çizgisi: 10 basamak, maliyetler. Saf veri. |
@@ -442,7 +476,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 348 kontrol + bot. |
+| `Tools/test.mjs` | 381 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 

@@ -14,6 +14,7 @@ import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
 import {
   needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus, spellStep, levelOf, shardsOf,
+  dailyJobs, runJobs,
 } from './meta.js';
 import { Steps as SpellSteps, liftAt } from './upgrades.js';
 import {
@@ -179,12 +180,32 @@ export function chestOpens(box, dpr = 1) {
   };
 }
 
+/** The day's three, under the chests. */
+export function missionBoxes(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const boxes = chestBoxes(w, h, dpr);
+  const last = boxes[boxes.length - 1];
+  const bw = Math.min(460 * U, w - 32 * U);
+  const bh = 66 * U;
+  const top = last.y + last.h + 54 * U;
+  return [0, 1, 2].map((i) => ({
+    i, x: w / 2 - bw / 2, y: top + i * (bh + 8 * U), w: bw, h: bh,
+  }));
+}
+
+/** The press on a finished mission. */
+export function missionTake(box, dpr = 1) {
+  const U = unit(dpr);
+  const bw = Math.min(110 * U, box.w * 0.3);
+  return { x: box.x + box.w - bw - 12 * U, y: box.y + box.h / 2 - 17 * U, w: bw, h: 34 * U };
+}
+
 /** How far the rewards tab may be pushed up, given the window it is in. */
 export function wheelReach(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  const boxes = chestBoxes(w, h, dpr);
-  const last = boxes[boxes.length - 1];
+  const rows = missionBoxes(w, h, dpr);
+  const last = rows[rows.length - 1];
   return Math.max(0, last.y + last.h + 14 * U - b.bottom);
 }
 
@@ -444,6 +465,7 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     // Nothing on this tab may be pressed while the wheel is turning: the prize is already banked
     // and a second press would be asking for a spin that has been spent.
     if (show.spin) return null;
+    let hit = null;
     // Everything here is drawn shifted by the scroll, so everything here is tested shifted by it.
     const up = show.wheelScroll || 0;
     const moved = (r) => ({ ...r, y: r.y - up });
@@ -457,6 +479,13 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
         }
       }
     }
+    const jobs = dailyJobs(data);
+    missionBoxes(w, h, dpr).forEach((box, i) => {
+      const j = jobs[i];
+      if (!j || !j.done || j.paid) return;
+      if (inside(moved(missionTake(box, dpr)), px, py)) hit = { what: 'daily', key: j.key };
+    });
+    if (hit) return hit;
     return null;
   }
   if (data.tab === 'spells') {
@@ -1172,6 +1201,72 @@ function wheelTab(ctx, data, w, h, U, show) {
   // --- the chests
   for (const box of chestBoxes(w, h, U)) chestPanel(ctx, data, box, U, show);
 
+  // --- the day's three
+  {
+    const rows = missionBoxes(w, h, U);
+    const jobs = dailyJobs(data);
+    ctx.globalAlpha = 0.65;
+    fitWrite(ctx, say(UI.dailyTitle), w / 2, rows[0].y - 24 * U, 11 * U, 800, 'center',
+      Black, w - 40 * U);
+    ctx.globalAlpha = 1;
+
+    rows.forEach((box, i) => {
+      const j = jobs[i];
+      if (!j) return;
+      const lively = j.done && !j.paid;
+
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = (lively ? 3 : 1.5) * U;
+      ctx.globalAlpha = j.paid ? 0.3 : lively ? 1 : 0.55;
+      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 12 * U); ctx.stroke();
+
+      const press = missionTake(box, U);
+      const room = (j.paid ? box.x + box.w - 14 * U : press.x - 12 * U) - (box.x + 16 * U);
+      fitWrite(ctx, say(j.job.name), box.x + 16 * U, box.y + 22 * U, 12 * U, 800, 'left', Black, room);
+
+      // how far along, as a bar and a count - the count because "two of three" is the thing you
+      // came to read, the bar because it is read without reading
+      const bw = room * 0.62;
+      ctx.fillStyle = 'rgba(13,12,11,0.14)';
+      ctx.fillRect(box.x + 16 * U, box.y + 38 * U, bw, 6 * U);
+      ctx.fillStyle = Black;
+      ctx.fillRect(box.x + 16 * U, box.y + 38 * U, bw * (j.at / j.need), 6 * U);
+      ctx.globalAlpha = j.paid ? 0.3 : 0.75;
+      write(ctx, `${j.at} / ${j.need}`, box.x + 22 * U + bw, box.y + 41 * U, 10 * U, 700, 'left');
+      ctx.globalAlpha = j.paid ? 0.3 : 1;
+
+      // what it pays, to the right, until it has been taken
+      if (!j.paid) {
+        const pay = `${j.pays.gems}`;
+        ctx.font = `800 ${12 * U}px ${Face}`;
+        const pw = ctx.measureText(pay).width;
+        if (!lively) {
+          gem(ctx, box.x + box.w - 16 * U - pw - 12 * U, box.y + 24 * U, 7 * U, Black, Pale);
+          write(ctx, pay, box.x + box.w - 16 * U, box.y + 24 * U, 12 * U, 800, 'right');
+          ctx.globalAlpha = 0.7;
+          coin(ctx, box.x + box.w - 16 * U - pw - 12 * U, box.y + 44 * U, 6 * U, Black, Pale);
+          write(ctx, String(j.pays.gold), box.x + box.w - 16 * U, box.y + 44 * U, 11 * U, 800, 'right');
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      if (lively) {
+        const lit = show.overMenu === 'daily:' + j.key;
+        ctx.fillStyle = lit ? Black : Pale;
+        ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 9 * U); ctx.fill();
+        ctx.strokeStyle = Black;
+        ctx.lineWidth = 2.4 * U;
+        ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 9 * U); ctx.stroke();
+        write(ctx, say(UI.dailyTake), press.x + press.w / 2, press.y + press.h / 2,
+          12 * U, 800, 'center', lit ? Pale : Black);
+      } else if (j.paid) {
+        write(ctx, say(UI.dailyDone), box.x + box.w - 16 * U, box.y + box.h / 2,
+          11 * U, 800, 'right');
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+
   ctx.restore();
 
   // --- there is more below: say so, and only while there is
@@ -1278,6 +1373,32 @@ function mapTab(ctx, data, w, h, U, show) {
       }
     }
     x += step;
+  }
+
+  // --- what this run is asking for, named before it starts.
+  //
+  // Beside PLAY rather than on the end screen, because a goal you are told about afterwards is
+  // not a goal, it is a surprise. They pay gold and never gems: a run goal refreshes every run,
+  // and a gem that refreshes every run is a gem that can be farmed.
+  {
+    const jobs = runJobs(data, data.stage);
+    const p0 = playBox(w, h, U);
+    const top = Math.max(feet + 56 * U, p0.y - 76 * U);
+    ctx.globalAlpha = 0.6;
+    write(ctx, say(UI.runJobs), w / 2, top, 10 * U, 800, 'center');
+    ctx.globalAlpha = 1;
+    jobs.forEach((j, i) => {
+      const y = top + 18 * U + i * 15 * U;
+      ctx.globalAlpha = 0.8;
+      // a small open circle, so the three read as a list rather than a sentence
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 1.6 * U;
+      ctx.beginPath();
+      ctx.arc(w / 2 - 150 * U, y, 3.4 * U, 0, Math.PI * 2);
+      ctx.stroke();
+      fitWrite(ctx, say(j.job.name), w / 2 - 140 * U, y, 10 * U, 600, 'left', Black, 300 * U);
+      ctx.globalAlpha = 1;
+    });
   }
 
   const p = playBox(w, h, U);

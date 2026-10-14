@@ -13,6 +13,9 @@ import {
   gemsOn, repeatLift,
 } from './rewards.js';
 import { Steps as SpellSteps, stepOf, canStep } from './upgrades.js';
+import {
+  dailyKeys, dailyOf, runKeys, runOf, runTally, progress, doneWith, pays, DailyCount,
+} from './missions.js';
 
 const Key = 'shadowtower';
 
@@ -37,6 +40,8 @@ const blank = {
   spins: 0,
   gems: 0,          // what chests are bought with; only a stage's first clears make them
   done: null,       // stage -> how many times it has been cleared
+  tally: null,      // what has been done today, for the daily missions
+  paid: null,       // which of today's missions have been collected
   chests: 0,
   gold: 0,          // shared, and what decides how many spells you can afford to raise
   shards: null,     // spell -> shards held; they decide which spell you are raising
@@ -80,6 +85,7 @@ export function buySpell(data, key) {
   data.shards[key] -= step.shards;
   if (data.shards[key] <= 0) delete data.shards[key];
   data.spell[key] = step.to;
+  mark(data, 'raises');
   save(data);
   return true;
 }
@@ -91,6 +97,7 @@ export function buyHero(data) {
   if (!next || (data.bank || 0) < next.cost) return false;
   data.bank -= next.cost;
   data.hero = (data.hero || 0) + 1;
+  mark(data, 'hero');
   save(data);
   return true;
 }
@@ -111,6 +118,7 @@ export function spin(data, roll = Math.random(), day = today(), pick = Math.rand
 
   data.spun = day;
   data.spins = (data.spins || 0) + 1;
+  mark(data, 'spins', 1, day);
   if (kind === 'exp') data.bank = (data.bank || 0) + amount;
   else if (kind === 'gold') data.gold = (data.gold || 0) + amount;
   else if (key) data.shards[key] = (data.shards[key] || 0) + amount;
@@ -133,6 +141,7 @@ export function openChest(data, kind, many = 1) {
   const prize = chestPrize(kind, data.level || 1, data.loadout || [], n);
   data.gems -= prize.gems;
   data.chests = (data.chests || 0) + n;
+  mark(data, 'chests', n);
   data.bank = (data.bank || 0) + prize.exp;
   data.gold = (data.gold || 0) + prize.gold;
   for (const [k, amount] of Object.entries(prize.shards)) {
@@ -140,6 +149,58 @@ export function openChest(data, kind, many = 1) {
   }
   save(data);
   return prize;
+}
+
+/**
+ * Bumps one of the day's counters.
+ *
+ * Rolls the day over on the first thing done after midnight, which is also what clears what was
+ * already collected - the missions and the wheel share one clock, so "a new day" means the same
+ * thing in both places.
+ */
+export function mark(data, what, by = 1, day = today()) {
+  if (!data.tally || data.tally.day !== day) {
+    data.tally = { day, clears: 0, kills: 0, stars: 0, deepest: 0, chests: 0, raises: 0, spins: 0, hero: 0 };
+    data.paid = [];
+  }
+  if (what === 'stars' || what === 'deepest') {
+    // these two are a best, not a running total
+    data.tally[what] = Math.max(data.tally[what] || 0, by);
+  } else {
+    data.tally[what] = (data.tally[what] || 0) + by;
+  }
+}
+
+/** Today's three, with how far each has got and whether it has been collected. */
+export function dailyJobs(data, day = today()) {
+  const tally = data.tally && data.tally.day === day ? data.tally : {};
+  return dailyKeys(day).map((key) => {
+    const job = dailyOf(key);
+    return {
+      key, job,
+      at: progress(job, tally),
+      need: job.need,
+      done: doneWith(job, tally),
+      paid: (data.paid || []).includes(key),
+      pays: pays(job, data.level || 1),
+    };
+  });
+}
+
+/** Collects one finished daily mission. Null when it is not finished, or already collected. */
+export function claimDaily(data, key, day = today()) {
+  const one = dailyJobs(data, day).find((j) => j.key === key);
+  if (!one || !one.done || one.paid) return null;
+  data.paid.push(key);
+  data.gems = (data.gems || 0) + one.pays.gems;
+  data.gold = (data.gold || 0) + one.pays.gold;
+  save(data);
+  return one.pays;
+}
+
+/** The three this run is asking for. The map shows these before PLAY and the end screen scores them. */
+export function runJobs(data, stage = data.stage) {
+  return runKeys(stage, data.runs || 0).map((key) => ({ key, job: runOf(key) }));
 }
 
 export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
@@ -264,6 +325,19 @@ export function tidy(data) {
   data.gems = Math.max(0, Math.round(data.gems || 0));
   data.chests = Math.max(0, Math.floor(data.chests || 0));
 
+  // The day's tally. A tally from yesterday is not wrong, it is over - so it is thrown away
+  // rather than repaired, and with it the record of what was already collected.
+  const tally = (data.tally && typeof data.tally === 'object') ? data.tally : {};
+  const day = typeof tally.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(tally.day) ? tally.day : null;
+  data.tally = { day, clears: 0, kills: 0, stars: 0, deepest: 0, chests: 0, raises: 0, spins: 0, hero: 0 };
+  if (day) {
+    for (const k of Object.keys(data.tally)) {
+      if (k !== 'day') data.tally[k] = Math.max(0, Math.floor(tally[k] || 0));
+    }
+  }
+  const paid = Array.isArray(data.paid) ? data.paid : [];
+  data.paid = day ? paid.filter((k, i) => dailyOf(k) && paid.indexOf(k) === i) : [];
+
   // How often each stage has been cleared. A junk key here would either hand out first-clear gems
   // for ever or withhold them for a stage nobody has played.
   const done = (data.done && typeof data.done === 'object') ? data.done : {};
@@ -328,7 +402,7 @@ export function save(data) {
  * Stars are kept at their best: a replay that goes worse does not take back what was earned, or
  * nobody would ever risk a replay.
  */
-export function finish(data, stage, wall, maxWall, kills, taken = null) {
+export function finish(data, stage, wall, maxWall, kills, taken = null, run = {}) {
   const stars = starsFor(wall, maxWall);
   const had = data.stars[stage];
   const beat = had === undefined || stars > had;
@@ -347,9 +421,35 @@ export function finish(data, stage, wall, maxWall, kills, taken = null) {
   const gems = gemsOn(stage, times, stars);
   data.gems = (data.gems || 0) + gems;
   data.done[stage] = times + 1;
+
+  // --- the day's counters, and the run's own three
+  mark(data, 'clears');
+  mark(data, 'kills', kills);
+  mark(data, 'stars', stars);
+  mark(data, 'deepest', stage);
+
+  // The run missions are scored from what the run already knows and paid on the spot. No tap to
+  // collect: they belong to the run, and a run you have to go and claim is a chore.
+  const sheet = runTally(stage, stars, wall, maxWall, kills,
+    run.level || 0, run.evos || 0, Object.keys(taken || {}).length, true);
+  const jobs = runJobs(data, stage).map((j) => ({
+    ...j,
+    at: progress(j.job, sheet),
+    need: j.job.need,
+    done: doneWith(j.job, sheet),
+    pays: pays(j.job, data.level || 1),
+  }));
+  let runGold = 0;
+  for (const j of jobs) if (j.done) runGold += j.pays.gold;
+  data.gold = (data.gold || 0) + runGold;
   if (data.stage < furthestStage(data)) data.stage = Math.min(furthestStage(data), stage + 1);
   save(data);
-  return { stars, had, beat, openedStage, gems, times, first: times === 0, ...account };
+  return {
+    stars, had, beat, openedStage, gems, times, first: times === 0,
+    jobs, runGold,
+    ...account,
+    gold: (account.gold || 0) + runGold,
+  };
 }
 
 export function record(data, stage, kills, taken = null, lift = 1) {

@@ -13,7 +13,7 @@ import {
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
-import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone } from '../src/meta.js';
+import { needFor, worth, goldFor, shardsFor, record, finish, toggle, tidy, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt, heroBonus, heroNext, buyHero, spin, openChest, buySpell, spellStep, levelOf, shardsOf, spellLevels, timesDone, mark, dailyJobs, claimDaily, runJobs } from '../src/meta.js';
 import {
   Wedges, amountAt, kindAt, Jackpot, wedgeFor, spellFor, unitOf, goldUnitOf, ShardUnit,
   Chests, ChestKinds, chestPrize, costOf, canOpen, Bulk, gemsHeld,
@@ -21,6 +21,9 @@ import {
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
+import {
+  Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
+} from '../src/missions.js';
 import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
 import {
   Families, FamilyKeys, Elements, Roles, takes, weakness, armour, familiesOn, StageFamilies,
@@ -491,6 +494,119 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   easy.t = 72; hard.t = 72;
   check('ama sıfırdan oynanamayacak kadar değil', pressure(hard) < pressure(easy) * 2.5,
     `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
+}
+
+// --- görevler -------------------------------------------------------------------------------------
+
+check('günde üç görev', DailyCount === 3 && dailyKeys('2026-10-14').length === 3);
+check('koşuda üç görev', RunCount === 3 && runKeys(1, 0).length === 3);
+check('her görevin adı iki dilde var',
+  [...Daily, ...Runly].every((j) => j.name && j.name[0] && j.name[1]));
+check('hiçbir görev kendini tekrar etmiyor',
+  new Set(dailyKeys('2026-10-14')).size === 3 && new Set(runKeys(1, 0)).size === 3);
+
+// BU KURAL EKONOMININ TEMELI. Gem'i sadece bir bolumu ILK kez gecmek uretiyor. Kosu gorevleri
+// her kosuda yenileniyor, yani gem verseydi ayni bolumu tekrar tekrar gecerek sonsuz gem
+// uretilebilirdi - ve gem'in tek ozelligi tam olarak bunun yapilamamasi.
+check('koşu görevleri gem vermiyor', Runly.every((j) => !j.gems),
+  Runly.filter((j) => j.gems).map((j) => j.key).join(', '));
+check('günlük görevler gem veriyor', Daily.every((j) => j.gems > 0));
+
+// Ayni gun ayni uc gorev; ertesi gun baska. Gun icinde degisseydi bir gorev bitirmek, yerine
+// baskasinin gelmesi demek olurdu.
+check('gün içinde görevler sabit',
+  dailyKeys('2026-10-14').join() === dailyKeys('2026-10-14').join());
+{
+  const days = ['2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18'];
+  const sets = days.map((d) => dailyKeys(d).join());
+  check('günden güne değişiyor', new Set(sets).size >= 4, sets.join(' | '));
+}
+check('koşudan koşuya değişiyor',
+  runKeys(1, 0).join() !== runKeys(1, 1).join(),
+  `${runKeys(1, 0).join()} vs ${runKeys(1, 1).join()}`);
+
+// Sayac: gun donunce hem ilerleme hem alinanlar sifirlaniyor.
+{
+  const d = tidy({ level: 5, loadout: ['bolt', 'fireball', 'frost', 'lightning'] });
+  mark(d, 'kills', 120, '2026-10-14');
+  mark(d, 'clears', 1, '2026-10-14');
+  check('sayaç biriktiriyor', d.tally.kills === 120 && d.tally.clears === 1);
+  mark(d, 'kills', 80, '2026-10-14');
+  check('aynı gün üstüne ekliyor', d.tally.kills === 200);
+  mark(d, 'kills', 10, '2026-10-15');
+  check('gün dönünce sayaç sıfırdan başlıyor', d.tally.kills === 10 && d.tally.clears === 0,
+    JSON.stringify(d.tally));
+
+  // yildiz ve derinlik toplam degil, en iyi
+  mark(d, 'stars', 3, '2026-10-15');
+  mark(d, 'stars', 1, '2026-10-15');
+  check('yıldız toplanmıyor, en iyisi tutuluyor', d.tally.stars === 3, String(d.tally.stars));
+  mark(d, 'deepest', 5, '2026-10-15');
+  mark(d, 'deepest', 2, '2026-10-15');
+  check('en derin bölüm geriye gitmiyor', d.tally.deepest === 5);
+}
+
+// Alma: bir kez, ve ancak bittiyse.
+{
+  const day = '2026-10-14';
+  const d = tidy({ level: 6, loadout: ['bolt', 'fireball', 'frost', 'lightning'] });
+  const first = dailyJobs(d, day)[0];
+  check('biten görev yoksa alınamıyor', !first.done && claimDaily(d, first.key, day) === null);
+
+  mark(d, first.job.of, first.job.need, day);
+  const ready = dailyJobs(d, day)[0];
+  check('koşullar sağlanınca bitiyor', ready.done && !ready.paid,
+    `${ready.at}/${ready.need}`);
+
+  const wasGems = d.gems, wasGold = d.gold;
+  const got = claimDaily(d, first.key, day);
+  check('alınca gem ve altın ödüyor',
+    got && got.gems > 0 && d.gems === wasGems + got.gems && d.gold === wasGold + got.gold,
+    JSON.stringify(got));
+  check('ikinci kez alınamıyor', claimDaily(d, first.key, day) === null);
+  check('alındı olarak işaretleniyor', dailyJobs(d, day)[0].paid === true);
+  check('olmayan görev alınamıyor', claimDaily(d, 'tarla', day) === null);
+
+  // gun donunce yeniden alinabilir hale geliyor
+  mark(d, 'kills', 1, '2026-10-15');
+  check('ertesi gün alınanlar sıfırlanıyor', (d.paid || []).length === 0);
+}
+
+// Ilerleme kendi tavanini asmiyor - cubugun ucundan tasan bir sayi, bitmis bir gorevin
+// bitmedigini soyler.
+{
+  const d = tidy({ level: 3 });
+  const day = '2026-10-14';
+  const job = dailyJobs(d, day)[0];
+  mark(d, job.job.of, job.job.need * 5, day);
+  const after = dailyJobs(d, day)[0];
+  check('ilerleme tavanda duruyor', after.at === after.need, `${after.at}/${after.need}`);
+}
+
+// Kosu gorevleri: kosunun kendi sayilarindan puanlaniyor ve kendiliginden odeniyor.
+{
+  const d = tidy({ level: 6, loadout: ['bolt', 'fireball', 'frost', 'lightning'] });
+  const asked = runJobs(d, 3).map((j) => j.key);
+  check('harita ile koşu aynı üçü soruyor',
+    asked.join() === runKeys(3, d.runs || 0).join(), asked.join());
+
+  const wasGold = d.gold;
+  const r = finish(d, 3, 100, 100, 400, { bolt: 8, fireball: 4, frost: 3, lightning: 2 },
+    { level: 24, evos: 3 });
+  check('koşu görevleri puanlandı', r.jobs && r.jobs.length === RunCount);
+  check('her biri bittiyse işaretli',
+    r.jobs.every((j) => typeof j.done === 'boolean'));
+  check('biten görevler altın ödedi', r.runGold > 0 && r.jobs.some((j) => j.done),
+    `${r.runGold} altın`);
+  check('ödenen altın bankaya yazıldı', d.gold >= wasGold + r.runGold);
+  check('koşu görevleri hiç gem ödemiyor',
+    r.jobs.every((j) => !j.pays.gems), 'gem farmlanabilir hâle gelirdi');
+
+  // bos bir kosu hicbir gorevi bitirmemeli
+  const e = tidy({ level: 6, loadout: ['bolt'] });
+  const weak = finish(e, 1, 1, 100, 0, { bolt: 0 }, { level: 1, evos: 0 });
+  check('hiçbir şey yapılmayan koşu her görevi bitirmiyor',
+    weak.jobs.some((j) => !j.done), JSON.stringify(weak.jobs.map((j) => j.done)));
 }
 
 // --- bölümler ve yerler --------------------------------------------------------------------------

@@ -100,6 +100,12 @@ export const UI = {
   chestSmall:   ['SMALL CHEST', 'KÜÇÜK SANDIK'],
   chestGreat:   ['GREAT CHEST', 'BÜYÜK SANDIK'],
   chestHolds:   ['and +{0} experience, +{1} gold', 've +{0} deneyim, +{1} altın'],
+  dailyTitle:   ['TODAY', 'BUGÜN'],
+  dailyTake:    ['TAKE', 'AL'],
+  dailyDone:    ['taken', 'alındı'],
+  runJobs:      ['THIS RUN', 'BU KOŞU'],
+  runJobsPaid:  ['+{0} gold from this run’s goals', 'bu koşunun hedeflerinden +{0} altın'],
+
   chestBulk:    ['{0}% off', '%{0} indirim'],
   gemsFirst:    ['+{0} GEMS — FIRST CLEAR', '+{0} GEM — İLK GEÇİŞ'],
   gemsAgain:    ['+{0} gems', '+{0} gem'],

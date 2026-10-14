@@ -3,7 +3,7 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, advance, click, take, investedIn, spawn } from './rules.js';
+import { begin, advance, click, take, investedIn, spawn, carrying } from './rules.js';
 import { frame, hitCard, cards, hitSpeed } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
@@ -139,7 +139,8 @@ function tick(now) {
       // `investedIn` is read here rather than inside meta, because what the run put into each
       // spell is the run's business and shards are the account's.
       show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills,
-        investedIn(state));
+        investedIn(state),
+        { level: state.level, evos: carrying(state).reduce((a, k) => a + state.kit[k].evos.length, 0) });
       sound.cleared();
     } else {
       sound.over();
@@ -263,6 +264,10 @@ function doMenu(hit) {
     sound.prize();
     return;
   }
+  if (hit.what === 'daily') {
+    if (meta.claimDaily(data, hit.key)) sound.prize();
+    return;
+  }
   if (hit.what === 'buySpell') {
     if (meta.buySpell(data, hit.key)) sound.levelled();
     return;
@@ -317,6 +322,7 @@ addEventListener('pointermove', (e) => {
       : hit.what === 'spellHalf' ? 'spellHalf:' + hit.key
       : hit.what === 'buySpell' ? 'buySpell:' + hit.key
       : hit.what === 'chest' ? `chest:${hit.key}:${hit.many}`
+      : hit.what === 'daily' ? 'daily:' + hit.key
       : hit.what === 'codexOpen' ? 'codexOpen:' + hit.key
       : hit.what;
     canvas.style.cursor = hit ? 'pointer' : 'default';
