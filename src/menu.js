@@ -22,7 +22,7 @@ import {
 } from './rewards.js';
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
-import { Kinds, BoostsPerTier, MostEvos } from './rules.js';
+import { Kinds, BoostsPerTier, MostEvos, HeraldCalls, ShadeKeeps } from './rules.js';
 
 const { Black, Pale } = Inks;
 
@@ -320,7 +320,10 @@ export function codexGrid(w, h, dpr = 1) {
 export function codexRows(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  const keys = ['walker', 'runner', 'brute', 'warden'];
+  // Read from the creature table rather than written out here. A hand-kept list goes out of step
+  // with the thing it describes the first time either changes - and it did, the moment two more
+  // bosses arrived and the codex went on saying there was one.
+  const keys = Object.keys(Kinds);
   const gap = 10 * U;
   const rw = Math.min(680 * U, w - 36 * U);
   const rh = Math.min(104 * U, (b.height - 80 * U - (keys.length - 1) * gap) / keys.length);
@@ -1245,6 +1248,19 @@ function spellsTab(ctx, data, w, h, U, show) {
   }
 }
 
+/**
+ * What a creature's entry says, with its own numbers filled in from the rules.
+ *
+ * The same principle as a spell card: the writing is generated from the thing it describes, so it
+ * cannot drift. The herald's entry had already drifted - it went on promising three runners after
+ * it had been cut to two.
+ */
+function about(key) {
+  if (key === 'herald') return say(UI.about_herald, HeraldCalls);
+  if (key === 'shade') return say(UI.about_shade, Math.round(ShadeKeeps * 100));
+  return say(UI['about_' + key]);
+}
+
 function codexTab(ctx, data, w, h, U, show) {
   const b = band(w, h, U);
   const ct = codexTabs(w, h, U);
@@ -1286,11 +1302,14 @@ function codexTab(ctx, data, w, h, U, show) {
       ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 9 * U); ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // The Warden is drawn smaller here than its size in the game would suggest: its horns
-      // reach further above its feet than anything else and were leaving the top of the row.
-      const mark = r.key === 'warden' ? Math.min(46, r.h * 0.46) : Math.min(58, r.h * 0.6);
-      creatureMark(ctx, r.key, r.x + 46 * U, r.y + r.h - 18 * U, mark * U, Black);
-      write(ctx, say(UI['foe_' + r.key]), r.x + 92 * U, r.y + 24 * U, 17 * U, 800, 'left');
+      // Bosses are drawn smaller here than their size in the game would suggest: horns, crowns
+      // and hoods reach further above the feet than anything else and were leaving the top of
+      // the row. Sized from the row too, because six creatures share the height four used to.
+      const mark = (k.boss ? Math.min(46, r.h * 0.46) : Math.min(58, r.h * 0.6)) * U;
+      creatureMark(ctx, r.key, r.x + 46 * U, r.y + r.h - 14 * U, mark, Black);
+      const nameAt = r.y + Math.min(24 * U, r.h * 0.26);
+      const nameSize = Math.min(17 * U, r.h * 0.24);
+      write(ctx, say(UI['foe_' + r.key]), r.x + 92 * U, nameAt, nameSize, 800, 'left');
 
       // the numbers, said in the same breath as the name
       const bits = [
@@ -1299,10 +1318,15 @@ function codexTab(ctx, data, w, h, U, show) {
         `${say(UI.statBite)} ${k.bite}`,
         `${say(UI.statXp)} ${k.xp}`,
       ].join('   ·   ');
-      fitWrite(ctx, bits, r.x + r.w - 16 * U, r.y + 24 * U, 10 * U, 600, 'right', Black, r.w - 220 * U);
+      fitWrite(ctx, bits, r.x + r.w - 16 * U, nameAt, 10 * U, 600, 'right', Black, r.w - 220 * U);
 
-      wrap(ctx, say(UI['about_' + r.key]), r.x + 92 * U + (r.w - 108 * U) / 2, r.y + r.h * 0.66,
-        r.w - 108 * U, 11 * U, 15 * U, Black);
+      // The description is centred in what is LEFT of the row under the name, not at a fraction
+      // of the whole row. `wrap` centres its block on the y it is given, so a four-line entry
+      // placed at a fixed fraction grew upwards into the name - which is exactly what the two
+      // new bosses, who have more to explain than the others, did.
+      const under = nameAt + nameSize * 0.7 + 4 * U;
+      wrap(ctx, about(r.key), r.x + 92 * U + (r.w - 108 * U) / 2, (under + r.y + r.h - 8 * U) / 2,
+        r.w - 108 * U, Math.min(11 * U, r.h * 0.16), Math.min(15 * U, r.h * 0.2), Black);
     }
   }
 

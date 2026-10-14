@@ -41,7 +41,37 @@ export const Kinds = {
   runner: { hp: 8, speed: 86, bite: 2, xp: 1, size: 0.84, sprint: 1.9 },
   brute:  { hp: 40, speed: 25, bite: 8, xp: 3, size: 1.12 },
   warden: { hp: 420, speed: 17, bite: 22, xp: 14, size: 2.5, boss: true },
+  herald: { hp: 460, speed: 27, bite: 13, xp: 14, size: 2.1, boss: true, calls: 5.5 },
+  shade:  { hp: 320, speed: 42, bite: 10, xp: 14, size: 1.9, boss: true, splits: true },
 };
+
+/**
+ * Which boss walks in, by stage.
+ *
+ * Three of them, taking turns, because stages go on for ever and one boss met for the sixteenth
+ * time is not a boss, it is a wall with a health bar. What makes each one different is what it
+ * DOES, not what its numbers are - a second sponge with more health would be the same fight.
+ *
+ *   warden  - slow, enormous, and hits the wall harder than anything else. A duel.
+ *   herald  - keeps calling runners in from where it stands. Ignore it and the field fills up.
+ *   shade   - quick and thin, and when it falls it comes apart into two of itself. It bites the
+ *             wall far more softly than the others: it reaches the wall in a third of the time
+ *             and then stands there twice, and at the warden's bite that left no stage it
+ *             guarded with a star on it.
+ */
+export const Bosses = ['warden', 'herald', 'shade'];
+
+/**
+ * The two numbers the codex has to say out loud.
+ *
+ * Named here rather than written into the description, because a description with a number typed
+ * into it is a description that lies the first time the number changes - and this one already
+ * had: it still said the herald called three in after it had been cut to two.
+ */
+export const HeraldCalls = 2;
+export const ShadeKeeps = 0.7;
+
+export const bossFor = (stage) => Bosses[(Math.max(1, Math.floor(stage)) - 1) % Bosses.length];
 
 export const SprintAt = 210;
 
@@ -250,6 +280,9 @@ export function spawn(s, kindKey = null, angle = null) {
     size: k.size,
     step: s.roll() * 6.28,
     hurt: 0, chill: 0, biteCool: 0,
+    calls: k.calls || 0,
+    callIn: k.calls || 0,
+    splits: !!k.splits,
   };
   s.foes.push(foe);
   return foe;
@@ -665,10 +698,10 @@ export function step(s, dt) {
 
   if (!s.boss && !s.bossDone && s.stageT >= StageWaves) {
     s.bossDone = true;
-    s.boss = spawn(s, 'warden');
+    s.boss = spawn(s, bossFor(s.stage));
     s.boss.hp *= 1 + (s.stage - 1) * 0.42;
     s.boss.maxHp = s.boss.hp;
-    s.events.push({ kind: 'boss', stage: s.stage });
+    s.events.push({ kind: 'boss', stage: s.stage, key: s.boss.key });
   }
 
   s.nextIn -= dt;
@@ -690,6 +723,20 @@ export function step(s, dt) {
       s.wall -= f.bite;
       s.events.push({ kind: 'bitten', amount: f.bite, a: f.a });
       if (s.wall <= 0) { s.wall = 0; s.phase = 'lost'; return s; }
+    }
+
+    // The herald's whole fight: it keeps calling, from where it stands, for as long as it lives.
+    // Killing it is not optional the way killing a sponge is - it is the only way to stop the
+    // field filling up behind everything else you are shooting at.
+    if (f.calls > 0 && f.hp > 0) {
+      f.callIn -= dt;
+      if (f.callIn <= 0) {
+        f.callIn = f.calls;
+        // Two, not three. Three was twenty extra runners over a boss fight, and the wall never
+        // came out of it whole - which quietly took three stars off the table from stage two on.
+        for (let n = 0; n < HeraldCalls; n++) spawn(s, 'runner', f.a + (n - (HeraldCalls - 1) / 2) * 0.44);
+        s.events.push({ kind: 'called', a: f.a });
+      }
     }
   }
 
@@ -813,16 +860,40 @@ export function step(s, dt) {
     if (s.fx[i].life <= 0) s.fx.splice(i, 1);
   }
 
+  // The shade: killed once, it is two of itself, each with half of what it had. Done here rather
+  // than wherever the damage landed, so every spell and every evolution splits it the same way.
+  for (const f of s.foes) {
+    if (f.hp > 0 || !f.splits) continue;
+    f.splits = false;
+    for (const side of [-1, 1]) {
+      // The halves come back at the rim, not where the shade fell. Killing it pushes it away and
+      // it has to walk in again - which is the fight, and is also what stops two of them standing
+      // at the wall chewing on it for the rest of the stage. With them reforming where they died,
+      // no stage the shade guarded could be finished with the wall whole.
+      const half = spawn(s, f.key, f.a + side * 0.3);
+      half.splits = false;
+      half.hp = half.maxHp = f.maxHp * ShadeKeeps;
+      half.size = f.size * 0.76;
+      half.bite = f.bite * 0.6;
+      half.xp = Math.round(f.xp * 0.5);
+    }
+    s.events.push({ kind: 'split', a: f.a, r: f.r });
+  }
+
   s.foes = s.foes.filter((f) => f.hp > 0);
   for (const id of Object.keys(s.bladeHits)) if (s.bladeHits[id] < s.t - 2) delete s.bladeHits[id];
 
-  // The boss is the end of the stage, and the end of the run. A run used to roll straight into
-  // the next stage; now a stage is a thing you choose from the menu, finish, and are scored on.
-  if (s.boss && s.boss.hp <= 0) {
-    s.boss = null;
-    s.phase = 'done';
-    s.events.push({ kind: 'cleared', stage: s.stage });
-    return s;
+  // The boss is the end of the stage, and the end of the run. Written as "no boss left standing"
+  // rather than "the boss is dead", because the shade dies into two more of itself and a stage
+  // that ended on its first death would end halfway through its own fight.
+  if (s.bossDone) {
+    const standing = s.foes.filter((f) => f.boss);
+    s.boss = standing[0] || null;
+    if (!standing.length) {
+      s.phase = 'done';
+      s.events.push({ kind: 'cleared', stage: s.stage });
+      return s;
+    }
   }
 
   if (s.xp >= s.need) {

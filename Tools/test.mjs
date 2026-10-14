@@ -7,9 +7,9 @@
 
 import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
-  tierDue, evolutionsFor, boostsFor,
+  tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
-  spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure,
+  spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure, Reach,
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
@@ -21,6 +21,7 @@ import {
   today, canSpin, state as rewardState,
 } from '../src/rewards.js';
 import { restFor, wedgeUnder } from '../src/menu.js';
+import { kindsOn } from '../src/stages.js';
 import {
   Steps as SpellSteps, Lift, liftAt, Line as SpellLine, stepOf, canStep,
   wholeGold, wholeShards,
@@ -488,6 +489,110 @@ check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'me
   check('ama sıfırdan oynanamayacak kadar değil', pressure(hard) < pressure(easy) * 2.5,
     `${pressure(easy).toFixed(2)} -> ${pressure(hard).toFixed(2)}`);
 }
+
+// --- patronlar ------------------------------------------------------------------------------------
+
+check('üç patron var', Bosses.length === 3, Bosses.join(', '));
+check('hepsi patron işaretli', Bosses.every((k) => Kinds[k] && Kinds[k].boss === true));
+check('patronlar sırayla geliyor',
+  [1, 2, 3, 4, 5, 6].map(bossFor).join(',') === [...Bosses, ...Bosses].join(','),
+  [1, 2, 3, 4, 5, 6].map(bossFor).join(','));
+check('her patron sıradan düşmandan çok daha dayanıklı',
+  Bosses.every((k) => Kinds[k].hp > Kinds.brute.hp * 5));
+
+// Farkları istatistik değil DAVRANIŞ olmalı. İkinci bir sünger, birincinin aynısıdır.
+check('her patronun kendi davranışı var',
+  !!Kinds.herald.calls && !!Kinds.shade.splits && !Kinds.warden.calls && !Kinds.warden.splits);
+
+// Çağırıcı: yaşadığı sürece çağırıyor, ölünce susuyor.
+{
+  const s = begin(7, ['bolt'], 2);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  check('2. bölümün patronu çağırıcı', s.boss && s.boss.key === 'herald', s.boss && s.boss.key);
+  s.boss.hp = 1e9;                              // ölmesin, sadece çağırışını ölçelim
+  const before = s.foes.length;
+  for (let i = 0; i < 60 * 12; i++) step(s, 1 / 60);
+  check('çağırıcı yaşadıkça kalabalık büyüyor', s.foes.length > before,
+    `${before} -> ${s.foes.length}`);
+
+  // ölünce çağırmayı kesiyor
+  const quiet = begin(7, ['bolt'], 2);
+  quiet.stageT = StageWaves;
+  step(quiet, 1 / 60);
+  const called = quiet.events.filter((e) => e.kind === 'called').length;
+  check('daha çağırmaya başlamadı', called === 0);
+}
+
+// Gölge: bir kez öldürmek bitirmiyor.
+{
+  const s = begin(11, ['bolt'], 3);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  check('3. bölümün patronu gölge', s.boss && s.boss.key === 'shade', s.boss && s.boss.key);
+  const was = s.boss.maxHp;
+  s.boss.hp = 0;
+  step(s, 1 / 60);
+  check('bir kez öldürmek bölümü bitirmiyor', s.phase === 'playing', s.phase);
+  const halves = s.foes.filter((f) => f.boss);
+  check('ikiye ayrılıyor', halves.length === 2, String(halves.length));
+  check('yarılar daha zayıf', halves.every((h) => h.maxHp < was && h.maxHp > 0),
+    halves.map((h) => Math.round(h.maxHp)).join('/'));
+  check('yarılar kenarda beliriyor', halves.every((h) => h.r > Reach * 2),
+    halves.map((h) => Math.round(h.r)).join('/'));
+  check('yarılar bir daha bölünmüyor', halves.every((h) => h.splits === false));
+
+  for (const h of halves) h.hp = 0;
+  step(s, 1 / 60);
+  check('ikisi de ölünce bölüm bitiyor', s.phase === 'done', s.phase);
+}
+
+// Gardiyan bölünmüyor, çağırmıyor - duello olarak kalıyor.
+{
+  const s = begin(5, ['bolt'], 1);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  check('1. bölümün patronu gardiyan', s.boss && s.boss.key === 'warden');
+  s.boss.hp = 0;
+  step(s, 1 / 60);
+  check('gardiyan bir kerede bitiyor', s.phase === 'done');
+}
+
+// Külliyat her bölümün gerçek patronunu yazmalı; elle tutulan bir liste ilk değişiklikte yalan olur.
+check('külliyat doğru patronu gösteriyor',
+  [1, 2, 3, 7].every((n) => kindsOn(n).includes(bossFor(n))),
+  [1, 2, 3, 7].map((n) => `${n}: ${kindsOn(n).join('/')}`).join(' · '));
+// Külliyat kurallardan okumalı. Açıklamanın içine elle yazılmış bir sayı, sayı değiştiği gün
+// yalan söylemeye başlar - ve başlamıştı: çağırıcı ikiye düşürüldükten sonra bile "üç" diyordu.
+{
+  const s = begin(3, ['bolt'], 2);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  s.boss.hp = 1e9;
+  const before = s.foes.length;
+  const until = s.t + Kinds.herald.calls + 0.2;
+  while (s.t < until) step(s, 1 / 60);
+  const extra = s.foes.filter((f) => f.key === 'runner').length
+    - before + 1;                                 // patronun kendisi sayılmasın
+  check('çağırıcı tam söylediği kadar çağırıyor', extra >= HeraldCalls,
+    `${extra} geldi, söz ${HeraldCalls}`);
+  check('açıklamadaki sayı kuraldan geliyor',
+    say(UI.about_herald, HeraldCalls).includes(String(HeraldCalls)));
+}
+check('gölgenin açıklaması gerçek oranı söylüyor', (() => {
+  const s = begin(11, ['bolt'], 3);
+  s.stageT = StageWaves;
+  step(s, 1 / 60);
+  const was = s.boss.maxHp;
+  s.boss.hp = 0;
+  step(s, 1 / 60);
+  const half = s.foes.find((f) => f.boss);
+  return Math.abs(half.maxHp / was - ShadeKeeps) < 1e-9;
+})(), `söz %${Math.round(ShadeKeeps * 100)}`);
+
+check('her patronun adı ve açıklaması var',
+  Bosses.every((k) => UI['foe_' + k] && UI['about_' + k]),
+  Bosses.filter((k) => !UI['about_' + k]).join(','));
 
 // --- yıldızlar ----------------------------------------------------------------------------------
 
@@ -1254,10 +1359,13 @@ for (const stage of [3, 5]) {
   if (stage === 5) {
     check('kalıcı seviye derin bölümlerde hissediliyor', pc(lvl) > pc(off),
       `bölüm 5: %${pc(off)} -> %${pc(lvl)}`);
-    // Her şey açıkken bile 5. bölüm garanti olmamalı. Olursa, oyunun sonu bir duvar değil bir
-    // kapı olur ve o kapıdan geçtikten sonra oynanacak bir şey kalmaz.
-    check('her şey açıkken bile en derin bölüm garanti değil', pc(both) < 100,
-      `bölüm 5 tam donanımlı: %${pc(both)}`);
+    // Bu kontrol eskiden "5. bölüm garanti olmamalı" diyordu - derin bölüm ölçümü eklenmeden
+    // önce test edilen en derin bölüm 5'ti. Artık değil: "hâlâ bir duvar var mı" sorusu aşağıda,
+    // 8/12/16. bölümlerde soruluyor. Burada sorulacak doğru soru bunun tersi: merdiveni ve
+    // seviyeleri sonuna kadar alan oyuncu, bugün zar zor geçtiği bölümü rahatça geçebilmeli -
+    // yoksa yüzlerce koşuluk yükseltmenin karşılığı görünmez.
+    check('tam donanım bugün zor olan bölümü rahat kılıyor', pc(both) > 90,
+      `bölüm 5: çıplak %${pc(off)} -> tam donanım %${pc(both)}`);
   }
 }
 

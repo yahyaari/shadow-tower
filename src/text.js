@@ -140,6 +140,8 @@ export const UI = {
   foe_runner:   ['Runner', 'Koşucu'],
   foe_brute:    ['Brute', 'Gladyatör'],
   foe_warden:   ['Warden', 'Gardiyan'],
+  foe_herald:   ['Herald', 'Çağırıcı'],
+  foe_shade:    ['Shade', 'Gölge'],
 
   about_walker: ['Comes straight on and keeps coming. There is nothing special about one of them, and there is never one of them.',
                  'Dümdüz gelir ve gelmeye devam eder. Tek başına özel bir şeyi yok, zaten hiç tek başına gelmiyor.'],
@@ -149,6 +151,10 @@ export const UI = {
                  'Yavaş, ve durdurmak epey şey ister. Sen onu durdururken geri kalan yürümeye devam ediyor.'],
   about_warden: ['The end of a stage. The crowd thins while it walks in, so it is a duel — and it hits the wall harder than anything else does.',
                  'Bölümün sonu. O gelirken kalabalık seyreliyor, yani bu bir düello — ve duvara her şeyden sert vuruyor.'],
+  about_herald: ['Thinner than the Warden and in much less of a hurry to reach you, because it does not need to: every few seconds it calls {0} more in from where it stands. Killing it is the only way to stop them.',
+                 'Gardiyan’dan ince ve sana ulaşmak için acelesi yok, çünkü ihtiyacı yok: birkaç saniyede bir durduğu yerden {0} tane daha çağırıyor. Onu öldürmek, gelenleri durdurmanın tek yolu.'],
+  about_shade:  ['Quick, and thinner still. Killing it does not finish it — it comes apart into two of itself at the rim, each with {0}% of what it had, and both of them walk back in.',
+                 'Hızlı, ve daha da ince. Öldürmek onu bitirmiyor — kenarda ikiye ayrılıyor, her biri eskisinin %{0}’i kadar, ve ikisi de yeniden yürümeye başlıyor.'],
 
   settings:     ['SETTINGS', 'AYARLAR'],
   language:     ['LANGUAGE', 'DİL'],

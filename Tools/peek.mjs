@@ -265,6 +265,34 @@ for (let i = 0; i < 120; i++) {
 await sleep(900);
 await screenshot('patron');
 
+// Uc patron, uc ayri silüet. Hepsini ayri ayri cagiriyoruz: bir patronu digerinden ayiran sey
+// once nasil gorundugu, ve ucu de ayni ciziliyorsa cesitlilik diye bir sey yok.
+for (const [stage, name] of [[1, 'patron_gardiyan'], [2, 'patron_cagirici'], [3, 'patron_golge']]) {
+  await evaluate(`(() => {
+    const m = window.ShadowTower, s = m.state;
+    s.stage = ${stage};
+    s.foes.length = 0;
+    s.boss = null; s.bossDone = false; s.stageT = 1e9;
+    s.wall = s.maxWall * 0.8;
+    return true;
+  })()`);
+  for (let i = 0; i < 80; i++) {
+    if (await evaluate('!!window.ShadowTower.state.boss')) break;
+    await sleep(80);
+  }
+  await sleep(700);
+  await screenshot(name);
+}
+
+// Golge olunce ikiye ayrilmali - bir kez oldurmek bitirmiyor.
+await evaluate(`(() => {
+  const s = window.ShadowTower.state;
+  if (s.boss && s.boss.key === 'shade') s.boss.hp = 0;
+  return true;
+})()`);
+await sleep(600);
+await screenshot('patron_golge_ikiye');
+
 // Bolum tamamlandi: uc ayri yildiz durumu
 for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.96], ['bitti_1yildiz', 0.7]]) {
   await evaluate(`(() => {

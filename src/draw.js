@@ -290,6 +290,44 @@ if (key === 'warden') {
   ctx.moveTo(-30, -58); ctx.lineTo(-36 - swing * 5, -14);
   ctx.moveTo(30, -58); ctx.lineTo(36 + swing * 5, -14);
   ctx.stroke();
+} else if (key === 'herald') {
+  // Tall and thin where the warden is broad: a raised arm, a long robe, and no legs showing - it
+  // should read as something that summons rather than something that swings.
+  ctx.beginPath();
+  ctx.moveTo(-26, 2); ctx.lineTo(-13, -56); ctx.lineTo(13, -56); ctx.lineTo(26, 2);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -68, 10, 0, Math.PI * 2); ctx.fill();
+  // the crown, three spikes
+  for (const hx of [-1, 0, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(hx * 9 - 3, -76); ctx.lineTo(hx * 11, -96); ctx.lineTo(hx * 9 + 3, -76);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(-14, -52); ctx.lineTo(-30 - swing * 4, -86);
+  ctx.moveTo(14, -52); ctx.lineTo(28 + swing * 4, -24);
+  ctx.stroke();
+  // what the raised hand is holding up
+  ctx.beginPath(); ctx.arc(-32 - swing * 4, -94, 7, 0, Math.PI * 2); ctx.fill();
+
+} else if (key === 'shade') {
+  // Barely a body: a hood, a torn hem, and arms that trail. The one that comes apart should look
+  // like it is already half apart.
+  ctx.beginPath();
+  ctx.moveTo(-19, 2);
+  ctx.lineTo(-12, 8); ctx.lineTo(-6, 0); ctx.lineTo(0, 9); ctx.lineTo(6, 0);
+  ctx.lineTo(12, 8); ctx.lineTo(19, 2);
+  ctx.lineTo(16, -44);
+  ctx.quadraticCurveTo(0, -62, -16, -44);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -52, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-16, -40); ctx.lineTo(-30 - swing * 6, -8);
+  ctx.moveTo(16, -40); ctx.lineTo(30 + swing * 6, -8);
+  ctx.stroke();
+
 } else if (key === 'brute') {
   ctx.lineWidth = 9;
   ctx.beginPath();
@@ -380,7 +418,7 @@ function figure(ctx, S, f) {
   ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
 
-  body(ctx, f.key === "warden" || f.boss ? "warden" : f.key, swing);
+  body(ctx, f.key, swing);
 
   ctx.restore();
 }
@@ -803,15 +841,26 @@ function panel(ctx, state, w, h, U, show) {
   // The stage, and how far through its waves you are. The boss replaces both when it arrives,
   // because at that point there is only one thing worth knowing.
   if (state.boss) {
-    write(ctx, say(UI.warden), w / 2, 30 * U, 15 * U, 800, 'center');
+    write(ctx, say(UI['foe_' + state.boss.key] || UI.warden).toUpperCase(),
+      w / 2, 30 * U, 15 * U, 800, 'center');
+
+    // One bar per boss still standing. With a single bar, killing the shade looked like nothing
+    // had happened: the bar simply refilled, because `state.boss` had become one of its halves.
+    // Two bars say what actually happened without a word.
+    const standing = state.foes.filter((f) => f.boss && f.hp > 0);
     const bossW = Math.min(460 * U, w * 0.46);
-    ctx.fillStyle = 'rgba(13,12,11,0.15)';
-    ctx.fillRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
-    ctx.fillStyle = Black;
-    ctx.fillRect(w / 2 - bossW / 2, 44 * U, bossW * Math.max(0, state.boss.hp) / state.boss.maxHp, 14 * U);
-    ctx.strokeStyle = Black;
-    ctx.lineWidth = 2 * U;
-    ctx.strokeRect(w / 2 - bossW / 2, 44 * U, bossW, 14 * U);
+    const gap = 6 * U;
+    const each = (bossW - gap * (standing.length - 1)) / Math.max(1, standing.length);
+    standing.forEach((f, i) => {
+      const x = w / 2 - bossW / 2 + i * (each + gap);
+      ctx.fillStyle = 'rgba(13,12,11,0.15)';
+      ctx.fillRect(x, 44 * U, each, 14 * U);
+      ctx.fillStyle = Black;
+      ctx.fillRect(x, 44 * U, each * Math.max(0, f.hp) / f.maxHp, 14 * U);
+      ctx.strokeStyle = Black;
+      ctx.lineWidth = 2 * U;
+      ctx.strokeRect(x, 44 * U, each, 14 * U);
+    });
   } else {
     write(ctx, say(UI.stage, state.stage), w / 2, 32 * U, 24 * U, 800, 'center');
     const onW = Math.min(300 * U, w * 0.3);

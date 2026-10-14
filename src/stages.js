@@ -1,4 +1,4 @@
-// The stages: what each one is called and what it looks like from the menu.
+// The stages: what each one is called, what it looks like, and which boss waits at the end.
 //
 // Data only. The menu draws the picture from `look`, which names a kind of place rather than a
 // file - there is no artwork in this game and there is not going to be any, so a stage portrait
@@ -6,6 +6,8 @@
 //
 // Past the end of the list the names start again with a number on them, so there is always
 // something to call stage forty.
+
+import { bossFor } from './rules.js';
 
 export const Stages = [
   {
@@ -61,6 +63,6 @@ export function kindsOn(stage) {
   // the pressure a stage reaches by the time its boss arrives
   const peak = (1 + (72 - 25) / 56) * (1 + (stage - 1) * 0.2);
   if (peak > 1.5) out.push('brute');
-  out.push('warden');
+  out.push(bossFor(stage));
   return out;
 }

@@ -4,26 +4,23 @@
 >
 > Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
 > Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **285 kontrol geçiyor**.
+> `node Tools/test.mjs` → **307 kontrol geçiyor**.
 >
-> **Dört para birimi:** deneyim (kahraman peteği), altın (ortak — kaç büyüyü çıkarabilirsin),
-> parça (büyüye özel — hangi büyüyü çıkarırsın), **gem** (sandıklar).
+> **Üç patron var artık**, sırayla geliyorlar: Gardiyan (düello), Çağırıcı (durduğu yerden
+> koşucu çağırır), Gölge (ölünce kenarda ikiye ayrılır). Farkları istatistik değil davranış.
 >
-> **Gem farmlanamaz.** Sadece bir bölümü İLK kez geçmek üretir: ilk geçiş tam, ikinci %25,
-> üçüncü %10, sonrası sıfır. Diğer ödüller de tekrarda düşer ama **%50'de taban** yapar —
-> yoksa bir bölümde takılan oyuncunun güçlenme yolu tamamen kapanırdı.
->
-> **Ödüller sekmesi kaydırmalı:** üstte çark, altında iki sandık. Küçük 100 gem, büyük 250 gem;
-> ikisinde de 1x ve 10x var, 10x dokuz tane fiyatına (%10 indirim).
+> **Dört para birimi:** deneyim (kahraman peteği), altın (ortak), parça (büyüye özel), gem
+> (sandıklar). **Gem farmlanamaz** — sadece bir bölümü ilk kez geçmek üretir.
 >
 > **Sıradaki iş — hiçbiri seçilmedi:**
 > 1. **Gerçek parmakla oynamak.** Bütün denge hâlâ bot ölçümü. Kullanıcı daha oynamadı.
 > 2. **Reklam.** CrazyGames SDK'sı gerekiyor. Doğal yeri: fazladan bir çark çevirme hakkı.
 > 3. **CrazyGames hazırlığı.** SDK, kapak görseli, tanıtım videosu.
+> 4. **Müzik.** Ses efektleri var, müzik yok.
 >
 > **Kullanıcının cevaplamadığı sorular:** kahraman basamak fiyatları; bölüm uzunluğu (~1:45);
-> gem temposu doğru mu (ölçüm: küçük sandık 3., büyük 5., 10x küçük 10., 10x büyük 16. bölümde);
-> tekrar tabanının %50 olması doğru mu.
+> gem temposu; yeni patronlar nasıl hissettiriyor; 3. ve 5. bölümde üç yıldız neredeyse imkânsız
+> (Çağırıcı ve Gölge duvarı daha çok yiyor) — bu kabul edilebilir mi?
 >
 > **Hiç yapılmamış olanlar:** müzik, CrazyGames SDK, kapak görseli, tanıtım videosu, büyülerin
 > birleşip yeni bir büyü doğurması.
@@ -113,6 +110,45 @@ isim var (`Uğursuz Orman`, `Küllü Ova`, `Kırık Yol`…), sonrası numaralan
 
 **Bölümde hangi düşmanların olduğu elle yazılmıyor**, dalganın kullandığı kuraldan okunuyor
 (`kindsOn`). Elle tutulan bir liste, ikisinden biri değişince ilk anda yanlışa düşer.
+
+## Üç patron
+
+Bölümler sonsuza kadar gidiyor; tek bir patron, on altıncı kez görüldüğünde patron değil, can
+çubuğu olan bir duvardır. Üçü sırayla geliyor ve **farkları istatistik değil davranış** — ikinci
+bir sünger, birincinin aynısı olurdu.
+
+| | nerede | ne yapar |
+| --- | --- | --- |
+| **Gardiyan** | 1, 4, 7… | yavaş, kocaman, duvara her şeyden sert vurur. Düello. |
+| **Çağırıcı** | 2, 5, 8… | durduğu yerden sürekli koşucu çağırır. Görmezden gelirsen alan dolar. |
+| **Gölge** | 3, 6, 9… | hızlı ve ince; ölünce **kenarda** ikiye ayrılır ve ikisi de yeniden yürür. |
+
+Gölge'nin yarıları öldüğü yerde değil kenarda beliriyor: öldürmek onu **geri itiyor**. İlk hâlinde
+olduğu yerde doğuyorlardı ve iki tanesi duvarın dibinde oturup kemiriyordu — o yüzden Gölge'nin
+beklediği hiçbir bölüm tam canla bitirilemiyordu.
+
+Üst bardaki can çubuğu artık **yaşayan patron başına** bir tane. Tek çubukla Gölge'yi öldürmek
+hiçbir şey olmamış gibi görünüyordu: çubuk basitçe yeniden doluyordu, çünkü `state.boss` artık
+yarılardan biriydi.
+
+### Dengelemesi üç tur sürdü
+
+1. İlk hâlinde yeni patronlar oyunu **kolaylaştırdı** (5. bölüm %13 → %20) ve tek büyü dört
+   büyüyü geçti. Sebep: canları Gardiyan'ın 420'sinden düşüktü. Davranış farkı indirimle gelmemeli.
+2. Canları yükseltince 3. ve 5. bölümde **hiç üç yıldız kalmadı**. Çağırıcı saniyede üç koşucu
+   çağırıyordu (bir patron dövüşünde ~20 fazladan gövde) ve Gölge yarılarıyla duvarda kamp
+   kuruyordu.
+3. Çağırıcı ikiye indi, Gölge kenarda doğar oldu. Son hâli, eski eğriye neredeyse birebir oturdu:
+   %88 / %70 / %45 / %28 / %13 (eskisi %88 / %65 / %43 / %28 / %13).
+
+### Külliyat kuraldan okuyor
+
+Canavar listesi elle yazılı bir diziydi (`['walker','runner','brute','warden']`) ve iki yeni
+patron gelince yalan söylemeye başladı. Artık `Kinds`'tan türetiliyor.
+
+Açıklamalardaki sayılar da öyle: Çağırıcı'nın metni "üç tane çağırır" diyordu, ben ikiye
+indirdikten sonra bile. Sayılar artık `HeraldCalls` ve `ShadeKeeps`'ten geliyor ve test
+açıklamanın gerçekten olanı söylediğini doğruluyor — kartlarda zaten uyguladığım kural.
 
 ## Bölümler ve yıldızlar
 
@@ -317,7 +353,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/draw.js` | Görünen her şey + `cards()`, `tiles()` (fare de onları okuyor). |
 | `src/sound.js` | Dosyasız ses. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını sürer. |
-| `Tools/test.mjs` | 285 kontrol + bot. |
+| `Tools/test.mjs` | 307 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
@@ -464,7 +500,7 @@ kondu: hiçbir büyü saniyede üçten fazla ateşleyemez, kendisine ne kadar ya
 
 - Müzik yok (ses efektleri var).
 - Büyüler birleşip **yeni bir büyü** doğurmuyor; dönüşüm bir etki ödünç alıyor.
-- Tek arena, tek patron tipi.
+- Tek arena (patron artık üç tane).
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
 - Yıldızlar hiçbir şey satın almıyor; sadece bir geçişin kaç gem getireceğini belirliyorlar.
 - Gerçek parmakla oynanmadı.
