@@ -14,7 +14,7 @@ import {
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
 import {
-  needFor, furthestStage, starsAt, totalStars, heroNext, heroBonus, spellStep, levelOf, shardsOf,
+  needFor, furthestStage, starsAt, heroNext, heroBonus, spellStep, levelOf, shardsOf,
   dailyJobs, runJobs, week, feats, adsLeft,
 } from './meta.js';
 import { News } from './news.js';
@@ -74,9 +74,10 @@ export function topBand(w, h, dpr = 1) {
     avatar: { x: pad, y: pad, w: av, h: av },
     textX: pad + av + 13 * U,
     gear,
-    // the star total sits left of the gear, behind a hairline that separates the two
-    rule: gear.x - 16 * U,
-    starAt: gear.x - 28 * U,
+    // The experience bar runs to the gear now. The star total used to sit here with a hairline
+    // beside it; a total that opens nothing and buys nothing is a number carried on every screen
+    // for no reason, so it went and the bar got the room.
+    barEnd: gear.x - 18 * U,
   };
 }
 
@@ -2783,15 +2784,8 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
       keepMark(ctx, a.x + a.w / 2, a.y + a.h / 2, a.h * 0.62, Pale, Black);
     }
 
-    // The star group is measured BEFORE the bar is given its width, because the bar is what has
-    // to give way. Sized first and the star drawn afterwards, the two shared twenty-four pixels
-    // and the count sat on the end of the bar - which is how a player found it.
-    const count = String(totalStars(data));
-    ctx.font = `800 ${15 * U}px ${Face}`;
-    const starLeft = t.starAt - ctx.measureText(count).width - 18 * U - 9 * U;
-
     const need = needFor(data.level);
-    const barW = Math.max(60 * U, Math.min(starLeft - t.textX - 16 * U, 300 * U));
+    const barW = Math.max(60 * U, t.barEnd - t.textX);
     write(ctx, say(UI.level, data.level), t.textX, t.box.h * 0.32, 15 * U, 800, 'left', Pale);
 
     // The experience bar lives on the band now, so its track has to be a lightened black rather
@@ -2802,19 +2796,6 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
     ctx.fillRect(t.textX, barY, barW, 7 * U);
     ctx.fillStyle = Pale;
     ctx.fillRect(t.textX, barY, barW * Math.max(0, Math.min(1, data.xp / need)), 7 * U);
-
-    // the star total, then a hairline, then the gear: three things, said to be three
-    write(ctx, count, t.starAt, t.box.h / 2, 15 * U, 800, 'right', Pale);
-    star(ctx, starLeft + 9 * U, t.box.h / 2, 9 * U, true, Pale);
-
-    ctx.strokeStyle = Pale;
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 1.4 * U;
-    ctx.beginPath();
-    ctx.moveTo(t.rule, t.box.h * 0.28);
-    ctx.lineTo(t.rule, t.box.h * 0.72);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
 
     gearMark(ctx, t.gear, U, Pale, show.overMenu === 'openSettings');
 

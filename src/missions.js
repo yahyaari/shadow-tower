@@ -44,19 +44,22 @@ export const Daily = [
  * Measured from what a finished run already knows, so none of this reaches into the fight: the
  * rules go on not knowing missions exist.
  */
+// Her sayi BES DAKIKALIK bir kosuya gore. Bunlar 72 saniyelik bir bolume gore secilmisti -
+// 150 oldurme, 18. seviye - ve bes dakikada bot zaten 800 olduruyor, 35. seviyeye cikiyordu.
+// Bir kosuda ucunun de kendiliginden tamamlandigi bir hedef listesi, hedef listesi degildir.
 export const Runly = [
-  { key: 'kills', of: 'kills', need: 150,
-    name: ['150 down in one run', 'Tek koşuda 150 düşman'], gold: 0.5 },
-  { key: 'kills2', of: 'kills', need: 260,
-    name: ['260 down in one run', 'Tek koşuda 260 düşman'], gold: 0.9 },
+  { key: 'kills', of: 'kills', need: 600,
+    name: ['600 down in one run', 'Tek koşuda 600 düşman'], gold: 0.5 },
+  { key: 'kills2', of: 'kills', need: 1100,
+    name: ['1100 down in one run', 'Tek koşuda 1100 düşman'], gold: 0.9 },
   { key: 'wall', of: 'wall', need: 90,
     name: ['Finish with the wall over 90%', 'Duvar %90 üstündeyken bitir'], gold: 0.8 },
-  { key: 'evos', of: 'evos', need: 2,
-    name: ['Take two tier-ups', 'İki dönüşüm al'], gold: 0.7 },
-  { key: 'level', of: 'level', need: 18,
-    name: ['Reach level 18 in a run', 'Bir koşuda 18. seviyeye çık'], gold: 0.7 },
+  { key: 'evos', of: 'evos', need: 5,
+    name: ['Take five tier-ups', 'Beş dönüşüm al'], gold: 0.7 },
+  { key: 'level', of: 'level', need: 38,
+    name: ['Reach level 38 in a run', 'Bir koşuda 38. seviyeye çık'], gold: 0.7 },
   { key: 'full', of: 'carried', need: 4,
-    name: ['Cast all four of your spells', 'Dört büyünün dördünü de ateşle'], gold: 0.6 },
+    name: ['Cast four spells at once', 'Aynı anda dört büyü ateşle'], gold: 0.6 },
   { key: 'clear', of: 'cleared', need: 1,
     name: ['Finish the stage', 'Bölümü bitir'], gold: 0.5 },
 ];

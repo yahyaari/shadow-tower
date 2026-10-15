@@ -41,6 +41,9 @@ function fresh() {
     // Which panel is open over the field, if any: 'menu' or 'cards'. Also the pause, because the
     // panel and the pause are the same thing.
     paused: null,
+    // Which speeds this run may be played at. Filled in by `start`; one alone until a stage has
+    // been cleared once, and all three after an advert.
+    speedsOpen: [1],
     // Settings as the run screen needs to read them. `draw` has no business importing the sound,
     // and the pause menu has to say whether it is on.
     muted: false, music: true,
@@ -66,6 +69,13 @@ function start() {
   music.start('run', Date.now());
   show = fresh();
   show.hint = (data.runs || 0) < 2;
+  // Which speeds this stage allows, read once at the start and kept for the run. A stage you
+  // have never finished is played at one; a stage you are repeating opens one and a half; an
+  // advert opens all three. Saved choice is clamped, or a stage would open at a speed it does
+  // not allow simply because the last one did.
+  show.speedsOpen = meta.speedsFor(data, data.stage);
+  show.speed = meta.speedAllowed(data, data.stage, data.speed);
+  data.speed = show.speed;
   screen = 'run';
 }
 
@@ -475,7 +485,7 @@ addEventListener('pointerdown', (e) => {
   // tap counts as a cast.
   if (state.phase === 'playing') {
     const pace = hitSpeed(canvas.width, canvas.height, p.x, p.y, dpr);
-    if (pace) { data.speed = pace; show.speed = pace; meta.save(data); return; }
+    if (pace) { takeSpeed(pace); return; }
     const btn = hitRun(canvas.width, canvas.height, p.x, p.y, dpr);
     if (btn) { show.paused = btn; return; }
   }
@@ -497,6 +507,30 @@ addEventListener('pointerdown', (e) => {
   click(state);
   show.hint = false;
 }, { passive: false });
+
+/**
+ * A press on one of the speed pills.
+ *
+ * A pill the stage does not allow is not dead - it is the advert. Watched through, every speed
+ * opens for the rest of this run, which is the one thing an advert sells here that is worth
+ * buying: the five minutes you have already spent once.
+ */
+function takeSpeed(pace) {
+  if ((show.speedsOpen || [1]).includes(pace)) {
+    show.speed = pace;
+    data.speed = pace;
+    meta.save(data);
+    return;
+  }
+  if (!ads.ready() || meta.adsLeft(data, 'speed') <= 0) { show.adMissing = performance.now(); return; }
+  ads.show().then((watched) => {
+    if (!watched || !meta.useAd(data, 'speed')) { show.adMissing = performance.now(); return; }
+    show.speedsOpen = meta.speedsFor(data, state.stage, true);
+    show.speed = pace;
+    data.speed = pace;
+    meta.save(data);
+  });
+}
 
 /**
  * A row of the pause menu.

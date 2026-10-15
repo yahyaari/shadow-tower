@@ -194,6 +194,13 @@ await set(`const m = window.ShadowTower; m.start();
   s.kit.frost = { tier: 2, taken: 6, boosts: { deep: 2 }, evos: [] };
   for (const k of ['fireball','frost']) { s.cools[k] = 0.4; if (!s.loadout.includes(k)) s.loadout.push(k); }
   s.passives = { mend: 3 };
+  // Birlesme ve muhurlu buyu: sahanin EN KALABALIK hali. "spent" yazisinin seviye noktalarina
+  // bindigi, ancak bir kosu ayni anda dort buyu ve bir birlesme tutabildiginde gorundu.
+  s.kit.tempest = { tier: 2, taken: 7, boosts: {}, evos: [] };
+  s.cools.tempest = 0.5;
+  if (!s.loadout.includes('tempest')) s.loadout.push('tempest');
+  s.sealed = ['fireball', 'lightning'];
+  s.fused = ['tempest'];
   s.phase = 'playing'; s.wall = s.maxWall * 0.6; m.show.hint = false;`);
 bad += await sniff('koşu: saha');
 

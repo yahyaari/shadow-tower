@@ -10,19 +10,35 @@
 // cards, most of them ordinary boosts, and every fifth boost on a spell turns into a tier - a
 // card that changes what the spell does rather than how much of it there is.
 
-import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always } from './spells.js';
+import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always } from './spells.js';
 import { Fusions, fusionKeys, fusionOf, anySpell } from './spells.js';
 import { takes, familyFor, Roles } from './foes.js';
 import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
 
-export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, Always };
+export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always };
 export const spellKeys = Object.keys(Spells);
 
 export const Arena = 560;
 export const Wall = 76;
 export const Reach = 96;
-export const StageWaves = 72;
+/**
+ * How long the waves last before the boss comes, in seconds.
+ *
+ * Five minutes. It was seventy-two seconds, which made a whole stage about a minute and three
+ * quarters - long enough to show the game and too short to build anything in. Over five minutes
+ * the wave climbs the whole way, the boss arrives at the end of it, and nothing more is spawned
+ * once it does: the last fight is the boss and whatever was already on the field.
+ */
+export const StageWaves = 300;
+
+/**
+ * How long the wave takes to double, in seconds.
+ *
+ * It was fifty-six, chosen when a stage ended at seventy-two. Left alone over five minutes that
+ * reached six and a half times the opening pressure, which is not a climb, it is a cliff.
+ */
+export const RampOver = 150;
 
 export const Base = { wall: 300, bullet: 560 };
 
@@ -100,7 +116,7 @@ export const Grace = 25;
  */
 export const StageStep = 0.2;
 export const pressure = (s) =>
-  (1 + Math.max(0, s.t - Grace) / 56) * (1 + ((s.stage || 1) - 1) * StageStep);
+  (1 + Math.max(0, s.t - Grace) / RampOver) * (1 + ((s.stage || 1) - 1) * StageStep);
 export const spawnEvery = (s) => Math.max(0.05, 0.85 / Math.pow(pressure(s), 1.3));
 
 export function seeded(seed) {
@@ -212,7 +228,16 @@ export const investedIn = (s) =>
   Object.fromEntries(carrying(s).map((k) => [k, s.kit[k].taken || 0]));
 
 /** Brought, but not taken yet - the ones the cards can still hand you. */
-export const waiting = (s) => s.loadout.filter((k) => !s.kit[k]);
+/**
+ * Spells brought but not yet cast - and only while there is a slot free for one.
+ *
+ * Four slots out of five brought, so the last one in the bag is never offered. Which four you end
+ * up with is decided by which cards came and which you took, so the same loadout plays differently
+ * twice. A fusion counts against the slots too: it IS a fifth spell on the field, and the two it
+ * spends stop being fed, which is what pays for it.
+ */
+export const waiting = (s) =>
+  carrying(s).length >= CarrySize ? [] : s.loadout.filter((k) => !s.kit[k]);
 
 /**
  * What a spell actually does right now.
@@ -583,7 +608,18 @@ export function boostsFor(s, key) {
  * runs out of forty - and in four out of forty for a player who had deliberately brought the pair,
  * which is the part that made it wrong. A gate nobody can aim at is not a gate, it is weather.
  */
-export const FuseAt = 8;
+/**
+ * How many picks the two parents must have had between them before a fusion is offered.
+ *
+ * It was eight, chosen when a run handed out about thirty picks across four spells: a fusion
+ * happened in half of random runs and nine in ten aimed ones. A five-minute run hands out forty
+ * odd, so an untargeted pair reaches twenty between them without trying, and at eight - and at
+ * thirteen - it happened in nearly every run. Not a choice, a step on the way.
+ *
+ * Eighteen is most of a run's picks poured into two spells. You can still fall into one, but
+ * you mostly have to mean it.
+ */
+export const FuseAt = 18;
 
 /**
  * The fusions this run could still make.
@@ -791,9 +827,13 @@ export function step(s, dt) {
     s.events.push({ kind: 'boss', stage: s.stage, key: s.boss.key });
   }
 
-  s.nextIn -= dt;
-  const thin = s.boss ? 2.4 : 1;
-  while (s.nextIn <= 0) { spawn(s); s.nextIn += spawnEvery(s) * thin; }
+  // Nothing more arrives once the boss does. It used to keep spawning at two fifths of the rate,
+  // which at five minutes of climb meant the boss fight was a boss fight plus a wave at its
+  // heaviest - and the stage ended on whoever happened to be on the field, not on the boss.
+  if (!s.boss) {
+    s.nextIn -= dt;
+    while (s.nextIn <= 0) { spawn(s); s.nextIn += spawnEvery(s); }
+  }
 
   // --- the walk in
   for (const f of s.foes) {

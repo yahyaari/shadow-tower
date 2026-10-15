@@ -1358,6 +1358,12 @@ export function hitSpeed(w, h, px, py, dpr = 1) {
   return Speeds[Math.max(0, Math.min(Speeds.length - 1, i))];
 }
 
+/** Whether a speed is open to this run. `show.speedsOpen` is read once when the run begins. */
+export function speedOpen(show, pace) {
+  const open = show.speedsOpen || [1];
+  return open.includes(pace);
+}
+
 /** Language and sound, on the opening screen, under the button that starts a run. */
 export function settings(w, h, dpr = 1) {
   const U = Math.max(1, Math.min(2.4, dpr));
@@ -1567,11 +1573,25 @@ function panel(ctx, state, w, h, U, show) {
       const pw = b.w / pills;
       const px = b.x + i * pw;
       const on = Speeds[i] === show.speed;
+      const open = speedOpen(show, Speeds[i]);
       if (on) {
         ctx.fillStyle = Black;
         ctx.beginPath(); boxPath(ctx, px + 2 * U, b.y + 2 * U, pw - 4 * U, b.h - 4 * U, (b.h - 4 * U) / 2); ctx.fill();
       }
+      // A shut speed is drawn faint with a small play mark over it: it is not missing, it is
+      // behind an advert, and a pill that simply did nothing would read as a bug.
+      ctx.globalAlpha = open ? 1 : 0.32;
       write(ctx, `${Speeds[i]}x`, px + pw / 2, b.y + b.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
+      ctx.globalAlpha = 1;
+      if (!open) {
+        ctx.fillStyle = Black;
+        ctx.beginPath();
+        ctx.moveTo(px + pw - 11 * U, b.y + 5 * U);
+        ctx.lineTo(px + pw - 5 * U, b.y + 8 * U);
+        ctx.lineTo(px + pw - 11 * U, b.y + 11 * U);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
   }
 
@@ -1605,7 +1625,9 @@ function panel(ctx, state, w, h, U, show) {
     const spent = (state.sealed || []).includes(key);
     ctx.globalAlpha = spent ? 0.45 : 1;
     write(ctx, say(anySpell(key).name), 22 * U, y, 14 * U, 600);
-    if (spent) write(ctx, say(UI.sealedTell), 150 * U, y, 9 * U, 700, 'left');
+    // After the pips, not before them. At 150 it sat on the first two of them, which only became
+    // visible once a run could hold a fusion and four spells at the same time.
+    if (spent) write(ctx, say(UI.sealedTell), 166 * U + BoostsPerTier * 12 * U, y, 9 * U, 700, 'left');
     ctx.globalAlpha = 1;
     if (kit.tier > 1) {
       // a filled tag, so a spell that has become something reads differently at a glance
@@ -2094,6 +2116,80 @@ function spoils(ctx, won, cx, y, U, room) {
   return at;
 }
 
+/**
+ * What stands beyond the field: a horizon, and never anything else.
+ *
+ * Drawn above the far edge of the ring and nowhere near it, so it cannot be mistaken for
+ * something that can be hit or walked around. Three layers, each fainter and higher than the one
+ * in front, and a keep on the skyline - the thing the whole place is named after, finally visible
+ * from inside it. Shaped by the stage, so the same stage has the same skyline every time and two
+ * different stages do not.
+ *
+ * It costs nothing the game needs: no creature knows it is there.
+ */
+function backdrop(ctx, S, state, w, h) {
+  const look = stageOf(state.stage).look;
+  // Where the ring ends, as drawn. Everything here lives above that line.
+  const [, far] = place(S, 0, -Arena);
+  const sky = far - Arena * S.scale * S.squash * 0.2;
+
+  let seed = ((state.stage || 1) * 2654435761) >>> 0;
+  const roll = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+  // How high the land stands, by place. A cave is a wall of rock, a marsh is almost nothing.
+  const Lift = {
+    wood: 0.5, field: 0.3, road: 0.6, stones: 0.5, hollow: 0.42, ridge: 0.8,
+    marsh: 0.26, cave: 0.95, ruin: 0.6, ice: 0.85, bones: 0.46, dunes: 0.44,
+  };
+  const lift = (Lift[look] ?? 0.5) * Arena * S.scale * S.squash;
+
+  ctx.fillStyle = Black;
+  for (let layer = 0; layer < 3; layer++) {
+    const back = 2 - layer;
+    const base = sky + back * lift * 0.1;
+    const tall = lift * (0.45 + layer * 0.3);
+    const slide = roll() * 9;
+    ctx.globalAlpha = 0.05 + layer * 0.035;
+    ctx.beginPath();
+    ctx.moveTo(0, base + tall);
+    for (let x = 0; x <= 1.0001; x += look === 'ice' ? 0.035 : 0.07) {
+      const wave = look === 'ice'
+        ? Math.abs(Math.sin(x * 19 + slide)) * 0.9 + 0.1
+        : 0.5 + Math.sin(x * (3.1 + layer) + slide) * 0.34 + Math.sin(x * 9 + slide * 2) * 0.16;
+      ctx.lineTo(x * w, base - tall * wave);
+    }
+    ctx.lineTo(w, base + tall);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // The keep, on the skyline, off to one side so it never sits behind the wizard.
+  {
+    const kx = w * (roll() < 0.5 ? 0.2 + roll() * 0.12 : 0.68 + roll() * 0.12);
+    const k = lift * 0.3;
+    const base = sky + lift * 0.1;
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath();
+    ctx.moveTo(kx - k * 0.34, base);
+    ctx.lineTo(kx - k * 0.27, base - k * 0.82);
+    ctx.lineTo(kx + k * 0.27, base - k * 0.82);
+    ctx.lineTo(kx + k * 0.34, base);
+    ctx.closePath();
+    ctx.fill();
+    for (let i = -1; i <= 1; i++) {
+      ctx.fillRect(kx + i * k * 0.2 - k * 0.07, base - k, k * 0.14, k * 0.2);
+    }
+    // one spire, so it reads as a tower and not a box
+    ctx.beginPath();
+    ctx.moveTo(kx, base - k * 1.5);
+    ctx.lineTo(kx + k * 0.12, base - k * 0.95);
+    ctx.lineTo(kx - k * 0.12, base - k * 0.95);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function frame(ctx, w, h, state, show, dpr = 1) {
   spyOpen();
   const S = stage(w, h);
@@ -2113,6 +2209,8 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   sun.addColorStop(1, 'rgba(236,231,220,0)');
   ctx.fillStyle = sun;
   ctx.fillRect(0, 0, w, h);
+
+  backdrop(ctx, S, state, w, h);
 
   ctx.strokeStyle = 'rgba(13,12,11,0.08)';
   ctx.lineWidth = 2;

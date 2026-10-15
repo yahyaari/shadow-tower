@@ -20,9 +20,12 @@
  * insult on the tenth. Tied to the level rather than to the stage so that it cannot be farmed by
  * replaying stage one.
  */
-export const unitOf = (level) => 25 + 14 * Math.max(1, level);
-export const goldUnitOf = (level) => 30 + 30 * Math.max(1, level);
-export const ShardUnit = 6;
+// Bunlar bir kosunun odediginin yanindaki agirligiyla secilmisti: carkin bir gununun, sekiz
+// kosuluk bir oturumun yaninda hissedilmesi gerek. Bolum bes dakikaya cikinca kosu basina gelir
+// ikiye katlandi ve cark %8'den %3'e dustu - yani gunluk cevirme menuye gitmeye degmez oldu.
+export const unitOf = (level) => 45 + 26 * Math.max(1, level);
+export const goldUnitOf = (level) => 55 + 55 * Math.max(1, level);
+export const ShardUnit = 9;
 
 /**
  * The eight wedges.
@@ -104,10 +107,15 @@ export const RepeatFloor = 0.5;
 export const repeatLift = (times) =>
   Math.max(RepeatFloor, 1 - 0.15 * Math.max(0, Math.floor(times)));
 
-/** What a clear pays in gems: which stage, how often it has been beaten, and how cleanly. */
-export function gemsOn(stage, times, stars) {
-  const clean = 0.7 + 0.1 * Math.max(0, Math.min(3, stars || 0));
-  return Math.round(gemsFor(stage) * gemDecay(times) * clean);
+/**
+ * What a clear pays in gems: which stage, and how often it has been beaten. That is all.
+ *
+ * How cleanly used to scale it between four fifths and all of it. Taken out on purpose: finishing
+ * a stage with one hit of wall left is still finishing it, and a player who scraped through is
+ * the one who most needs what the clear pays. Stars are a score now, not a price.
+ */
+export function gemsOn(stage, times) {
+  return Math.round(gemsFor(stage) * gemDecay(times));
 }
 
 // --- the chests -------------------------------------------------------------------------------

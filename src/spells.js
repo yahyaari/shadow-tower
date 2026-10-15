@@ -285,7 +285,18 @@ export const MostPassive = 5;
  * That is what makes the opening a run rather than a loadout screen with the volume up: you begin
  * with one spell and build the rest, and what you can build is what you brought.
  */
-export const LoadoutSize = 4;
+export const LoadoutSize = 5;
+
+/**
+ * How many of them can be casting at once.
+ *
+ * Five are brought and four are cast, and the gap between those two numbers is the whole point.
+ * With four brought and four slots, every one of them was taken within the first minute and from
+ * then on every card was a boost for a spell already in hand - so the run narrowed to whichever
+ * one you fed, and feeding one to the end was the strongest thing you could do. With a spare in
+ * the bag the run has to choose, and two runs with the same loadout are no longer the same run.
+ */
+export const CarrySize = 4;
 export const Always = 'bolt';
 
 /**

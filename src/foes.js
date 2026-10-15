@@ -64,19 +64,19 @@ export const Families = {
     name: ['Swarm', 'Sürü'],
     about: ['Wings, and too many of them. They go up like paper; a circling blade mostly swings under them.',
             'Kanatlar, ve fazlasıyla çok. Kâğıt gibi tutuşuyorlar; dönen bir bıçak çoğunlukla altlarından geçiyor.'],
-    takes: { fire: 2.1, blade: 0.6 },
+    takes: { fire: 2.9, blade: 0.5 },
   },
   spider: {
     name: ['Spiders', 'Örümcekler'],
     about: ['They come low and fast and from further out than anything else. They burn easily, and they hardly feel lightning at all.',
             'Alçaktan, hızlı ve her şeyden uzaktan geliyorlar. Kolay yanıyorlar, ve yıldırımı neredeyse hiç hissetmiyorlar.'],
-    takes: { fire: 2.1, storm: 0.55 },
+    takes: { fire: 2.9, storm: 0.45 },
   },
   wurm: {
     name: ['Wurms', 'Kurtlar'],
     about: ['Long, segmented, and slow to notice they have been hurt. A blade takes them apart a piece at a time; fire barely marks the hide.',
             'Uzun, boğum boğum, ve yaralandığını geç fark ediyor. Bıçak onları parça parça ayırıyor; ateş derilerini zor işaretliyor.'],
-    takes: { blade: 2.1, fire: 0.55 },
+    takes: { blade: 2.9, fire: 0.45 },
   },
 };
 

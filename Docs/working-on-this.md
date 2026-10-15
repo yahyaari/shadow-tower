@@ -416,6 +416,56 @@ Açıklamalardaki sayılar da öyle: Çağırıcı'nın metni "üç tane çağı
 indirdikten sonra bile. Sayılar artık `HeraldCalls` ve `ShadeKeeps`'ten geliyor ve test
 açıklamanın gerçekten olanı söylediğini doğruluyor — kartlarda zaten uyguladığım kural.
 
+## Beş dakikalık bölüm
+
+Bir koşu **beş dakika dalga, sonra patron**. Dalga bütün beş dakika boyunca tırmanıyor
+(`RampOver = 150`, açılışın ×1.0'ından sonun ×2.8'ine), patron geldiği anda **yeni düşman
+gelmiyor** — son dövüş patronla ve sahada kalanla.
+
+Eskiden 72 saniyeydi. Bir buçuk dakikalık bir bölüm oyunu gösteriyordu ama içinde bir şey
+kurmaya yetmiyordu. Beş dakikada bir koşu ~40 kart veriyor (eskiden ~30), yani her büyü
+kademe atlıyor ve beslediğin iki tanesi dönüşüyor.
+
+**Bu değişiklik ekonomiyi kırdı ve geri kurmak gerekti.** Bölüm başına öldürme dörde katlandı:
+
+| | eski (72 sn) | 5 dk, ayarsız | 5 dk, ayarlı |
+|---|---|---|---|
+| 3. bölümde altın | 248 | 1.430 | 956 |
+| bir büyüyü sonuna kadar | 45 koşu | 8 koşu | 12 koşu |
+| çarkın bir oturumdaki ağırlığı | %8 | %3 | %5–8 |
+
+`RunPays = 0.5` — kosu basina deneyim ve altin yariya indi. Dörde değil yarıya: **daha uzun bir
+koşu daha çok etmeli**. Yaklaşık iki katı ediyor, yaklaşık üç kat dakikada; dakika başına gelir
+eskinin biraz altında, oturumun gösterecek şeyi ise epey fazla. Parçalar yarılanmadı: onlar
+öldürme başına değil **kart başına** ödeniyor ve kartlar 30'dan 40'a çıktı.
+
+Çark ve sandık ödülleri de iki katına çıkarıldı (`unitOf`, `goldUnitOf`, `ShardUnit`), yoksa
+günlük çevirme menüye gitmeye değmiyordu.
+
+**Birleşme eşiği 8'den 18'e** çıktı. 40 kartla, hedef gözetmeyen bir çift zaten 20'ye ulaşıyordu:
+8'de on iki koşunun on ikisinde birleşme oluyordu, ki bu seçim değil yolda bir adımdır.
+
+**Aile tablosu güçlendirildi** (zayıflık ×2.1 → ×2.9, zırh ×0.55 → ×0.45). Kırk kartlık bir
+kuruluşun içinde ×2.1 hissedilmiyordu: ölçüm ateşin sürüye karşı önünü %11'den %3'e düşmüş
+gösteriyordu. Şimdi kurtlara karşı bıçak %39 önde ve sıralama gerçekten dönüyor.
+
+## Beş getir, dördünü oyna
+
+Loadout **5 büyü**, sahada en fazla **4**. Aradaki fark bu özelliğin tamamı: dördü getirip dördü
+oynarken ilk dakikada hepsi alınıyordu ve o andan sonra her kart elindeki bir büyünün
+yükseltmesiydi — koşu beslediğin tek büyüye daralıyordu ve sonuna kadar beslemek yapılabilecek
+en güçlü şeydi. Çantada bir yedek varken koşu seçmek zorunda ve aynı loadout'la iki koşu artık
+aynı koşu değil.
+
+`waiting()` dört tanesi sahadayken boş dönüyor, yani beşincisi karta hiç çıkmıyor. Birleşme bir
+istisna: alınan birleşme sahaya **beşinci** büyü olarak geliyor ve iki ebeveynini mühürlüyor.
+
+## Hız kilidi
+
+Varsayılan **1x**. Bölümü bir kez geçtiysen tekrarında **1.5x** açılıyor — orada artık görmüyor,
+tekrar ediyorsun. **Reklam** o koşu için üçünü birden açıyor (günde 3 hak). Reklamın burada
+sattığı tek şey bu: bir kez harcadığın beş dakika.
+
 ## Bölümler ve yıldızlar
 
 Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca bölüm **1:45** sürüyor.
@@ -425,6 +475,11 @@ Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca b
 | %100 | ★★★ |
 | %95+ | ★★☆ |
 | altı | ★☆☆ |
+
+**Yıldızlar hiçbir şey satın almıyor ve bir şeyi de ölçeklemiyor.** Gem artık yıldıza bakmıyor:
+bir bölümü bir can kala bitirmek de bitirmektir, ve zor bitirenin ödüle en çok ihtiyacı olandır.
+Yıldız o bölümün skoru — kartında ve bitiş ekranında duruyor, tekrar oynamanın sebebi o. Üst
+bantta taşınan **toplam yıldız sayısı kaldırıldı**: hiçbir şey açmayan bir sayıydı.
 
 **Bitiren hiçbir zaman sıfır yıldız almıyor** — eskiden %60'ın altı yıldızsızdı. Üst iki eşik
 bilerek tepeye toplanmış: duvar neredeyse çizilmedi (2), duvara hiç dokunulmadı (3). Aradaki
@@ -703,13 +758,18 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/sound.js` | Dosyasız ses + tek AudioContext (müzik de onu paylaşıyor). |
 | `src/music.js` | Dosyasız müzik. Düzenleme saf aritmetik, vuruş baskıdan geliyor. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını, `.ui` koşu ekranının ölçülerini verir. |
-| `Tools/test.mjs` | 501 kontrol + bot. |
+| `Tools/test.mjs` | 525 kontrol + bot. `--quick` botu atlar, `--deep` tam sayar. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/overlap.mjs` | Her ekrandaki yazı/işaret kutularını kesiştirir. Üst üste bineni bulur. |
+| `Tools/bot.mjs` | Makul oyuncu. TEK bot — `test.mjs` ve `tune.mjs` ikisi de bunu kullanır. |
+| `Tools/tune.mjs` | Seçilen bölümleri seçilen sayıda oynatıp tabloyu basar. Bir sayıyı denemek için. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh
-node Tools/test.mjs
+node Tools/test.mjs --quick      # sadece kontroller, saniyeler — her değişiklikten sonra
+node Tools/test.mjs              # + bot ölçümü, örneklenmiş (~2.5 dk)
+node Tools/test.mjs --deep       # + tam sayım (dakikalar) — bir sayı yazılacaksa
+node Tools/tune.mjs 1,3,5 20     # tek bir sayıyı denemek için
 node Tools/serve.mjs . 8050 0.0.0.0
 node Tools/peek.mjs http://localhost:8050/ Logs/peek 1280 720
 node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
@@ -874,6 +934,14 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
   arkasında onda bir mürekkeple uzak bir sıradağ var, yerin kendi karakterine karışmadan.
 - **İki kere kırpma, köşeyi bozar.** `portrait` kendi içinde yuvarlak kırpıyordu; kartın kesik
   köşesiyle çakışınca içeride soluk bir çentik kaldı. Çağıran zaten kırpıyor.
+- **Beş dakikalık bölüm test paketini de dörde katladı.** Saniyelerdi, yarım saat oldu; ve iki
+  kere çalıştırmayı düşündüğün bir paket, çalıştırılmayan pakettir. Bölündü: `--quick` sadece
+  kontroller (0.2 sn), bayraksız örneklenmiş bot (2.5 dk), `--deep` tam sayım.
+- **Örneklenen bir ölçümde mutlak eşik tutmaz.** "Hedefli oyuncu 8 koşu daha fazla alıyor" eşiği
+  12 koşuluk bir örneklemde aritmetik olarak imkânsızdı. Eşikler orana çevrildi.
+- **`finish`'in döndürdüğü `gold` iki şeyin toplamı:** bölümün ödediği (tekrarda sönüyor) ve koşu
+  görevlerinin ödediği (hesap seviyesiyle BÜYÜYOR). Dört tekrarda görev altını 135'ten 350'ye
+  çıkıp sönümü tamamen örtmüştü — test artık ikisini ayırıyor.
 - **Dar ekranda üst bar tek satıra sığmaz.** Seviye, yıldız sayısı ve iki ayar pili üst üste
   bindi; telefonda iki satıra ayrıldı.
 - **Kaydırılan bir listede dokunuş ile sürükleme ayrılmalı.** Kahraman merdiveninde basma
@@ -926,7 +994,6 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 
 ## Yapılmadı
 
-- Tek arena (patron üç tane, düşman ailesi dört tane, yer on iki tane).
+- Tek arena şekli (patron üç, aile dört, yer on iki, ufuk yere göre değişiyor) — kullanıcı erteledi.
 - CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
-- Yıldızlar hiçbir şey satın almıyor; sadece bir geçişin kaç gem getireceğini belirliyorlar.
 - Gerçek parmakla oynanmadı.

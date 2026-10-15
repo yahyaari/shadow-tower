@@ -335,10 +335,40 @@ export function furthestStage(data) {
 
 export const starsAt = (data, stage) => (data.stars || {})[stage];
 
+/**
+ * Every star earned, added up.
+ *
+ * Nothing reads this any more. Stars are a score on the stage that earned them - shown on its
+ * card and on the end screen, and the reason to play a cleared stage again - and a running total
+ * of them bought nothing, opened nothing and was carried along the top of every screen anyway.
+ * Kept because an achievement could want it; delete it if nothing ever does.
+ */
 export const totalStars = (data) =>
   Object.values(data.stars || {}).reduce((a, b) => a + b, 0);
 
 export const Speeds = [1, 1.5, 2];
+
+/**
+ * Which of them this stage is allowed, right now.
+ *
+ * A stage you have never finished is played at one. There is nothing to skip yet: the wave, the
+ * build and the boss are all new, and watching them at double speed is watching someone else play.
+ *
+ * A stage you have ALREADY cleared opens one and a half, because by then you are not seeing it,
+ * you are repeating it - for the third star, or for gold. And an advert opens all three for the
+ * run it was watched in. That is the one thing an advert sells here that is worth buying: the
+ * five minutes you have already spent once.
+ */
+export function speedsFor(data, stage, watched = false) {
+  if (watched) return Speeds.slice();
+  return timesDone(data, stage) > 0 ? Speeds.slice(0, 2) : Speeds.slice(0, 1);
+}
+
+/** The fastest of those, for clamping a saved choice onto a stage that does not allow it. */
+export function speedAllowed(data, stage, want, watched = false) {
+  const open = speedsFor(data, stage, watched);
+  return open.includes(want) ? want : open[open.length - 1];
+}
 
 /**
  * What the next account level costs.
@@ -352,8 +382,23 @@ export function needFor(level) {
 }
 
 /** What a finished run was worth. Stages count for far more than bodies, because stages are hard. */
+/**
+ * How much a run pays, per minute rather than per run.
+ *
+ * Every number below is halved against what it was, because a stage went from one and three
+ * quarters to five and a half minutes and the kills in it went up four times over. Left alone, a
+ * stage-three clear paid 1,430 gold where it used to pay 248, raising one spell the whole way
+ * fell from forty-five clears to eight, and the daily wheel - which is meant to be worth going to
+ * the menu for - shrank to three per cent of what a session earns.
+ *
+ * Halved rather than quartered on purpose: a longer run SHOULD be worth more than a short one.
+ * It is worth about twice as much, over about three times the minutes, which leaves the rate per
+ * minute a little under where it was and the session a good deal more to show for itself.
+ */
+export const RunPays = 0.5;
+
 export function worth(stage, kills) {
-  return kills + (stage - 1) * 150;
+  return Math.round((kills + (stage - 1) * 150) * RunPays);
 }
 
 /**
@@ -365,7 +410,7 @@ export function worth(stage, kills) {
  * long job and levelling your favourite is not.
  */
 export function goldFor(stage, kills) {
-  return Math.round(kills * 1.2 + (stage - 1) * 120);
+  return Math.round((kills * 1.2 + (stage - 1) * 120) * RunPays);
 }
 
 /**
@@ -380,6 +425,9 @@ export function shardsFor(stage, taken) {
   // Multiplied by the stage rather than nudged by it. Added, a stage-three clear was worth twelve
   // per cent more than a stage-one clear for several times the difficulty, which is another way
   // of saying stay where it is easy.
+  // Runes are NOT halved with the rest. They are paid per pick rather than per kill, and the
+  // picks only went from thirty to forty - so they already scale with the longer stage and
+  // halving them would have made the one currency that says WHICH spell the slowest of the three.
   return Math.round((2 + Math.max(0, Math.floor(taken || 0))) * (1 + (deep - 1) * 0.25));
 }
 
@@ -533,7 +581,7 @@ export function finish(data, stage, wall, maxWall, kills, taken = null, run = {}
 
   // Gems are booked here rather than in `record`, because this is the only place that knows both
   // how often the stage has been cleared and how cleanly it was cleared this time.
-  const gems = gemsOn(stage, times, stars);
+  const gems = gemsOn(stage, times);
   data.gems = (data.gems || 0) + gems;
   data.done[stage] = times + 1;
 
