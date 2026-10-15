@@ -30,7 +30,10 @@
     var host = location.hostname;
     var mine = host === 'localhost' || host === '127.0.0.1' || host === ''
       || /\.github\.io$/.test(host);
-    if (mine || location.search.indexOf('nosdk') >= 0) return;
+    // `?sdk` zorlar: gerçek SDK'yı bu makinede de yükleyip portal ortamını yerelde
+    // tekrarlayabilmek için. `Tools/portal.mjs` bunu kullanıyor.
+    var force = location.search.indexOf('sdk=1') >= 0;
+    if (!force && (mine || location.search.indexOf('nosdk') >= 0)) return;
     var tag = document.createElement('script');
     tag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
     document.head.appendChild(tag);

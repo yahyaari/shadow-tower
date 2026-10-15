@@ -25,6 +25,7 @@ import {
   sceneryFor, runBtns, runPanel, runRows, PauseRows, endBtns, endKeys,
   hitRun, hitRunPanel, hitEnd, speedBox,
 } from '../src/draw.js';
+import { topBand, menuHit } from '../src/menu.js';
 import { Scale, Bar, Root, hzOf, beatOf, beatAt, walkFrom, nextDegree } from '../src/music.js';
 import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
@@ -2161,6 +2162,31 @@ check('geri sayım okunur yazılıyor',
     `${runs} koşu, ${Math.round((at - T0) / 60000)} dakika`);
   console.log(`\nenerji: dolu depoyla ${runs} koşu kesintisiz (~${Math.round((at - T0) / 60000)} dakika), ` +
     `sonra koşu başına ${clockOf(EPerRun / EPerMinute * 60000)} bekleme`);
+}
+
+// --- her ekrandan bir çıkış var mı ----------------------------------------------------------------
+
+// CrazyGames'in gomulu oynaticisinda sekme seridine ulasilamadi ve oyuncu oduller sekmesinde
+// KAPANA KISILDI: oyunun tek cikisi ekranin en altindaydi. Ekranin tepesindeki kale isareti artik
+// haritaya donuyor, ve bu kontrol onu tutuyor.
+{
+  const d = tidy({ level: 6, loadout: ['bolt'] });
+  for (const tab of ['wheel', 'hero', 'spells', 'codex', 'map']) {
+    d.tab = tab;
+    const t = topBand(1280, 720, 1);
+    const mid = { x: t.avatar.x + t.avatar.w / 2, y: t.avatar.y + t.avatar.h / 2 };
+    const hit = menuHit(d, {}, 1280, 720, mid.x, mid.y, 1);
+    check(`${tab} sekmesinden kale işaretiyle haritaya dönülüyor`,
+      !!hit && hit.what === 'tab' && hit.key === 'map',
+      JSON.stringify(hit));
+  }
+  // Panel acikken degil: o zaman once panel kapanmali, yoksa basis panelin icinden gecer.
+  d.tab = 'map';
+  const t = topBand(1280, 720, 1);
+  const mid = { x: t.avatar.x + t.avatar.w / 2, y: t.avatar.y + t.avatar.h / 2 };
+  const over = menuHit(d, { board: 'jobs' }, 1280, 720, mid.x, mid.y, 1);
+  check('pano açıkken kale işareti panonun altında kalmıyor',
+    !over || over.what !== 'tab', JSON.stringify(over));
 }
 
 // --- portal dikişi ---------------------------------------------------------------------------------

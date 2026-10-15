@@ -77,13 +77,46 @@ function fresh() {
   };
 }
 
+/**
+ * Tuval, görülebilen alana sığar — pencerenin tamamına değil.
+ *
+ * Telefonun çentiği, ev çubuğu, ve portalın kendi çerçevesi ekranın kenarlarından pay alıyor.
+ * Bunlar `env(safe-area-inset-*)` ile söyleniyor ve tuval onları ÇIKARARAK kuruluyor: böylece
+ * yerleşimin tamamı - en altta duran sekme şeridi dahil - güvenli alanın içinde kalıyor ve
+ * hiçbir ölçü fonksiyonunun bundan haberi olması gerekmiyor.
+ *
+ * Sebep: CrazyGames'in QA oynatıcısında sekme şeridine ulaşılamadı ve oyuncu ödüller sekmesinde
+ * kapana kısıldı. Oyunun tek çıkışı ekranın tam dibindeydi, ve bir gömülü oynatıcıda ekranın tam
+ * dibi her zaman görünür değil.
+ */
+function insets() {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;'
+    + 'padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);'
+    + 'padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left)';
+  document.body.appendChild(el);
+  const c = getComputedStyle(el);
+  const n = (v) => Math.max(0, Math.round(parseFloat(v) || 0));
+  const out = {
+    top: n(c.paddingTop), right: n(c.paddingRight),
+    bottom: n(c.paddingBottom), left: n(c.paddingLeft),
+  };
+  el.remove();
+  return out;
+}
+
 function size() {
   const scale = Math.min(window.devicePixelRatio || 1, 2);
   dpr = scale;
-  canvas.width = Math.floor(window.innerWidth * scale);
-  canvas.height = Math.floor(window.innerHeight * scale);
-  canvas.style.width = window.innerWidth + 'px';
-  canvas.style.height = window.innerHeight + 'px';
+  const pad = insets();
+  const w = Math.max(240, window.innerWidth - pad.left - pad.right);
+  const h = Math.max(240, window.innerHeight - pad.top - pad.bottom);
+  canvas.width = Math.floor(w * scale);
+  canvas.height = Math.floor(h * scale);
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.style.marginLeft = pad.left + 'px';
+  canvas.style.marginTop = pad.top + 'px';
 }
 window.addEventListener('resize', size);
 size();

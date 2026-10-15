@@ -649,6 +649,16 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
   if (inside(gearBox(w, h, dpr), px, py)) return { what: 'openSettings' };
   for (const t of navBar(w, h, dpr)) if (inside(t, px, py)) return { what: 'tab', key: t.key };
 
+  // Üstteki kale işareti HARİTAYA döner.
+  //
+  // Oyunun tek çıkışı ekranın en altındaki sekme şeridiydi, ve CrazyGames'in gömülü
+  // oynatıcısında o şeride ulaşılamayınca oyuncu ödüller sekmesinde kapana kısıldı. Ekranın
+  // tepesi her zaman görünür; bir oyun, bir ekranda kilitlenebiliyorsa o ekranın çıkışı tek
+  // olmamalı.
+  if (!show.board && !show.settings && inside(topBand(w, h, dpr).avatar, px, py)) {
+    return { what: 'tab', key: 'map' };
+  }
+
   // A board is over everything, so it is tested before anything under it.
   if (show.board) {
     const shape = boardShape(data, show.board);
@@ -2868,8 +2878,15 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
     // the keep this whole place is named after, in its own little frame
     {
       const a = t.avatar;
-      cutBox(ctx, a, U, { cut: { tl: 7 * U, br: 7 * U }, line: Pale, width: 2 });
-      keepMark(ctx, a.x + a.w / 2, a.y + a.h / 2, a.h * 0.62, Pale, Black);
+      const home = show.overMenu === 'tab:map' && data.tab !== 'map';
+      cutBox(ctx, a, U, {
+        cut: { tl: 7 * U, br: 7 * U },
+        fill: home ? Pale : 'rgba(13,12,11,0)',
+        line: Pale,
+        width: 2,
+      });
+      keepMark(ctx, a.x + a.w / 2, a.y + a.h / 2, a.h * 0.62, home ? Black : Pale,
+        home ? Pale : Black);
     }
 
     const need = needFor(data.level);
