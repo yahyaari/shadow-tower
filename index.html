@@ -17,6 +17,19 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<!-- The portal, loaded only where there is one.
+     CrazyGames serves a game inside a frame, so a page that is its own top window is not on the
+     portal: a local server, GitHub Pages, a file opened by hand. Loaded there anyway, the SDK
+     logs "CrazySDK is not initialized yet" on every call and throws a rejection nobody can
+     catch - four errors in the console of a game that is working perfectly.
+     `src/ads.js` checks for `window.CrazyGames` and falls through when it is absent. -->
+<script>
+  if (window.self !== window.top) {
+    var sdkTag = document.createElement('script');
+    sdkTag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+    document.head.appendChild(sdkTag);
+  }
+</script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

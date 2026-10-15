@@ -20,9 +20,25 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
 let data = meta.load();
-sound.setMuted(!!data.muted);
-music.setOn(data.music !== false);
+
+/**
+ * Sound and music, as the game wants them AND as the portal insists.
+ *
+ * The portal's own mute outranks the in-game switch - the docs are explicit that a game option
+ * must not turn back on what the platform has silenced. One function, called from everywhere
+ * that touches either, so there is no second place where the two can disagree.
+ */
+function applyAudio() {
+  sound.setMuted(!!data.muted || ads.mutedByPortal());
+  music.setOn(data.music !== false && !ads.mutedByPortal());
+}
+applyAudio();
 setLanguage(data.lang);
+
+// The portal, before the first frame. Resolves either way: a portal that is not there must not
+// stop the game from opening, and this is on the path to the opening screen.
+await ads.open();
+ads.watchSettings(() => applyAudio());
 
 let screen = 'menu';              // 'menu' | 'run'
 let state = null;
@@ -77,7 +93,30 @@ function start() {
   show.speed = meta.speedAllowed(data, data.stage, data.speed);
   data.speed = show.speed;
   screen = 'run';
+  ads.playing(true);
 }
+
+/**
+ * Back to the menu, and the one place that says so to the portal.
+ *
+ * A midgame advert goes here and nowhere else: between runs, when the player has stopped and is
+ * choosing what to do next. Nothing waits on it - the SDK pauses the game itself, and an advert
+ * that does not fill must not hold up the menu.
+ */
+function toMenu(advert = false) {
+  ads.playing(false);
+  screen = 'menu';
+  show = fresh();
+  if (advert) ads.between(hush);
+}
+
+/** Silences everything while an advert plays, and gives it back however the advert ends. */
+function hush(on) {
+  if (on) { sound.setMuted(true); music.setOn(false); }
+  else applyAudio();
+}
+
+const watchAd = () => ads.show('rewarded', hush);
 
 /**
  * Turns what the rules reported into something to look at and listen to.
@@ -209,8 +248,14 @@ function tick(now) {
       show.nextStage = data.stage;
       show.adsDouble = ads.ready() ? meta.adsLeft(data, 'double') : 0;
       sound.cleared();
+      ads.playing(false);
+      // A stage cleared for the FIRST time, which happens a dozen times in the life of an
+      // account. Sparingly is what the portal asks for, and this is what sparingly means here.
+      if (show.won && show.won.first) ads.cheer();
+      ads.progress((meta.furthestStage(data) - 1) / 12 * 100);
     } else {
       sound.over();
+      ads.playing(false);
     }
   }
 
@@ -340,7 +385,7 @@ function doMenu(hit) {
     // and nothing is paid for one that never finished.
     const kind = hit.what === 'adSpin' ? 'spin' : hit.key;
     if (meta.adsLeft(data, kind) <= 0) return;
-    ads.show().then((watched) => {
+    watchAd().then((watched) => {
       if (!watched || !meta.useAd(data, kind)) { show.adMissing = performance.now(); return; }
       if (hit.what === 'adSpin') {
         const got = meta.spin(data, Math.random(), undefined, Math.random(), true);
@@ -397,15 +442,15 @@ function doMenu(hit) {
     return;
   }
   if (hit.what === 'sound') {
-    sound.setMuted(!sound.isMuted());
-    data.muted = sound.isMuted();
+    data.muted = !data.muted;
+    applyAudio();
     meta.save(data);
     return;
   }
   if (hit.what === 'music') {
     data.music = data.music === false;
-    music.setOn(data.music);
-    if (data.music) music.start(screen === 'run' ? 'run' : 'menu');
+    applyAudio();
+    if (data.music && !ads.mutedByPortal()) music.start(screen === 'run' ? 'run' : 'menu');
     meta.save(data);
     return;
   }
@@ -487,7 +532,7 @@ addEventListener('pointerdown', (e) => {
     const pace = hitSpeed(canvas.width, canvas.height, p.x, p.y, dpr);
     if (pace) { takeSpeed(pace); return; }
     const btn = hitRun(canvas.width, canvas.height, p.x, p.y, dpr);
-    if (btn) { show.paused = btn; return; }
+    if (btn) { show.paused = btn; ads.playing(false); return; }
   }
 
   // A finished run is answered by its buttons and by nothing else. It used to take a press
@@ -523,7 +568,7 @@ function takeSpeed(pace) {
     return;
   }
   if (!ads.ready() || meta.adsLeft(data, 'speed') <= 0) { show.adMissing = performance.now(); return; }
-  ads.show().then((watched) => {
+  watchAd().then((watched) => {
     if (!watched || !meta.useAd(data, 'speed')) { show.adMissing = performance.now(); return; }
     show.speedsOpen = meta.speedsFor(data, state.stage, true);
     show.speed = pace;
@@ -539,17 +584,17 @@ function takeSpeed(pace) {
  * language changed mid-run is the language the menu opens in.
  */
 function doPause(what) {
-  if (!what || what === 'close' || what === 'resume') { show.paused = null; return; }
+  if (!what || what === 'close' || what === 'resume') { show.paused = null; ads.playing(true); return; }
   if (what === 'sound') {
-    sound.setMuted(!sound.isMuted());
-    data.muted = sound.isMuted();
+    data.muted = !data.muted;
+    applyAudio();
     meta.save(data);
     return;
   }
   if (what === 'music') {
     data.music = data.music === false;
-    music.setOn(data.music);
-    if (data.music) music.start('run');
+    applyAudio();
+    if (data.music && !ads.mutedByPortal()) music.start('run');
     meta.save(data);
     return;
   }
@@ -560,7 +605,7 @@ function doPause(what) {
     meta.save(data);
     return;
   }
-  if (what === 'leave') { screen = 'menu'; show = fresh(); }
+  if (what === 'leave') toMenu();
 }
 
 /**
@@ -570,11 +615,20 @@ function doPause(what) {
  * costs an allowance nothing and pays nothing.
  */
 function doEnd(what) {
-  if (what === 'again' || what === 'next') { start(); return; }
-  if (what === 'menu') { screen = 'menu'; show = fresh(); return; }
+  // The advert goes BEFORE the next run, not alongside it. The portal pauses its own frame but
+  // this game keeps stepping; started first, the wall would be coming down behind the advert.
+  // Most players press NEXT STAGE and never see the menu, so this is the only place a midgame
+  // advert actually reaches them. The SDK keeps its own three-minute cooldown and answers
+  // `adCooldown` when it is too soon, which costs nothing and resolves at once.
+  if (what === 'again' || what === 'next') {
+    ads.playing(false);
+    ads.between(hush).then(() => start());
+    return;
+  }
+  if (what === 'menu') { toMenu(true); return; }
   if (what !== 'double') return;
   if (!show.won || show.doubled || meta.adsLeft(data, 'double') <= 0) return;
-  ads.show().then((watched) => {
+  watchAd().then((watched) => {
     if (!watched || !meta.useAd(data, 'double')) { show.adMissing = performance.now(); return; }
     const got = meta.doubleUp(data, show.won);
     if (!got) return;
@@ -605,8 +659,8 @@ addEventListener('wheel', (e) => {
 
 addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') {
-    sound.setMuted(!sound.isMuted());
-    data.muted = sound.isMuted();
+    data.muted = !data.muted;
+    applyAudio();
     meta.save(data);
     return;
   }
@@ -634,7 +688,7 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
-  if (state.phase === 'done') { screen = 'menu'; show = fresh(); return; }
+  if (state.phase === 'done') { toMenu(true); return; }
   if (state.phase === 'lost') { start(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
 });

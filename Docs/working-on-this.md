@@ -416,6 +416,37 @@ Açıklamalardaki sayılar da öyle: Çağırıcı'nın metni "üç tane çağı
 indirdikten sonra bile. Sayılar artık `HeraldCalls` ve `ShadeKeeps`'ten geliyor ve test
 açıklamanın gerçekten olanı söylediğini doğruluyor — kartlarda zaten uyguladığım kural.
 
+## CrazyGames SDK — `src/ads.js`
+
+Portalı bilen **tek dosya**, ve SDK yoksa içindeki her çağrı sessizce boş geçiyor. `index.html`
+SDK'yı **yalnızca sayfa bir çerçeve içindeyse** yüklüyor: CrazyGames oyunu çerçevede sunuyor,
+GitHub Pages sunmuyor. Sebep ölçüldü — portal dışında yüklenince SDK her çağrıda
+"CrazySDK is not initialized yet" basıyor ve yakalanamayan bir rejection atıyor, yani çalışan bir
+oyunun konsolunda dört hata.
+
+| çağrı | ne zaman |
+|---|---|
+| `loadingStart` → `init` → `loadingStop` | ilk kareden önce, beklenerek |
+| `gameplayStart` / `gameplayStop` | koşu başlar/biter, duraklatma paneli açılır/kapanır |
+| `happytime` | bir bölümün **ilk** geçişi |
+| `reportGameCompletedPercentage` | en derin bölüm / 12 |
+| `settings.muteAudio` | portalın sesi oyunun ses düğmesini **ezer** |
+| ödüllü reklam | çark, iki sandık, 2× ödül, hız kilidi — her biri günde 3 |
+| ara reklam | koşu bitip SONRAKİ BÖLÜM veya ANA MENÜ'ye basılınca |
+
+**Kart ekranında `gameplayStop` denmiyor.** Dokümanlar "her molada" diyor ama beş dakikalık bir
+koşu kırk kart ekranı açıyor, her biri birkaç saniye: kırk başla-dur çifti sinyal değil gürültü.
+
+**Ara reklam koşu BAŞLAMADAN önce oynuyor.** Portal kendi çerçevesini duraklatıyor ama bu oyun
+adım atmaya devam ediyor — önce başlatılsaydı reklamın arkasında duvar yıkılıyor olurdu.
+
+**İlk fırlatışta (Basic Launch) reklamlar kapalı:** SDK `adsDisabledBasicLaunch` dönüyor ve bütün
+reklam butonları o aşamada görünmüyor. Bu normal, hata değil.
+
+Dikiş **sahte bir SDK ile test ediliyor**: yükleme sırası, oynuyor/durdu'nun iki kere
+söylenmemesi, izlenen reklamın ödemesi, dolmayan reklamın ödememesi, ve iki durumda da sesin geri
+gelmesi.
+
 ## Beş dakikalık bölüm
 
 Bir koşu **beş dakika dalga, sonra patron**. Dalga bütün beş dakika boyunca tırmanıyor
@@ -745,7 +776,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/stages.js` | 12 yerin adı, tanıtımı ve görünümü + çizilebilen `Looks` listesi. |
 | `src/foes.js` | Düşman aileleri, elementler, direnç tablosu, bölüm→aile eşlemesi. Saf veri. |
 | `src/missions.js` | Günlük/koşu görevleri, 7 günlük seri, başarımlar. Saf veri + aritmetik. |
-| `src/ads.js` | Ödüllü reklam dikişi: günlük hak, `ready()`, `show()`. SDK gelince tek dosya değişir. |
+| `src/ads.js` | Portal: CrazyGames SDK'sını bilen tek dosya. SDK yoksa her çağrı boş geçer. |
 | `src/news.js` | Duyurular. Tarihli, kısa, oyuncu için yazılmış. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
@@ -758,7 +789,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/sound.js` | Dosyasız ses + tek AudioContext (müzik de onu paylaşıyor). |
 | `src/music.js` | Dosyasız müzik. Düzenleme saf aritmetik, vuruş baskıdan geliyor. |
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını, `.ui` koşu ekranının ölçülerini verir. |
-| `Tools/test.mjs` | 525 kontrol + bot. `--quick` botu atlar, `--deep` tam sayar. |
+| `Tools/test.mjs` | 540 kontrol + bot. `--quick` botu atlar, `--deep` tam sayar. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
 | `Tools/overlap.mjs` | Her ekrandaki yazı/işaret kutularını kesiştirir. Üst üste bineni bulur. |
 | `Tools/bot.mjs` | Makul oyuncu. TEK bot — `test.mjs` ve `tune.mjs` ikisi de bunu kullanır. |
@@ -995,5 +1026,7 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 ## Yapılmadı
 
 - Tek arena şekli (patron üç, aile dört, yer on iki, ufuk yere göre değişiyor) — kullanıcı erteledi.
-- CrazyGames SDK bağlanmadı, kapak görseli yok. Reklamla ödül de buna bağlı.
+- Kapak görseli ve tanıtım videosu yok (portala göndermek için şart).
+- Enerji sistemi yapılmadı (depo 60, koşu 5, %100'e +5, 60 dakikada 2 — reklam dikişi artık hazır).
+- Reklamların gerçekten oynadığı görülmedi: SDK yalnızca çerçeve içinde yükleniyor.
 - Gerçek parmakla oynanmadı.

@@ -30,7 +30,11 @@ import {
   Daily, Runly, DailyCount, RunCount, dailyKeys, runKeys, dailyOf, runOf, pays as jobPays,
   Feats, featOf, Week, weekAt, weekDue, nextDay,
 } from '../src/missions.js';
-import { Allow as AdAllow, Kinds as AdKinds, ready as adsReady } from '../src/ads.js';
+import {
+  Allow as AdAllow, Kinds as AdKinds, ready as adsReady,
+  open as portalOpen, playing as portalPlaying, cheer as portalCheer,
+  progress as portalProgress, watchSettings, mutedByPortal, show as adShow, between as adBetween,
+} from '../src/ads.js';
 import { News } from '../src/news.js';
 import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
 import {
@@ -2058,6 +2062,101 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
   check('açılan büyü yer varsa kendi giriyor, yoksa loadout dolu kalıyor',
     d.loadout.length === Carry, d.loadout.join(','));
   check('en iyi bölüm kaydediliyor', d.best === 3);
+}
+
+// --- portal dikişi ---------------------------------------------------------------------------------
+
+// SDK YOKKEN hicbir sey patlamamali ve hicbir sey odememeli. Oyun GitHub Pages'te, yerel bir
+// sunucuda ve bu testin icinde hep boyle calisiyor.
+check('SDK yokken hiçbiri patlamıyor', (() => {
+  try {
+    portalPlaying(true); portalPlaying(false); portalCheer(); portalProgress(40);
+    watchSettings(() => {});
+    return mutedByPortal() === false;
+  } catch { return false; }
+})());
+check('SDK yokken reklam ödemiyor', (await adShow()) === false && (await adBetween()) === false);
+check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false);
+
+// Simdi SAHTE bir portal kurup cagrilarin dogru sirada gittigini dogruluyoruz. Dikisi yazmak
+// kolay, yanlis sirada cagirmak kolay, ve portalin kendisi bunu ancak yayindayken soyler.
+{
+  const said = [];
+  let fire = null;
+  globalThis.window = {
+    CrazyGames: {
+      SDK: {
+        init: async () => { said.push('init'); },
+        ad: {
+          hasAdblock: async () => false,
+          requestAd: (kind, cb) => { said.push('ad:' + kind); fire = cb; },
+        },
+        game: {
+          settings: { muteAudio: false },
+          loadingStart: () => said.push('loadingStart'),
+          loadingStop: () => said.push('loadingStop'),
+          gameplayStart: () => said.push('play'),
+          gameplayStop: () => said.push('stop'),
+          happytime: () => said.push('cheer'),
+          reportGameCompletedPercentage: (n) => said.push('part:' + n),
+          addSettingsChangeListener: (fn) => said.push('listen') || fn,
+        },
+      },
+    },
+  };
+
+  check('portal açılmadan reklam hazır değil', adsReady() === false,
+    'init beklenmeden gonderilen bir reklam, hic oynamayan bir reklamdir');
+
+  const started = await portalOpen();
+  check('portal açılıyor', started === true);
+  check('yükleme sırası doğru', said.join() === 'loadingStart,init,loadingStop', said.join());
+  check('açılınca reklam hazır', adsReady() === true);
+
+  said.length = 0;
+  portalPlaying(true);
+  portalPlaying(true);
+  portalPlaying(false);
+  portalPlaying(false);
+  // Kosu ekranina birkac giris cikis var; iki kere soylemek kolay, ve portal bunu ancak
+  // yayindayken sikayet eder.
+  check('oynuyor/durdu iki kere söylenmiyor', said.join() === 'play,stop', said.join());
+
+  said.length = 0;
+  portalCheer();
+  portalProgress(250);
+  check('kutlama ve ilerleme gidiyor', said.join() === 'cheer,part:100', said.join());
+
+  // Odullu reklam: izlenirse oduyor, hata verirse odemiyor, ve ses iki durumda da geri geliyor.
+  {
+    const hushed = [];
+    const won = adShow('rewarded', (on) => hushed.push(on));
+    fire.adStarted();
+    fire.adFinished();
+    check('izlenen ödüllü reklam ödüyor', (await won) === true);
+    check('ses sustu ve geri geldi', hushed.join() === 'true,false', hushed.join());
+  }
+  {
+    const hushed = [];
+    const won = adShow('rewarded', (on) => hushed.push(on));
+    fire.adStarted();
+    fire.adError({ code: 'unfilled' });
+    check('dolmayan reklam ödemiyor', (await won) === false,
+      'adError dolu olmayan reklam icin de atesleniyor - ilk firlatista her reklam boyle');
+    check('hata olsa da ses geri geliyor', hushed.join() === 'true,false', hushed.join());
+  }
+  {
+    // Ara reklam odul degil: kadar gitse de false donuyor, kimse beklemiyor.
+    const out = adBetween();
+    fire.adFinished();
+    check('ara reklam bir şey ödemiyor', (await out) === false);
+  }
+
+  // Portalin sesi, oyunun sesinden ustun.
+  globalThis.window.CrazyGames.SDK.game.settings.muteAudio = true;
+  check('portal susturunca oyun da susuyor', mutedByPortal() === true);
+
+  delete globalThis.window;
 }
 
 // --- beş dakikalık bölüm ---------------------------------------------------------------------------
