@@ -416,6 +416,38 @@ Açıklamalardaki sayılar da öyle: Çağırıcı'nın metni "üç tane çağı
 indirdikten sonra bile. Sayılar artık `HeraldCalls` ve `ShadeKeeps`'ten geliyor ve test
 açıklamanın gerçekten olanı söylediğini doğruluyor — kartlarda zaten uyguladığım kural.
 
+## Kapak görselleri — `Tools/cover-art.js`
+
+Portal **üç kapak** istiyor ve üçünün birbirine benzemesini şart koşuyor:
+
+| boy | ölçü |
+|---|---|
+| yatay | 1920×1080 |
+| dikey | 800×1200 |
+| kare | 800×800 |
+
+Kuralları: **kenarlık yok**, oyunun adından **başka yazı yok** (NEW, PLAY, güncellendi — hiçbiri),
+logo yok, bulanık görsel yok. Tavsiyesi: ekran görüntüsü koyma, basit tut, adı üstüne yaz.
+
+```sh
+node Tools/cover.mjs http://127.0.0.1:8050/Tools/cover.html Logs/cover
+```
+
+Kapaklar **oyunun kendi çizim koduyla** üretiliyor — `draw.js`'in `creatureMark`'ı, aynı iki
+mürekkep. Elle çizilmiş hiçbir şey yok, projenin baştan beri kuralı.
+
+**Üç denemede öğrenilen:** sahneye her şeyi koymak okunmaz bir kapak veriyor. İlk ikisinde dev bir
+büyücü, önünde duvar ve iki sıra kalabalık vardı; biri başlığın üstüne bindi, diğerinde ön plan
+siyah zemine gömüldü. Şimdi üç şey var ve üçü **ölçek farkıyla** konuşuyor: kule kocaman,
+kalabalık küçük, aralarında tek bir kişi.
+
+**Başlık her zaman gökte.** Dikeyde önce alta konmuştu ve zemin çizgisini ortadan kesiyordu: üst
+satır solgun zemine siyah, alt satır siyah zemine siyah düşüyordu — adın yarısı yoktu. Gök, üç
+oranda da boş olan tek yer.
+
+**`creatureMark` gövdeyi verilen noktanın ORTASINA çiziyor, ayağına değil.** Hizalamadan konunca
+bütün kalabalık zemine yarı yarıya gömüldü.
+
 ## CrazyGames SDK — `src/ads.js`
 
 Portalı bilen **tek dosya**, ve SDK yoksa içindeki her çağrı sessizce boş geçiyor. `index.html`
@@ -795,6 +827,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `Tools/overlap.mjs` | Her ekrandaki yazı/işaret kutularını kesiştirir. Üst üste bineni bulur. |
 | `Tools/bot.mjs` | Makul oyuncu. TEK bot — `test.mjs` ve `tune.mjs` ikisi de bunu kullanır. |
 | `Tools/tune.mjs` | Seçilen bölümleri seçilen sayıda oynatıp tabloyu basar. Bir sayıyı denemek için. |
+| `Tools/cover-art.js` | Üç kapak görseli, oyunun kendi çizimiyle. `cover.mjs` çizdirip kaydeder. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh
@@ -1027,7 +1060,7 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 ## Yapılmadı
 
 - Tek arena şekli (patron üç, aile dört, yer on iki, ufuk yere göre değişiyor) — kullanıcı erteledi.
-- Kapak görseli ve tanıtım videosu yok (portala göndermek için şart).
+- Tanıtım videosu yok (ekran kaydı gerek). Kapak görselleri hazır.
 - Enerji sistemi yapılmadı (depo 60, koşu 5, %100'e +5, 60 dakikada 2 — reklam dikişi artık hazır).
 - Reklamların gerçekten oynadığı görülmedi: SDK yalnızca çerçeve içinde yükleniyor.
 - Gerçek parmakla oynanmadı.

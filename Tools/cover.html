@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow Tower — covers</title>
+<style>html,body{margin:0;padding:0;background:#ece7dc;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="cover"></canvas>
+<script type="module">
+  import { drawCover } from './cover-art.js';
+  const c = document.getElementById('cover');
+  window.paint = (w, h) => {
+    c.width = w; c.height = h;
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    drawCover(c.getContext('2d'), w, h);
+    return w + 'x' + h;
+  };
+  console.log('[cover] ready');
+</script>
+</body>
+</html>
