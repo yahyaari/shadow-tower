@@ -1337,16 +1337,16 @@ check('her patronun adı ve açıklaması var',
 // --- yıldızlar ----------------------------------------------------------------------------------
 
 {
-  // Uc esik: bitirdin (1), duvarda bir sey kaldi (2), duvara dokunulmadi (3). Eskiden %60 ve %95
-  // vardi, yani iki yildiz da oyuncunun kenarini hissedemedigi ikinci bir puanlamaydi.
+  // Uc esik: bitirdin (1), duvar neredeyse cizilmedi (2), duvara hic dokunulmadi (3). Ikisi de
+  // bilerek tepede: aradaki butun fark tek yildizin icinde.
   check('tam duvarla üç yıldız', starsFor(300, 300) === 3);
-  check('%5 üstü iki yıldız',
-    starsFor(16, 300) === 2 && starsFor(299, 300) === 2 && starsFor(190, 300) === 2);
-  check('%5 altı bir yıldız', starsFor(14, 300) === 1 && starsFor(1, 300) === 1);
+  check('%95 üstü iki yıldız', starsFor(286, 300) === 2 && starsFor(299, 300) === 2);
+  check('%95 altı bir yıldız',
+    starsFor(284, 300) === 1 && starsFor(150, 300) === 1 && starsFor(1, 300) === 1);
   check('bitiren hiçbir zaman sıfır yıldız almıyor', starsFor(0, 300) === 1,
     'bölümü bitirmek kendi başına bir yıldız eder');
   check('sıradaki yıldızın eşiği söyleniyor',
-    nextStarAt(1) === 5 && nextStarAt(2) === 100 && nextStarAt(3) === null);
+    nextStarAt(1) === 95 && nextStarAt(2) === 100 && nextStarAt(3) === null);
 }
 
 {
@@ -1359,7 +1359,7 @@ check('her patronun adı ve açıklaması var',
   check('bölüm bitince sonraki açılıyor', stageOpen(d, 2) && furthestStage(d) === 2);
   check('bölüm bitince menü sonrakine geçiyor', d.stage === 2, String(d.stage));
 
-  const worse = finish(d, 1, 10, 300, 400);
+  const worse = finish(d, 1, 100, 300, 400);
   check('kötü bir tekrar kazanılmış yıldızı geri almıyor', starsAt(d, 1) === 3 && worse.stars === 1);
 
   const better = finish(d, 2, 290, 300, 400);

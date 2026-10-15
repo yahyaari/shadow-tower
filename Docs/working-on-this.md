@@ -346,12 +346,12 @@ Bir koşu = bir bölüm. Dalgalar, sonra patron, sonra bitiş ekranı. Ortanca b
 | ayakta kalan duvar | yıldız |
 |---|---|
 | %100 | ★★★ |
-| %5+ | ★★☆ |
+| %95+ | ★★☆ |
 | altı | ★☆☆ |
 
-Üç eşik, üç cümle: **bitirdin** (1), **duvarda bir şey kaldı** (2), **duvara dokunulmadı** (3).
-Eskiden %60 ve %95'ti; ikisi de oyuncunun kenarını hissedemediği, yani hiçbir şey anlatmayan
-sayılardı. Bitiren hiçbir zaman sıfır yıldız almıyor.
+**Bitiren hiçbir zaman sıfır yıldız almıyor** — eskiden %60'ın altı yıldızsızdı. Üst iki eşik
+bilerek tepeye toplanmış: duvar neredeyse çizilmedi (2), duvara hiç dokunulmadı (3). Aradaki
+bütün fark tek yıldızın içinde kalıyor, yani ikinci yıldız gerçekten bir şey istiyor.
 
 Yıldızlar her bölüm için **en iyisi** saklanıyor: kötü giden bir tekrar kazanılmışı geri almıyor,
 yoksa kimse tekrar denemezdi. Bir bölümü bitirmek sonrakini açıyor.

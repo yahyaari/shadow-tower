@@ -435,7 +435,7 @@ await sleep(600);
 await screenshot('patron_golge_ikiye');
 
 // Bolum tamamlandi: uc ayri yildiz durumu
-for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.4], ['bitti_1yildiz', 0.02]]) {
+for (const [name, part] of [['bitti_3yildiz', 1], ['bitti_2yildiz', 0.97], ['bitti_1yildiz', 0.5]]) {
   await evaluate(`(() => {
     const s = window.ShadowTower.state;
     // Ayni kosuyu tekrar bitiriyoruz; gercek akista start() bunlari sifirliyor.

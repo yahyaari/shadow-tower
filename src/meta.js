@@ -306,19 +306,19 @@ export const TabKeys = ['wheel', 'hero', 'map', 'spells', 'codex'];
 export function starsFor(wall, maxWall) {
   const part = maxWall > 0 ? wall / maxWall : 0;
   if (part >= 1) return 3;
-  if (part >= 0.05) return 2;
+  if (part >= 0.95) return 2;
   return 1;
 }
 
 /**
  * How much of the wall the next star up would need, or null at three.
  *
- * Finishing at all is worth one, finishing with anything left is worth two, and the third is the
- * only one that asks for something: the wall untouched. The old thresholds were 60 and 95, which
- * made the first two stars a second scoring system nobody could feel the edges of.
+ * Finishing at all is worth one - nobody who clears a stage gets nothing. The other two are both
+ * near the top, and deliberately: the wall barely scratched is worth two, the wall never touched
+ * is worth three. Anything below that is one star, however it went.
  */
 export function nextStarAt(stars) {
-  return stars >= 3 ? null : stars === 2 ? 100 : 5;
+  return stars >= 3 ? null : stars === 2 ? 100 : 95;
 }
 
 /** Stage one is always there; each later one opens when the one before it has been finished. */
