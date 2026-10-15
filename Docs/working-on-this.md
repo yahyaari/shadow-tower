@@ -81,6 +81,38 @@ node Tools/overlap.mjs http://127.0.0.1:8050/ 390 844 tr
 Artık orada duruyor ve sonunu `…` ile takas ediyor; yer hiç yoksa hiç yazmıyor. Tek satır, bütün
 ekranlarda.
 
+## Üçüncü mürekkep — sahada renk
+
+Oyun **iki mürekkeple** çiziliyordu ve **menü hâlâ öyle**: her panel, kart, buton ve yazı solgun
+ve siyah, hiçbiri değişmedi. Renk **yalnızca sahada** ve orada iki şey söylüyor.
+
+| ne | renk |
+|---|---|
+| ateş | `#bf3a16` |
+| buz | `#1d6b96` |
+| yıldırım | `#a4690a` |
+| bıçak | `#3b4b58` |
+| gizem | `#6b3b9e` |
+| **yaratık gözleri** | `#d4321c` |
+
+**Neden:** kullanıcının ürettiği kapak kırmızı büyü vaat ediyordu, oyunda yoktu — oyuncu kapağa
+tıklayıp başka bir şey görüyordu. Ayrıca senin büyün ile düşmanın gövdesi **ikisi de siyah
+siluetti**; artık bir bakışta ayrılıyorlar. Ve aile direnç tablosu (örümcek ateşe ×2.9) sahada
+ilk kez **görünür** hale geldi.
+
+Her ton **solgun zeminde şekil olarak da okunacak kadar koyu**: telefonda gün ışığında siluet
+rengi olmasa da ayakta kalmalı.
+
+**Tek karar yeri:** `inkOf(element)`. Her görsel etki hangi elementten geldiğini taşıyor
+(`fx`, `shots`, `grounds` üçü de), renk başka hiçbir yerde seçilmiyor. Donduran bir patlama
+buzdur, atışı hangi büyü yaparsa yapsın.
+
+**Gözler yalnızca `figure()` içinde**, yani sahada. Menüdeki ve külliyattaki aynı siluetler
+`creatureMark` üzerinden geçiyor ve iki mürekkepte kalıyor. Kafaların yeri `Heads` tablosunda ve
+`body()` ile **elle eşleşiyor** — bir kafa taşınırsa o satır da taşınmalı.
+
+**Kurtlarda göz yok:** bir sıra yumru, kafası yok, yani gözü nereye koysak uydurma olurdu.
+
 ## Köşeli kutular — oyunun kendi dili
 
 Oyundaki **her kutu** `cutPath` ile çiziliyor: yuvarlak değil, **sol üst ve sağ alt köşesi

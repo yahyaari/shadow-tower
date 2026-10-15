@@ -29,6 +29,30 @@ const Pale = '#ece7dc';
 export const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 /**
+ * The third ink, and where it is allowed.
+ *
+ * The game is drawn in two inks and the MENU still is: every panel, card, button and word on it
+ * is pale and black, exactly as before. Colour lives on the field only, and it says one of two
+ * things there - which element a spell is, or that something is alive and coming for you.
+ *
+ * Every tone is dark enough to read on the pale ground as a shape first and a colour second: on
+ * a phone in daylight the silhouette has to survive even if the colour does not.
+ */
+export const Elements = {
+  fire:   '#bf3a16',
+  ice:    '#1d6b96',
+  storm:  '#a4690a',
+  blade:  '#3b4b58',
+  arcane: '#6b3b9e',
+};
+
+/** What something alive looks out of. The one colour that is not a spell. */
+export const Eye = '#d4321c';
+
+/** A spell's ink, or black when it has no element to speak of. */
+export const inkOf = (element) => Elements[element] || Black;
+
+/**
  * Where the arena sits and how flat it is drawn.
  *
  * The squash adapts. On a wide screen a half-flattened circle reads as ground seen at an angle;
@@ -808,8 +832,48 @@ function figure(ctx, S, f) {
   ctx.lineCap = 'round';
 
   body(ctx, f.key, swing, Black, f.family);
+  eyes(ctx, f.key, f.family);
 
   ctx.restore();
+}
+
+/**
+ * Nereden baktıkları.
+ *
+ * Kafaların yeri `body()` içinde, her ailede ve her türde başka bir yerde. Burada tek bir tabloda
+ * duruyor çünkü gözler YALNIZCA sahada çiziliyor: menüdeki ve külliyattaki aynı siluetler
+ * `creatureMark` üzerinden geçiyor ve onlar iki mürekkepte kalıyor - kullanıcının kararı.
+ *
+ * Tablo `body()` ile elle eşleşiyor. Bir yaratığın kafası taşınırsa buradaki satır da taşınmalı;
+ * eşleşmezse gözler havada durur ve bu bakınca görülür.
+ */
+const Heads = {
+  warden: { x: 0, y: -70, r: 11 },
+  herald: { x: 0, y: -68, r: 10 },
+  shade:  { x: 0, y: -52, r: 11 },
+  brute:  { x: 0, y: -58, r: 9 },
+  runner: { x: 0, y: -48, r: 6 },
+  walker: { x: 0, y: -54, r: 7 },
+  swarm:  { x: 0, y: -13, r: 7 },
+  spider: { x: 0, y: -30, r: 6 },
+};
+
+function eyes(ctx, key, family) {
+  // Kurtların kafası yok: bir sıra yumru, yani gözü nereye koysak uydurma olur.
+  if (family === 'wurm') return;
+  const head = (family === 'swarm' || family === 'spider') && Heads[family]
+    ? Heads[family] : Heads[key];
+  if (!head) return;
+  // Yarıçapın çeyreği kadar yapılmıştı ve telefonda bir pikselden küçük kalıyordu: bir yaratık
+  // ekranda yirmi piksel boyunda, gözü onun yüzde biri olamaz.
+  const gap = head.r * 0.44;
+  ctx.fillStyle = Eye;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(head.x + side * gap, head.y - head.r * 0.1,
+      head.r * 0.4, head.r * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /**
@@ -826,10 +890,11 @@ function grounds(ctx, S, state) {
     ctx.save();
     ctx.translate(gx, gy);
     ctx.scale(1, S.squash);
+    const ink = inkOf(g.element);
     if (g.kind === 'fire') {
       // Tongues and nothing else. Drawn over a filled disc it read as a puddle - a flat shape on
       // the floor is a hole, and no amount of flicker around the edge of a hole makes it a fire.
-      ctx.fillStyle = Black;
+      ctx.fillStyle = ink;
       ctx.globalAlpha = 0.1 * k;
       ctx.beginPath(); ctx.arc(0, 0, g.r * S.scale * 0.9, 0, Math.PI * 2); ctx.fill();
       for (let i = 0; i < 13; i++) {
@@ -850,7 +915,7 @@ function grounds(ctx, S, state) {
       }
       ctx.globalAlpha = 1;
     } else {
-      ctx.strokeStyle = Black;
+      ctx.strokeStyle = ink;
       ctx.globalAlpha = 0.25 + k * 0.4;
       ctx.lineWidth = 3 * S.scale;
       ctx.setLineDash([14 * S.scale, 12 * S.scale]);
@@ -869,14 +934,17 @@ function grounds(ctx, S, state) {
 const Flight = 58;
 
 function spellFx(ctx, S, state) {
-  ctx.fillStyle = Black;
-  ctx.strokeStyle = Black;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const up = Flight * S.scale * S.squash;
 
   for (const e of state.fx) {
     const k = Math.max(0, e.life / e.max);
+    // Her etki hangi elementten geldigini tasiyor; rengi buradan geliyor ve baska hicbir yerde
+    // karar verilmiyor.
+    const ink = inkOf(e.element);
+    ctx.fillStyle = ink;
+    ctx.strokeStyle = ink;
 
     if (e.kind === 'nova' || e.kind === 'burst' || e.kind === 'frost') {
       const grow = e.kind === 'nova' ? 1 - k : 1;
@@ -929,6 +997,9 @@ function spellFx(ctx, S, state) {
 
   // --- things still in the air
   for (const b of state.shots) {
+    const ink = inkOf(b.element);
+    ctx.fillStyle = ink;
+    ctx.strokeStyle = ink;
     const [bx, by] = place(S, b.x, b.y);
     const high = (Flight + (b.z || 0)) * S.scale * S.squash;
     const size = (b.blast > 0 ? 9 : 5) * S.scale;
@@ -951,6 +1022,7 @@ function spellFx(ctx, S, state) {
   // --- the orbiting blades
   if (state.kit.blade) {
     const st = statsOf(state, 'blade');
+    ctx.fillStyle = inkOf(st.element);
     for (let n = 0; n < st.count; n++) {
       const at = state.bladeAt + (n / st.count) * Math.PI * 2;
       const bx = Math.cos(at) * st.ring, by = Math.sin(at) * st.ring;

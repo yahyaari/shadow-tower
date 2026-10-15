@@ -1751,9 +1751,11 @@ function mapTab(ctx, data, w, h, U, show) {
       write(ctx, word, left + 34 * U, cy, 22 * U, 800, 'left', ink);
       // What it will cost, small, on the right. Only when there is enough: told you the price
       // while refusing to sell, it would read as the reason rather than the wait.
+      // Eğik çizgilerin SOLUNDA: sağ kenarın son otuz beş birimi onların, ve bedel oraya
+      // konunca üstlerine biniyordu.
       ctx.globalAlpha = 0.6;
-      bolt(ctx, p.x + p.w - 34 * U, cy, 12 * U, ink);
-      write(ctx, String(EnergyPerRun), p.x + p.w - 26 * U, cy, 13 * U, 800, 'left', ink);
+      bolt(ctx, p.x + p.w - 74 * U, cy, 12 * U, ink);
+      write(ctx, String(EnergyPerRun), p.x + p.w - 66 * U, cy, 13 * U, 800, 'left', ink);
       ctx.globalAlpha = 1;
     } else {
       ctx.globalAlpha = 0.75;

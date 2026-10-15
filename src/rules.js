@@ -415,7 +415,7 @@ function evoke(s, key, x, y, damage) {
   for (const evo of kit.evos) {
     if (evo === 'burst') {
       splash(s, x, y, 74 * size, damage * 0.55, 0, element);
-      s.fx.push({ kind: 'burst', x, y, r: 74 * size, life: 0.3, max: 0.3 });
+      s.fx.push({ kind: 'burst', x, y, r: 74 * size, life: 0.3, max: 0.3, element });
 
     } else if (evo === 'split') {
       // The two it throws hunt. Sent off at a random angle they simply left the field: the test
@@ -450,7 +450,7 @@ function evoke(s, key, x, y, damage) {
 
     } else if (evo === 'freeze') {
       splash(s, x, y, 86 * size, damage * 0.3, 2.2, 'ice');
-      s.fx.push({ kind: 'frost', x, y, r: 86 * size, life: 0.32, max: 0.32 });
+      s.fx.push({ kind: 'frost', x, y, r: 86 * size, life: 0.32, max: 0.32, element: 'ice' });
     }
   }
 }
@@ -484,7 +484,7 @@ function castSpell(s, key) {
     for (let i = 0; i < st.count; i++) {
       const ring = Math.max(60, st.blast * (1 + i * 0.4));
       splash(s, 0, 0, ring, st.damage * (i ? 0.7 : 1), st.chill, st.element);
-      s.fx.push({ kind: 'nova', x: 0, y: 0, r: ring, life: 0.42, max: 0.42 });
+      s.fx.push({ kind: 'nova', x: 0, y: 0, r: ring, life: 0.42, max: 0.42, element: st.element });
       evoke(s, key, 0, 0, st.damage);
     }
     s.cast = 1;
@@ -515,7 +515,7 @@ function castSpell(s, key) {
         }
         from = next;
       }
-      if (points.length > 1) s.fx.push({ kind: 'chain', points, life: 0.26, max: 0.26 });
+      if (points.length > 1) s.fx.push({ kind: 'chain', points, life: 0.26, max: 0.26, element: st.element });
     }
     s.cast = 1;
     return true;
@@ -541,7 +541,7 @@ function castSpell(s, key) {
         }
       }
       s.aim = a;
-      s.fx.push({ kind: 'beam', a, wide, life: 0.2, max: 0.2 });
+      s.fx.push({ kind: 'beam', a, wide, life: 0.2, max: 0.2, element: st.element });
     }
     s.cast = 1;
     return true;
@@ -916,7 +916,7 @@ export function step(s, dt) {
           const p = placeOf(mark);
           if (Math.hypot(p.x - g.x, p.y - g.y) <= g.r) {
             wound(s, mark, g.damage, 0, g.element);
-            s.fx.push({ kind: 'chain', points: [{ x: g.x, y: g.y - 120 }, p], life: 0.2, max: 0.2 });
+            s.fx.push({ kind: 'chain', points: [{ x: g.x, y: g.y - 120 }, p], life: 0.2, max: 0.2, element: g.element });
           }
         }
       }
@@ -960,7 +960,11 @@ export function step(s, dt) {
     if (landed) {
       if (b.blast > 0) {
         splash(s, b.x, b.y, b.blast, b.damage, b.chill, b.element);
-        s.fx.push({ kind: b.chill ? 'frost' : 'burst', x: b.x, y: b.y, r: b.blast, life: 0.34, max: 0.34 });
+        s.fx.push({
+          kind: b.chill ? 'frost' : 'burst', x: b.x, y: b.y, r: b.blast, life: 0.34, max: 0.34,
+          // Donduran bir patlama buzdur, atisi hangi buyu yaptiysa yapsin.
+          element: b.chill ? 'ice' : b.element,
+        });
       } else {
         const mark = nearest(s, b.x, b.y, b.hits);
         if (mark) {
