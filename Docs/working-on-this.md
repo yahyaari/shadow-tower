@@ -432,13 +432,14 @@ oyunun konsolunda dört hata.
 | `reportGameCompletedPercentage` | en derin bölüm / 12 |
 | `settings.muteAudio` | portalın sesi oyunun ses düğmesini **ezer** |
 | ödüllü reklam | çark, iki sandık, 2× ödül, hız kilidi — her biri günde 3 |
-| ara reklam | koşu bitip SONRAKİ BÖLÜM veya ANA MENÜ'ye basılınca |
 
 **Kart ekranında `gameplayStop` denmiyor.** Dokümanlar "her molada" diyor ama beş dakikalık bir
 koşu kırk kart ekranı açıyor, her biri birkaç saniye: kırk başla-dur çifti sinyal değil gürültü.
 
-**Ara reklam koşu BAŞLAMADAN önce oynuyor.** Portal kendi çerçevesini duraklatıyor ama bu oyun
-adım atmaya devam ediyor — önce başlatılsaydı reklamın arkasında duvar yıkılıyor olurdu.
+**Ara reklam yok.** SDK sunuyor — koşular arasında, kimsenin istemediği ve hiçbir şey ödemeyen
+bir reklam — ve kullanıcının kararıyla kullanılmıyor. **Buradaki her reklam, oyuncunun butona
+basıp karşılığında butonda yazanı aldığı bir reklam.** `ads.js` `requestAd`'i yalnızca
+`'rewarded'` ile çağırıyor ve test bunu doğruluyor.
 
 **İlk fırlatışta (Basic Launch) reklamlar kapalı:** SDK `adsDisabledBasicLaunch` dönüyor ve bütün
 reklam butonları o aşamada görünmüyor. Bu normal, hata değil.

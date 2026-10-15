@@ -33,7 +33,7 @@ import {
 import {
   Allow as AdAllow, Kinds as AdKinds, ready as adsReady,
   open as portalOpen, playing as portalPlaying, cheer as portalCheer,
-  progress as portalProgress, watchSettings, mutedByPortal, show as adShow, between as adBetween,
+  progress as portalProgress, watchSettings, mutedByPortal, show as adShow,
 } from '../src/ads.js';
 import { News } from '../src/news.js';
 import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
@@ -2075,7 +2075,7 @@ check('SDK yokken hiçbiri patlamıyor', (() => {
     return mutedByPortal() === false;
   } catch { return false; }
 })());
-check('SDK yokken reklam ödemiyor', (await adShow()) === false && (await adBetween()) === false);
+check('SDK yokken reklam ödemiyor', (await adShow()) === false);
 check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false);
 
 // Simdi SAHTE bir portal kurup cagrilarin dogru sirada gittigini dogruluyoruz. Dikisi yazmak
@@ -2130,7 +2130,7 @@ check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false)
   // Odullu reklam: izlenirse oduyor, hata verirse odemiyor, ve ses iki durumda da geri geliyor.
   {
     const hushed = [];
-    const won = adShow('rewarded', (on) => hushed.push(on));
+    const won = adShow((on) => hushed.push(on));
     fire.adStarted();
     fire.adFinished();
     check('izlenen ödüllü reklam ödüyor', (await won) === true);
@@ -2138,19 +2138,23 @@ check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false)
   }
   {
     const hushed = [];
-    const won = adShow('rewarded', (on) => hushed.push(on));
+    const won = adShow((on) => hushed.push(on));
     fire.adStarted();
     fire.adError({ code: 'unfilled' });
     check('dolmayan reklam ödemiyor', (await won) === false,
       'adError dolu olmayan reklam icin de atesleniyor - ilk firlatista her reklam boyle');
     check('hata olsa da ses geri geliyor', hushed.join() === 'true,false', hushed.join());
   }
-  {
-    // Ara reklam odul degil: kadar gitse de false donuyor, kimse beklemiyor.
-    const out = adBetween();
-    fire.adFinished();
-    check('ara reklam bir şey ödemiyor', (await out) === false);
-  }
+
+  // ODULLU REKLAMDAN BASKA HICBIR SEY. Kullanicinin karari: her reklam, oyuncunun butona basip
+  // karsiliginda butonda yazani aldigi bir reklam olacak. SDK ara reklam da sunuyor; istenmedi.
+  said.length = 0;
+  const probe = adShow();
+  // Sahte SDK geri aramayi kendisi atesmiyor, biz atesliyoruz - beklemeden `await` etmek bu
+  // dosyayi sonsuza kadar asili birakir.
+  fire.adFinished();
+  await probe;
+  check('oyun sadece ödüllü reklam istiyor', said.join() === 'ad:rewarded', said.join());
 
   // Portalin sesi, oyunun sesinden ustun.
   globalThis.window.CrazyGames.SDK.game.settings.muteAudio = true;

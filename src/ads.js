@@ -125,7 +125,11 @@ export const mutedByPortal = () => {
 };
 
 /**
- * Shows one advert and resolves with whether it was watched through.
+ * Shows one REWARDED advert and resolves with whether it was watched through.
+ *
+ * Rewarded is the only kind this game shows. The SDK also offers `"midgame"` - an advert between
+ * runs that nobody asks for and nothing pays for - and it is deliberately not used: every advert
+ * here is one the player pressed a button to see, in exchange for something named on the button.
  *
  * Resolves false rather than rejecting when there is nothing to show, because every caller has
  * the same thing to do about it either way: pay nothing and say so. `adError` fires for a filled
@@ -135,7 +139,7 @@ export const mutedByPortal = () => {
  * `hush` is called with true when the advert starts and false when it ends, however it ends. The
  * SDK pauses the game itself; the sound is ours to silence.
  */
-export function show(kind = 'rewarded', hush = null) {
+export function show(hush = null) {
   if (!ready()) return Promise.resolve(false);
   return new Promise((done) => {
     let shut = false;
@@ -146,19 +150,13 @@ export function show(kind = 'rewarded', hush = null) {
       done(won);
     };
     try {
-      sdk().ad.requestAd(kind, {
+      sdk().ad.requestAd('rewarded', {
         adStarted: () => { if (hush) { try { hush(true); } catch { /* yoksa yok */ } } },
-        adFinished: () => end(kind === 'rewarded'),
+        adFinished: () => end(true),
         adError: () => end(false),
       });
     } catch {
       end(false);
     }
   });
-}
-
-/** A midgame advert. Never pays anything, so nothing waits on the answer. */
-export function between(hush = null) {
-  if (!ready()) return Promise.resolve(false);
-  return show('midgame', hush);
 }

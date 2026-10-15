@@ -96,18 +96,11 @@ function start() {
   ads.playing(true);
 }
 
-/**
- * Back to the menu, and the one place that says so to the portal.
- *
- * A midgame advert goes here and nowhere else: between runs, when the player has stopped and is
- * choosing what to do next. Nothing waits on it - the SDK pauses the game itself, and an advert
- * that does not fill must not hold up the menu.
- */
-function toMenu(advert = false) {
+/** Back to the menu, and the one place that tells the portal play has stopped. */
+function toMenu() {
   ads.playing(false);
   screen = 'menu';
   show = fresh();
-  if (advert) ads.between(hush);
 }
 
 /** Silences everything while an advert plays, and gives it back however the advert ends. */
@@ -116,7 +109,7 @@ function hush(on) {
   else applyAudio();
 }
 
-const watchAd = () => ads.show('rewarded', hush);
+const watchAd = () => ads.show(hush);
 
 /**
  * Turns what the rules reported into something to look at and listen to.
@@ -615,17 +608,8 @@ function doPause(what) {
  * costs an allowance nothing and pays nothing.
  */
 function doEnd(what) {
-  // The advert goes BEFORE the next run, not alongside it. The portal pauses its own frame but
-  // this game keeps stepping; started first, the wall would be coming down behind the advert.
-  // Most players press NEXT STAGE and never see the menu, so this is the only place a midgame
-  // advert actually reaches them. The SDK keeps its own three-minute cooldown and answers
-  // `adCooldown` when it is too soon, which costs nothing and resolves at once.
-  if (what === 'again' || what === 'next') {
-    ads.playing(false);
-    ads.between(hush).then(() => start());
-    return;
-  }
-  if (what === 'menu') { toMenu(true); return; }
+  if (what === 'again' || what === 'next') { start(); return; }
+  if (what === 'menu') { toMenu(); return; }
   if (what !== 'double') return;
   if (!show.won || show.doubled || meta.adsLeft(data, 'double') <= 0) return;
   watchAd().then((watched) => {
@@ -688,7 +672,7 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
-  if (state.phase === 'done') { toMenu(true); return; }
+  if (state.phase === 'done') { toMenu(); return; }
   if (state.phase === 'lost') { start(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }
 });
