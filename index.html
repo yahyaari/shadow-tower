@@ -17,20 +17,24 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<!-- The portal, loaded only where there is one.
-     CrazyGames serves a game inside a frame, so a page that is its own top window is not on the
-     portal: a local server, GitHub Pages, a file opened by hand. Loaded there anyway, the SDK
-     logs "CrazySDK is not initialized yet" on every call and throws a rejection nobody can
-     catch - four errors in the console of a game that is working perfectly.
-     `src/ads.js` checks for `window.CrazyGames` and falls through when it is absent. -->
+<!-- The portal, loaded everywhere EXCEPT the places we know are not it.
+     The other way round - loading it only inside a frame - was quieter but risky: CrazyGames QA
+     may open the game directly rather than embedded, and then the SDK would never load and
+     "Detected SDK functionalities" would come back empty, which fails the review. So the SDK
+     loads by default and is skipped only on this machine, on GitHub Pages, and for `?nosdk`
+     (the promo tool, which runs the game in a frame of its own).
+     Off-portal the SDK logs "CrazySDK is not initialized yet" on every call and throws a
+     rejection nothing can catch - four errors in the console of a game that is working. -->
 <script>
-  // `?nosdk` araçlar için: tanıtım videosu oyunu bir çerçevenin içinde açıyor ve orada SDK
-  // yüklenirse kendi hatalarını kaydın konsoluna basıyor.
-  if (window.self !== window.top && !location.search.includes('nosdk')) {
-    var sdkTag = document.createElement('script');
-    sdkTag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
-    document.head.appendChild(sdkTag);
-  }
+  (function () {
+    var host = location.hostname;
+    var mine = host === 'localhost' || host === '127.0.0.1' || host === ''
+      || /\.github\.io$/.test(host);
+    if (mine || location.search.indexOf('nosdk') >= 0) return;
+    var tag = document.createElement('script');
+    tag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+    document.head.appendChild(tag);
+  })();
 </script>
 <script type="module" src="src/main.js"></script>
 </body>

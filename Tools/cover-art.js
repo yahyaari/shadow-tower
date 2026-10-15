@@ -193,14 +193,20 @@ function wizard(ctx, x, base, tall) {
  * satır solgun zemine siyah, alt satır siyah zemine siyah düşüyordu, yani adın yarısı yoktu.
  * Gök, üç oranda da boş olan tek yer.
  *
+ * VE SOL ÜST KÖŞEDEN UZAK. CrazyGames kendi rozetini oraya basıyor - Potion Mix ve Slime Rush
+ * gönderimlerinden kalan not. Başlık ilk halinde tam oraya konmuştu, yani rozet adın üstüne
+ * basacaktı. Yatayda aşağı indi, dikeyde ve karede köşenin altına.
+ *
  * Portal oyunun adından başka yazıya izin vermiyor, ki iyi de ediyor.
  */
+const BadgeCorner = { w: 0.3, h: 0.17 };
+
 function title(ctx, w, h, wide, S) {
   const words = ['SHADOW', 'TOWER'];
   const size = wide ? h * 0.135 : w * 0.15;
   const lead = size * 0.98;
   const x = wide ? w * 0.07 : w / 2;
-  const y = wide ? h * 0.2 : h * 0.1;
+  const y = wide ? h * 0.44 : h * 0.24;
 
   ctx.textAlign = wide ? 'left' : 'center';
   ctx.textBaseline = 'middle';

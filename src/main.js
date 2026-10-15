@@ -23,6 +23,11 @@ import {
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
+// The portal BEFORE the save is read: its data module keeps the save with the account, and a
+// save loaded from the browser first and written to the portal afterwards is two saves.
+// Resolves either way - a portal that is not there must not stop the game from opening.
+await ads.open();
+
 let data = meta.load();
 
 /**
@@ -38,10 +43,6 @@ function applyAudio() {
 }
 applyAudio();
 setLanguage(data.lang);
-
-// The portal, before the first frame. Resolves either way: a portal that is not there must not
-// stop the game from opening, and this is on the path to the opening screen.
-await ads.open();
 ads.watchSettings(() => applyAudio());
 
 let screen = 'menu';              // 'menu' | 'run'

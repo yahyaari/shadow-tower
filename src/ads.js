@@ -119,6 +119,21 @@ export function watchSettings(onMute) {
   tell();
 }
 
+/**
+ * Where the save goes.
+ *
+ * The portal's data module has exactly localStorage's shape - `getItem`, `setItem` - and keeps
+ * the save with the ACCOUNT rather than the browser, so a player who comes back on their phone
+ * finds their spells where they left them. Logged out, the module falls back to localStorage by
+ * itself, so there is one code path and not two.
+ *
+ * Null off the portal, and `meta.js` uses localStorage directly then.
+ */
+export function store() {
+  const s = sdk();
+  return (portal.started && s && s.data && typeof s.data.getItem === 'function') ? s.data : null;
+}
+
 export const mutedByPortal = () => {
   const s = sdk();
   return !!(s && portal.started && s.game && s.game.settings && s.game.settings.muteAudio);

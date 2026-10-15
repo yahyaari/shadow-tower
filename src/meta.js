@@ -1,6 +1,7 @@
 // What survives between runs: the account, what it has unlocked, and what you are carrying.
 //
-// localStorage and nothing else. Every read is wrapped, because a private window, blocked site
+// The portal's data module when there is one, localStorage otherwise. Every read is wrapped,
+// because a private window, blocked site
 // data or a full quota all throw rather than return nothing, and none of those is a reason for
 // the game to refuse to run.
 
@@ -19,6 +20,7 @@ import {
 } from './missions.js';
 import { Allow as AdAllow, Kinds as AdKinds } from './ads.js';
 import { Store as EnergyStore } from './energy.js';
+import { store as portalStore } from './ads.js';
 
 const Key = 'shadowtower';
 
@@ -436,7 +438,10 @@ export function shardsFor(stage, taken) {
 export function load() {
   let data;
   try {
-    const raw = localStorage.getItem(Key);
+    // The portal first. Nothing there - a player who met this game somewhere else and is now
+    // signed in - and the browser's own copy is read instead, so progress carries over once.
+    const box = portalStore();
+    const raw = (box && box.getItem(Key)) || localStorage.getItem(Key);
     data = raw ? { ...blank, ...JSON.parse(raw) } : { ...blank };
   } catch {
     data = { ...blank };
@@ -554,7 +559,12 @@ export function tidy(data) {
 
 export function save(data) {
   try {
-    localStorage.setItem(Key, JSON.stringify(data));
+    const text = JSON.stringify(data);
+    const box = portalStore();
+    if (box) box.setItem(Key, text);
+    // Always the browser too: the portal's module is debounced by a second and a player who
+    // closes the tab inside that second should still find their run banked.
+    localStorage.setItem(Key, text);
   } catch {
     /* a browser that will not keep it is not a browser that should stop the game */
   }
