@@ -24,7 +24,9 @@
      catch - four errors in the console of a game that is working perfectly.
      `src/ads.js` checks for `window.CrazyGames` and falls through when it is absent. -->
 <script>
-  if (window.self !== window.top) {
+  // `?nosdk` araçlar için: tanıtım videosu oyunu bir çerçevenin içinde açıyor ve orada SDK
+  // yüklenirse kendi hatalarını kaydın konsoluna basıyor.
+  if (window.self !== window.top && !location.search.includes('nosdk')) {
     var sdkTag = document.createElement('script');
     sdkTag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
     document.head.appendChild(sdkTag);

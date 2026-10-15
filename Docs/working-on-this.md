@@ -481,6 +481,36 @@ oranda da boş olan tek yer.
 **`creatureMark` gövdeyi verilen noktanın ORTASINA çiziyor, ayağına değil.** Hizalamadan konunca
 bütün kalabalık zemine yarı yarıya gömüldü.
 
+## Tanıtım videosu — `Tools/promo.mjs`
+
+Portalın şartları: **15–20 saniye · ses yok · hızlandırma yok · siyah geçiş yok · imleç yok ·
+yazı yok**, yatay **1920×1080** ve dikey **1080×1620 (2:3)**, ikisi de zorunlu, 50 MB sınırı, ve
+**"açılış karesi statik kapağın olsun"**.
+
+```sh
+node Tools/promo.mjs http://127.0.0.1:8050/Tools/promo.html Logs/promo
+```
+
+Oyun bir çerçevede koşuyor, ekranın dışında duruyor; kaydedilen şey onun tuvalinin kopyalandığı
+ikinci bir tuval. Araya kapak karesini koyabilmenin tek yolu bu. İlk 1,3 saniye kapak, sonra
+kesme — siyah geçiş yok, çünkü kapak da oyunun kendi çizimi, yani aynı dünyadan aynı dünyaya
+geçiliyor. **Ses yapısal olarak yok:** akışa ses izi hiç açılmıyor.
+
+mp4 doğrudan `MediaRecorder`'dan çıkıyor (`video/mp4;codecs=avc1`), ffmpeg gerekmiyor.
+
+**SwiftShader bu araçta KAPALI.** Yazılım render'ı 1920×1080'de saniyede **üç kare** çiziyordu ve
+o hızda kaydedilen bir video slayt gösterisidir. GPU ile 30–76 fps. Araç kaç fps aktığını yazıyor
+ve 24'ün altına düşerse uyarıyor; fotoğraf araçları yazılım render'ında kalabilir, onlar tek kare
+çekiyor.
+
+**POTION MIX'TEN KALAN DERS:** yenilgiyle biten bir tanıtım, oynamamak için reklamdır. Kayıt
+donanımlı bir hesapla, geçilmiş bir bölümde, tırmanmış bir dalgada yapılıyor ve patron kaydın son
+üçte birinde geliyor — izleyen, kazanılan bir dövüş görüyor.
+
+**Videoyu kimse izleyemiyor** — ne ben ne de bir test. O yüzden kayıt sırasında beş kare
+fotoğraflanıyor (`*_kare1..5.png`). Bakılmamış bir video, gönderilmiş ama hiç açılmamış bir
+dosyadır.
+
 ## CrazyGames SDK — `src/ads.js`
 
 Portalı bilen **tek dosya**, ve SDK yoksa içindeki her çağrı sessizce boş geçiyor. `index.html`
@@ -862,6 +892,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `Tools/bot.mjs` | Makul oyuncu. TEK bot — `test.mjs` ve `tune.mjs` ikisi de bunu kullanır. |
 | `Tools/tune.mjs` | Seçilen bölümleri seçilen sayıda oynatıp tabloyu basar. Bir sayıyı denemek için. |
 | `Tools/cover-art.js` | Üç kapak görseli, oyunun kendi çizimiyle. `cover.mjs` çizdirip kaydeder. |
+| `Tools/promo.mjs` | Tanıtım videosu: oyunu kendisi oynatır, kaydeder, beş kare fotoğraflar. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh
@@ -1094,6 +1125,5 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 ## Yapılmadı
 
 - Tek arena şekli (patron üç, aile dört, yer on iki, ufuk yere göre değişiyor) — kullanıcı erteledi.
-- Tanıtım videosu yok (ekran kaydı gerek). Kapak görselleri hazır.
 - Reklamların gerçekten oynadığı görülmedi: SDK yalnızca çerçeve içinde yükleniyor.
 - Gerçek parmakla oynanmadı.

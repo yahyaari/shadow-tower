@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow Tower — promo</title>
+<style>
+  html,body{margin:0;padding:0;background:#ece7dc;overflow:hidden}
+  /* Oyun bir çerçevede koşuyor ve ekrandan uzakta duruyor: kaydedilen şey onun tuvalinin
+     kopyalandığı tuval. Araya kapak karesini koyabilmenin tek yolu bu. */
+  #stage{position:fixed;left:-20000px;top:0;border:0}
+  #out{display:block}
+</style>
+</head>
+<body>
+<iframe id="stage" src="../index.html?nosdk=1"></iframe>
+<canvas id="out"></canvas>
+<script type="module">
+  import { drawCover } from './cover-art.js';
+
+  const frame = document.getElementById('stage');
+  const out = document.getElementById('out');
+  const ctx = out.getContext('2d');
+
+  let rec = null;
+  let chunks = [];
+  let blob = null;
+  let coverUntil = 0;
+  let drew = 'hic';
+  let frames = 0;
+
+  window.promoSize = (w, h) => {
+    out.width = w; out.height = h;
+    out.style.width = w + 'px'; out.style.height = h + 'px';
+    frame.width = w; frame.height = h;
+    frame.style.width = w + 'px'; frame.style.height = h + 'px';
+    return w + 'x' + h;
+  };
+
+  window.promoGame = () => frame.contentWindow.ShadowTower || null;
+
+  /** Kapak dalının gerçekten çalışıp çalışmadığını soran tek yer. */
+  window.promoDebug = () => [Math.round(performance.now()), Math.round(coverUntil), drew, out.width, out.height, frames];
+
+  /** Hangi biçimi kaydedebiliyoruz. mp4 varsa o, yoksa webm. */
+  window.promoType = () => {
+    for (const t of ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+  };
+
+  window.promoStart = (coverMs) => {
+    const type = window.promoType();
+    if (!type) return '';
+    chunks = []; blob = null;
+    coverUntil = performance.now() + coverMs;
+    // SES YOK. Portalın şartı, ve burada yapısal olarak yok: akışta ses izi hiç açılmıyor.
+    const stream = out.captureStream(60);
+    rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 9000000 });
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.start(200);
+    return type;
+  };
+
+  window.promoStop = () => new Promise((done) => {
+    if (!rec) { done(0); return; }
+    rec.onstop = () => {
+      blob = new Blob(chunks, { type: rec.mimeType });
+      rec = null;
+      done(blob.size);
+    };
+    rec.stop();
+  });
+
+  /** Kaydı parça parça dışarı veriyoruz: bir seferde tamamı CDP'den geçmiyor. */
+  window.promoBytes = async (from, many) => {
+    if (!blob) return '';
+    const slice = await blob.slice(from, from + many).arrayBuffer();
+    let s = '';
+    const b = new Uint8Array(slice);
+    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return btoa(s);
+  };
+
+  function tick() {
+    frames += 1;
+    const w = out.width, h = out.height;
+    if (performance.now() < coverUntil) {
+      // Portal "açılış karesi kapağın olsun" diyor. Kapak da oyunun kendi çizimi, yani video
+      // kapaktan oyuna kesildiğinde aynı dünyadan aynı dünyaya geçiyor.
+      try { drawCover(ctx, w, h); drew = 'kapak'; }
+      catch (e) { drew = 'PATLADI: ' + e.message; }
+    } else {
+      const c = frame.contentDocument && frame.contentDocument.getElementById('game');
+      if (c && c.width) { ctx.drawImage(c, 0, 0, w, h); drew = 'oyun'; }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  console.log('[promo] ready');
+</script>
+</body>
+</html>
