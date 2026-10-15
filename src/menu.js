@@ -9,6 +9,7 @@
 
 import {
   Inks, Face, write, fitWrite, wrap, wrapIn, sigil, star, stars, creatureMark, coin, shard, gem,
+  cutPath, cutBox, boxPath, slashes,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
@@ -52,16 +53,45 @@ const unit = (dpr) => Math.max(1, Math.min(2.4, dpr));
  * be learnt once, and the chosen one lifts clear of the row and fills in, which says which it is
  * without saying anything.
  */
+/**
+ * The account, on a black band across the top.
+ *
+ * A band rather than writing on the background, because this is the one strip that is true on
+ * every tab: who you are, how far along, and the way into the settings. Its bottom-right corner
+ * is cut away - the first of the cuts, and the one that says what the rest of the screen is
+ * going to look like.
+ */
+export function topBand(w, h, dpr = 1) {
+  const U = unit(dpr);
+  const tall = (narrow(w, h) ? 92 : 74) * U;
+  const pad = 13 * U;
+  const av = tall - pad * 2;
+  const g = 32 * U;
+  const gear = { x: w - pad - g, y: tall / 2 - g / 2, w: g, h: g };
+  return {
+    box: { x: 0, y: 0, w, h: tall },
+    cut: 24 * U,
+    avatar: { x: pad, y: pad, w: av, h: av },
+    textX: pad + av + 13 * U,
+    gear,
+    // the star total sits left of the gear, behind a hairline that separates the two
+    rule: gear.x - 16 * U,
+    starAt: gear.x - 28 * U,
+  };
+}
+
 export function navBar(w, h, dpr = 1) {
   const U = unit(dpr);
   // Touching rather than spaced. Apart they read as five loose objects floating at the foot of
   // the screen; edge to edge they read as one strip with five parts, which is what they are - and
   // the shared edge between two of them is what says they are separate.
-  const cw = Math.min(96 * U, (w - 20 * U) / Tabs.length);
-  const ch = 64 * U;
+  // Wide enough for a word under the mark. The marks alone were learnable but never learnt -
+  // five shapes with nothing to attach a name to is five shapes you guess at every time.
+  const cw = Math.min(104 * U, (w - 16 * U) / Tabs.length);
+  const ch = 62 * U;
   const total = Tabs.length * cw;
   const left = w / 2 - total / 2;
-  const y = h - ch - 14 * U;
+  const y = h - ch - 12 * U;
   return Tabs.map((t, i) => ({
     ...t, i,
     x: left + i * cw, y, w: cw, h: ch,
@@ -80,13 +110,10 @@ const narrow = (w, h) => h > w * 1.1;
  */
 export function band(w, h, dpr = 1) {
   const U = unit(dpr);
-  const top = (narrow(w, h) ? 96 : 84) * U;
-  const bottom = h - 96 * U;
+  const top = topBand(w, h, dpr).box.h + 10 * U;
+  const bottom = h - 92 * U;
   return { top, bottom, mid: (top + bottom) / 2, height: bottom - top };
 }
-
-/** One side button: the settings gear, the mission board, the rest of them. */
-export const SideSize = 52;
 
 /**
  * The stage picture, dead centre, with a margin either side wide enough to put something in.
@@ -96,12 +123,7 @@ export const SideSize = 52;
  * between them where it belongs.
  */
 export function artBox(w, h, dpr = 1) {
-  const U = unit(dpr);
-  const b = band(w, h, dpr);
-  const side = (SideSize + 30) * U;
-  const aw = Math.min(560 * U, w - side * 2);
-  const ah = Math.min(aw * 0.42, b.height * 0.4);
-  return { x: w / 2 - aw / 2, y: b.top + 10 * U, w: aw, h: ah };
+  return mapColumn(w, h, dpr).art;
 }
 
 /**
@@ -113,33 +135,82 @@ export function artBox(w, h, dpr = 1) {
 export function arrows(w, h, dpr = 1) {
   const U = unit(dpr);
   const a = artBox(w, h, dpr);
-  const r = 24 * U;
-  const y = a.y + a.h / 2 - r;
+  const r = 23 * U;
+  // Low on the picture rather than halfway down it. The stage's name and stars now sit over the
+  // left of the art, and an arrow at mid-height landed on the writing.
+  const y = a.y + a.h - r * 2 - 14 * U;
   return {
-    prev: { x: a.x + 2 * U, y, w: r * 2, h: r * 2 },
-    next: { x: a.x + a.w - r * 2 - 2 * U, y, w: r * 2, h: r * 2 },
+    prev: { x: a.x + 14 * U, y, w: r * 2, h: r * 2 },
+    next: { x: a.x + a.w - r * 2 - 14 * U, y, w: r * 2, h: r * 2 },
   };
 }
 
-/** The three boards, down the left of the picture. */
-export const Boards = ['jobs', 'feats', 'news'];
+/**
+ * The map is one column of stacked cards, and this is where it is measured.
+ *
+ * Everything on the map tab hangs off this: the four boards, the stage card, who lives there,
+ * PLAY, and the two cards at the foot. It is measured top-down from the band and reports its own
+ * total height, so the tab can scroll when the window is too short to hold it - which a landscape
+ * window always is.
+ */
+export const Boards = ['jobs', 'week', 'feats', 'news'];
 
-export function sideBoxes(w, h, dpr = 1) {
-  const U = unit(dpr);
-  const a = artBox(w, h, dpr);
-  const s = SideSize * U;
-  const gap = 10 * U;
-  const top = a.y + 2 * U;
-  return Boards.map((key, i) => ({
-    key, x: a.x - s - 16 * U, y: top + i * (s + gap), w: s, h: s,
-  }));
-}
-
-export function playBox(w, h, dpr = 1) {
+export function mapColumn(w, h, dpr = 1) {
   const U = unit(dpr);
   const b = band(w, h, dpr);
-  const bw = Math.min(300 * U, w - 80 * U);
-  return { x: w / 2 - bw / 2, y: b.bottom - 66 * U, w: bw, h: 58 * U };
+  const cw = Math.min(520 * U, w - 28 * U);
+  const x = w / 2 - cw / 2;
+  const boardH = 62 * U;
+  const foesH = 92 * U;
+  const playH = 62 * U;
+  const stripH = 72 * U;
+
+  // The picture is the one card that gives: everything else is as tall as its own contents, and
+  // whatever room is left over is the picture's. Laid out with a fixed picture height the column
+  // ran eight pixels past the tab strip on a 720-high window - which is every landscape window.
+  const fixed = boardH + foesH + playH + stripH;
+  const gaps = 4;
+  let gap = 12 * U;
+  const room = b.height - fixed - gap * gaps;
+  const artH = Math.max(110 * U, Math.min(cw * 0.62, 260 * U, room));
+  // ...and when there is MORE room than the picture can use, it goes into the gaps rather than
+  // being left as a hole above the tabs.
+  gap += Math.min(16 * U, Math.max(0, room - artH) / gaps);
+
+  let y = b.top;
+  const bw = (cw - gap * (Boards.length - 1) * 0.5) / Boards.length;
+  const boards = Boards.map((key, i) => ({
+    key,
+    x: x + i * (bw + gap * 0.5), y, w: bw, h: boardH,
+  }));
+  y += boardH + gap;
+
+  const art = { x, y, w: cw, h: artH };
+  y += artH + gap;
+
+  const foes = { x, y, w: cw, h: foesH };
+  y += foesH + gap;
+
+  const play = { x, y, w: cw, h: playH };
+  y += playH + gap;
+
+  const sw = (cw - 12 * U) / 2;
+  const strip = [
+    { key: 'spin', x, y, w: sw, h: stripH },
+    { key: 'runjobs', x: x + sw + 12 * U, y, w: sw, h: stripH },
+  ];
+  y += stripH;
+
+  return { x, w: cw, gap, boards, art, foes, play, strip, foot: y, height: y - b.top };
+}
+
+/** Where PLAY is. Its own export because the hit test and three other screens ask for it. */
+export function playBox(w, h, dpr = 1) {
+  return mapColumn(w, h, dpr).play;
+}
+
+export function sideBoxes(w, h, dpr = 1) {
+  return mapColumn(w, h, dpr).boards;
 }
 
 /** The loadout grid, inside the band, for the spells tab. */
@@ -241,7 +312,12 @@ export function chestOpens(box, dpr = 1) {
 
 /** How many rows a board has, and how tall they are. One answer, read by the hits and the paint. */
 export function boardShape(data, key) {
-  if (key === 'jobs') return { many: 1 + DailyCount, tall: 66 };
+  // The week used to be the first row of the daily board. Split out, because the two are not the
+  // same promise: the dailies reset every midnight and the week is the one thing that only comes
+  // round once, and a row that only comes round once does not belong at the top of a list that
+  // is new every day.
+  if (key === 'jobs') return { many: DailyCount, tall: 66 };
+  if (key === 'week') return { many: 1, tall: 66 };
   if (key === 'feats') return { many: Feats.length, tall: 62 };
   return { many: News.length, tall: 92 };
 }
@@ -381,9 +457,9 @@ export function raiseRows(w, h, dpr = 1) {
  * a gear floating next to nothing on the hero comb is a gear nobody finds twice.
  */
 export function gearBox(w, h, dpr = 1) {
-  const U = unit(dpr);
-  const r = 34 * U;
-  return { x: w - 18 * U - r, y: 16 * U, w: r, h: r };
+  // One definition, read by the painter and the hit test alike. It used to carry its own corner
+  // arithmetic and the two drifted apart the first time the top bar changed height.
+  return topBand(w, h, dpr).gear;
 }
 
 /**
@@ -560,15 +636,15 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (inside(p.close, px, py) || !inside(p.box, px, py)) return { what: 'boardClose' };
     const up = show.boardScroll || 0;
     const rows = boardRows(w, h, dpr, shape.many, shape.tall);
-    if (show.board === 'jobs') {
+    if (show.board === 'week') {
       const w0 = week(data);
+      const t = boardTake(rows[0], dpr);
+      if (w0.due && inside({ ...t, y: t.y - up }, px, py)) return { what: 'week' };
+    } else if (show.board === 'jobs') {
       const jobs = dailyJobs(data);
-      if (w0.due && inside({ ...boardTake(rows[0], dpr), y: boardTake(rows[0], dpr).y - up }, px, py)) {
-        return { what: 'week' };
-      }
       for (let i = 0; i < jobs.length; i++) {
         const j = jobs[i];
-        const r = rows[i + 1];
+        const r = rows[i];
         if (!r || !j.done || j.paid) continue;
         const t = boardTake(r, dpr);
         if (inside({ ...t, y: t.y - up }, px, py)) return { what: 'daily', key: j.key };
@@ -594,6 +670,9 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (inside(a.prev, px, py)) return { what: 'stage', step: -1 };
     if (inside(a.next, px, py)) return { what: 'stage', step: 1 };
     if (inside(playBox(w, h, dpr), px, py)) return { what: 'play' };
+    // The spin card is the only one of the two at the foot that goes anywhere.
+    const spin = mapColumn(w, h, dpr).strip.find((b) => b.key === 'spin');
+    if (spin && inside(spin, px, py)) return { what: 'tab', key: 'wheel' };
   }
   if (data.tab === 'hero') {
     const next = heroNext(data);
@@ -665,6 +744,53 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
 }
 
 // --- the marks on the tabs ----------------------------------------------------------------------
+
+/** The gear, wherever it is asked for, in whichever ink the thing behind it needs. */
+function gearMark(ctx, g, U, ink, lit) {
+  const cx = g.x + g.w / 2, cy = g.y + g.h / 2, r = g.w * 0.3;
+  ctx.globalAlpha = lit ? 1 : 0.8;
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
+  ctx.lineWidth = 2.2 * U;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
+    ctx.lineTo(cx + Math.cos(a) * r * 1.36, cy + Math.sin(a) * r * 1.36);
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * The tower the game is named after: a keep with battlements and one lit window.
+ *
+ * `back` is what is behind it, because the window is painted in that rather than cut out of the
+ * canvas - cutting would punch through to nothing on a canvas with no alpha.
+ */
+function keepMark(ctx, x, y, s, ink, back) {
+  const half = s * 0.34;
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.moveTo(x - half, y + s * 0.46);
+  ctx.lineTo(x - half * 0.82, y - s * 0.2);
+  ctx.lineTo(x + half * 0.82, y - s * 0.2);
+  ctx.lineTo(x + half, y + s * 0.46);
+  ctx.closePath();
+  ctx.fill();
+  // battlements: three teeth across the top
+  const tooth = half * 0.52;
+  for (let i = -1; i <= 1; i++) {
+    ctx.fillRect(x + i * tooth * 1.5 - tooth * 0.42, y - s * 0.42, tooth * 0.84, s * 0.24);
+  }
+  ctx.fillStyle = back;
+  ctx.beginPath();
+  ctx.arc(x, y + s * 0.08, s * 0.11, 0, Math.PI * 2);
+  ctx.fill();
+}
 
 function tabMark(ctx, key, x, y, s, colour) {
   ctx.save();
@@ -740,6 +866,19 @@ function boardMark(ctx, key, x, y, s, colour) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
+  if (key === 'week') {
+    // seven days as a ring of ticks: a week, said without a word
+    ctx.lineWidth = s * 0.09;
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * s * 0.33, Math.sin(a) * s * 0.33, s * 0.1, 0, Math.PI * 2);
+      if (i < 4) ctx.fill(); else ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
   if (key === 'jobs') {
     // a list with the first line ticked
     for (let i = 0; i < 3; i++) {
@@ -809,8 +948,10 @@ function portrait(ctx, r, stage, look) {
   const roll = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
 
   ctx.save();
+  // A plain rectangle: whoever asks for a portrait has already clipped it to whatever shape the
+  // card is. Rounding here as well left a pale notch inside the cut corners of the stage card.
   ctx.beginPath();
-  ctx.roundRect(r.x, r.y, r.w, r.h, r.h * 0.05);
+  ctx.rect(r.x, r.y, r.w, r.h);
   ctx.clip();
 
   const sky = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
@@ -835,6 +976,25 @@ function portrait(ctx, r, stage, look) {
   // --- far shapes, faint
   ctx.fillStyle = Black;
   ctx.globalAlpha = 0.22;
+  // A far range behind everything, in every place.
+  //
+  // Five of the twelve looks had nothing at all in the back - the stage card drew a sun, a few
+  // thin posts and then a third of a blank sky, which only became obvious once the card was given
+  // room to be a picture. This stands behind whatever the place does next and never competes with
+  // it: one tenth of an ink, and a profile that is the same for a stage every time.
+  {
+    ctx.globalAlpha = 0.1;
+    ctx.beginPath();
+    ctx.moveTo(r.x, floor);
+    for (let x = 0; x <= 1.001; x += 0.06) {
+      const wave = 0.42 + Math.sin(x * 5.3 + stage * 1.7) * 0.3 + Math.sin(x * 11 + stage) * 0.18;
+      ctx.lineTo(r.x + r.w * x, floor - r.h * 0.42 * wave);
+    }
+    ctx.lineTo(r.x + r.w, floor);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 0.22;
+  }
+
   const Hills = { ridge: 0.3, hollow: 0.14, ice: 0.34, marsh: 0.08 };
   if (Hills[look] !== undefined) {
     // One profile across the back, shaped differently by place: a ridge is a skyline, dunes roll,
@@ -1228,11 +1388,11 @@ function adButton(ctx, box, left, U, lit) {
   const live = adsReady();
   ctx.globalAlpha = live ? 1 : 0.4;
   ctx.fillStyle = lit && live ? Black : Pale;
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 9 * U); ctx.fill();
+  ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 9 * U); ctx.fill();
   ctx.strokeStyle = Black;
   ctx.lineWidth = 2 * U;
   ctx.setLineDash([5 * U, 4 * U]);
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 9 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 9 * U); ctx.stroke();
   ctx.setLineDash([]);
 
   const ink = lit && live ? Pale : Black;
@@ -1279,7 +1439,7 @@ function chestPanel(ctx, data, box, U, show) {
   ctx.strokeStyle = Black;
   ctx.lineWidth = (lively ? 3 : 1.5) * U;
   ctx.globalAlpha = lively ? 1 : 0.4;
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 14 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 14 * U); ctx.stroke();
   ctx.globalAlpha = 1;
 
   ctx.globalAlpha = lively ? 1 : 0.45;
@@ -1326,11 +1486,11 @@ function chestPanel(ctx, data, box, U, show) {
     const can = canOpen(data, kind, side.many);
     const lit = can && show.overMenu === `chest:${kind}:${side.many}`;
     ctx.fillStyle = lit ? Black : Pale;
-    ctx.beginPath(); ctx.roundRect(side.x, side.y, side.w, side.h, 10 * U); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, side.x, side.y, side.w, side.h, 10 * U); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = (can ? 2.4 : 1.4) * U;
     ctx.globalAlpha = can ? 1 : 0.4;
-    ctx.beginPath(); ctx.roundRect(side.x, side.y, side.w, side.h, 10 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, side.x, side.y, side.w, side.h, 10 * U); ctx.stroke();
 
     const ink = lit ? Pale : Black;
     const back = lit ? Black : Pale;
@@ -1444,10 +1604,10 @@ function wheelTab(ctx, data, w, h, U, show) {
   } else if (canSpin(data)) {
     const lit = show.overMenu === 'spin';
     ctx.fillStyle = lit ? Black : Pale;
-    ctx.beginPath(); ctx.roundRect(sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = 3 * U;
-    ctx.beginPath(); ctx.roundRect(sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, sb.x, sb.y, sb.w, sb.h, 14 * U); ctx.stroke();
     write(ctx, say(UI.spin), w / 2, sb.y + sb.h / 2, 18 * U, 800, 'center', lit ? Pale : Black);
   } else {
     ctx.globalAlpha = 0.55;
@@ -1493,185 +1653,299 @@ function wheelTab(ctx, data, w, h, U, show) {
   }
 }
 
+/**
+ * The map: one column of cards, read top to bottom.
+ *
+ * Four doors, then the stage, then what lives in it, then the button, then two things that are a
+ * state rather than a door. It used to be a picture with three icons stacked down its left and a
+ * third of the screen left empty underneath; the column fills the page and says more with it.
+ */
 function mapTab(ctx, data, w, h, U, show) {
-  const r = artBox(w, h, U);
+  const col = mapColumn(w, h, U);
   const far = furthestStage(data);
   const info = stageOf(data.stage);
+  const cut = 14 * U;
 
+  boardRow(ctx, data, col, U, show);
+  stageCard(ctx, data, col, U, show, info, far, cut, w, h);
+  foeCard(ctx, data, col, U, cut);
+
+  // --- the one button the whole screen is for
+  {
+    const p = col.play;
+    const lit = show.overMenu === 'play';
+    cutBox(ctx, p, U, { cut: { tl: cut * 1.4, br: cut * 1.4 }, fill: Black });
+    if (lit) {
+      // pressed, it loses its fill and keeps its outline - the only button that does
+      cutBox(ctx, p, U, { cut: { tl: cut * 1.4, br: cut * 1.4 }, fill: Pale, line: Black, width: 3 });
+    }
+    const ink = lit ? Black : Pale;
+    // the triangle, then the word, centred as one group
+    ctx.font = `800 ${22 * U}px ${Face}`;
+    const word = say(UI.play);
+    const ww = ctx.measureText(word).width;
+    const left = p.x + p.w / 2 - (ww + 34 * U) / 2;
+    const cy = p.y + p.h / 2;
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.moveTo(left, cy - 11 * U);
+    ctx.lineTo(left + 18 * U, cy);
+    ctx.lineTo(left, cy + 11 * U);
+    ctx.closePath();
+    ctx.fill();
+    write(ctx, word, left + 34 * U, cy, 22 * U, 800, 'left', ink);
+    slashes(ctx, p, U, ink);
+  }
+
+  stripRow(ctx, data, col, U, show);
+}
+
+/**
+ * The four doors along the top.
+ *
+ * A row rather than a column down the edge of the picture: stacked at the side they squeezed the
+ * stage art into the middle third of the screen, and three unlabelled icons in a vertical line
+ * are three icons nobody presses twice. Each one says what it is and how many are waiting.
+ */
+function boardRow(ctx, data, col, U, show) {
+  const waiting = {
+    jobs: dailyJobs(data).filter((j) => j.done && !j.paid).length,
+    week: week(data).due ? 1 : 0,
+    feats: feats(data).filter((f) => f.done && !f.paid).length,
+    news: 0,
+  };
+  const name = {
+    jobs: UI.boardJobs, week: UI.boardWeek, feats: UI.boardFeats, news: UI.boardNews,
+  };
+
+  for (const box of col.boards) {
+    const lit = show.overMenu === 'board:' + box.key;
+    const many = waiting[box.key] || 0;
+    cutBox(ctx, box, U, {
+      cut: { tl: 10 * U, br: 10 * U },
+      fill: lit ? Black : Pale,
+      line: Black,
+      width: many ? 2.6 : 1.5,
+    });
+    const ink = lit ? Pale : Black;
+    ctx.globalAlpha = lit || many ? 1 : 0.72;
+    boardMark(ctx, box.key, box.x + box.w / 2, box.y + box.h * 0.38, box.h * 0.42, ink);
+    fitWrite(ctx, say(name[box.key]), box.x + box.w / 2, box.y + box.h * 0.78,
+      8.5 * U, 800, 'center', ink, box.w - 8 * U);
+    ctx.globalAlpha = 1;
+
+    // The count, in a disc on the corner. A plain dot said "something is here" and nothing else;
+    // a number says whether it is worth the trip.
+    if (many) {
+      const cx = box.x + box.w - 8 * U, cy = box.y + 8 * U;
+      ctx.fillStyle = lit ? Pale : Black;
+      ctx.beginPath(); ctx.arc(cx, cy, 9 * U, 0, Math.PI * 2); ctx.fill();
+      write(ctx, String(many), cx, cy, 11 * U, 800, 'center', lit ? Black : Pale);
+    }
+  }
+}
+
+/**
+ * The stage, as a picture with its name written on it.
+ *
+ * The name and the stars used to sit under the picture as loose writing. On it, in a dark panel
+ * cut into the corner, they belong to the place they are naming - and the space they used to take
+ * up is where the rest of the column now lives.
+ */
+function stageCard(ctx, data, col, U, show, info, far, cut, w, h) {
+  const r = col.art;
+
+  ctx.save();
+  cutPath(ctx, r, { tl: cut, br: cut });
+  ctx.clip();
   portrait(ctx, r, data.stage, info.look);
 
-  // Only the stage number goes on the picture. The name used to sit across the bottom of it,
-  // which is the one band that is solid black - a black name on a black strip.
-  write(ctx, say(UI.stage, data.stage), r.x + 16 * U, r.y + 20 * U, 11 * U, 800, 'left');
+  // The writing sits on a dark wash that fades out to the right, so a pale sky behind the title
+  // cannot swallow it and the picture is still a picture on the side the arrows are not.
+  const wash = ctx.createLinearGradient(r.x, 0, r.x + r.w * 0.92, 0);
+  wash.addColorStop(0, 'rgba(13,12,11,0.9)');
+  wash.addColorStop(0.55, 'rgba(13,12,11,0.62)');
+  wash.addColorStop(1, 'rgba(13,12,11,0)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(r.x, r.y, r.w, r.h);
 
+  // the stage number on its own tab, cut into the top-left
+  {
+    const tab = { x: r.x, y: r.y, w: Math.min(132 * U, r.w * 0.46), h: 32 * U };
+    cutBox(ctx, tab, U, { cut: { br: 14 * U }, fill: Black });
+    fitWrite(ctx, say(UI.stage, data.stage), tab.x + 14 * U, tab.y + tab.h / 2,
+      12 * U, 800, 'left', Pale, tab.w - 28 * U);
+  }
+
+  // One column down the left: title, stars, a rule, then the line about the place. `wrapIn`
+  // takes the CENTRE of its column, not its left edge - passed the left edge, half the sentence
+  // was drawn off the side of the picture.
+  const colX = r.x + 18 * U;
+  const colW = r.w * 0.54;
+  let y = r.y + 52 * U;
+  fitWrite(ctx, say(info.name), colX, y, 25 * U, 800, 'left', Pale, colW + r.w * 0.1);
+  y += 28 * U;
+  stars(ctx, colX + 32 * U, y, 11 * U, starsAt(data, data.stage) || 0, Pale);
+  y += 20 * U;
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = Pale;
+  ctx.lineWidth = 1.4 * U;
+  ctx.beginPath();
+  ctx.moveTo(colX, y); ctx.lineTo(colX + colW * 0.7, y);
+  ctx.stroke();
+  ctx.globalAlpha = 0.88;
+  y += 9 * U;
+  // Stops short of the bottom strip, because that is where the two arrows stand.
+  wrapIn(ctx, say(info.blurb), colX, y, colW,
+    Math.max(14 * U, r.y + r.h - 74 * U - y), 12 * U, Pale, 'left');
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  cutBox(ctx, r, U, { cut: { tl: cut, br: cut }, line: Black, width: 2 });
+
+  // --- the way to the stage before and the one after
   const a = arrows(w, h, U);
-  // Over the picture now, so each one wears a pale disc - half the stage art is solid black and a
-  // black arrow on it is no arrow at all.
   const arrow = (box, pointing, on) => {
-    const cx = box.x + box.w / 2, cy = box.y + box.h / 2, sz = 11 * U;
-    ctx.globalAlpha = on ? 0.82 : 0.3;
+    const cx = box.x + box.w / 2, cy = box.y + box.h / 2, sz = 10 * U;
+    const lit = show.overMenu === (pointing > 0 ? 'stage:1' : 'stage:-1');
+    ctx.globalAlpha = on ? 1 : 0.28;
     ctx.fillStyle = Pale;
-    ctx.beginPath(); ctx.arc(cx, cy, 19 * U, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = on ? 1 : 0.22;
-    ctx.strokeStyle = Black;
-    ctx.lineWidth = 3.5 * U;
+    ctx.beginPath(); ctx.arc(cx, cy, box.w / 2, 0, Math.PI * 2); ctx.fill();
+    if (lit && on) { ctx.fillStyle = Black; ctx.beginPath(); ctx.arc(cx, cy, box.w / 2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = lit && on ? Pale : Black;
+    ctx.lineWidth = 3.4 * U;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(cx - pointing * sz * 0.5, cy - sz * 0.8);
-    ctx.lineTo(cx + pointing * sz * 0.5, cy);
-    ctx.lineTo(cx - pointing * sz * 0.5, cy + sz * 0.8);
+    ctx.moveTo(cx - pointing * sz * 0.45, cy - sz * 0.8);
+    ctx.lineTo(cx + pointing * sz * 0.55, cy);
+    ctx.lineTo(cx - pointing * sz * 0.45, cy + sz * 0.8);
     ctx.stroke();
     ctx.globalAlpha = 1;
   };
   arrow(a.prev, -1, data.stage > 1);
   arrow(a.next, 1, data.stage < far);
+}
 
-  // Everything under the picture is kept to the picture's own width, so none of it runs out into
-  // the margins the boards live in.
-  let y = r.y + r.h + 30 * U;
-  fitWrite(ctx, say(info.name), w / 2, y, 26 * U, 800, 'center', Black, r.w);
-  y += 28 * U;
-  stars(ctx, w / 2, y, 10 * U, starsAt(data, data.stage) || 0, Black);
-  y += 26 * U;
-  fitWrite(ctx, say(info.blurb), w / 2, y, 13 * U, 500, 'center', Black, r.w);
+/**
+ * Who lives in the stage, and what leads them.
+ *
+ * Beside PLAY on purpose. Which spells to bring is the one decision the menu asks for, and a
+ * weakness you can only find out by losing a run is not a decision, it is a guess.
+ */
+function foeCard(ctx, data, col, U, cut) {
+  const r = col.foes;
+  cutBox(ctx, r, U, { cut: { tl: cut, br: cut }, fill: Pale, line: Black, width: 1.5 });
 
-  // --- the three boards, down the left of the picture.
-  //
-  // Icons rather than words, like the tabs: three labels stacked down the edge of a phone are
-  // three pieces of small text nobody reads twice. A ring on one says it has something waiting.
-  {
-    const ready = {
-      jobs: dailyJobs(data).some((j) => j.done && !j.paid) || week(data).due,
-      feats: feats(data).some((f) => f.done && !f.paid),
-      news: false,
-    };
-    for (const box of sideBoxes(w, h, U)) {
-      const lit = show.overMenu === 'board:' + box.key;
-      const waiting = ready[box.key];
-
-      ctx.fillStyle = lit ? Black : Pale;
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 13 * U); ctx.fill();
-      ctx.strokeStyle = Black;
-      ctx.lineWidth = (waiting ? 3 : 1.6) * U;
-      ctx.globalAlpha = waiting || lit ? 1 : 0.5;
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 13 * U); ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      boardMark(ctx, box.key, box.x + box.w / 2, box.y + box.h / 2, box.h * 0.56,
-        lit ? Pale : Black);
-
-      // the dot that says there is something to collect
-      if (waiting) {
-        ctx.fillStyle = lit ? Pale : Black;
-        ctx.beginPath();
-        ctx.arc(box.x + box.w - 7 * U, box.y + 7 * U, 5 * U, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
-
-  // --- who lives here, and what hurts them.
-  //
-  // This sits beside the PLAY button on purpose. Which spells to bring is the one decision the
-  // menu asks for, and a weakness the player can only discover by losing a run is not a decision,
-  // it is a guess.
   const here = familiesOn(data.stage);
   const boss = kindsOn(data.stage).slice(-1)[0];
-  const cols = [...here.map((f) => ({ family: f })), { boss }];
-  // The creatures stand far enough above PLAY to leave room for the two lines of weakness under
-  // them AND the run's three under that. Pinned just above the button, all three landed on it.
-  const feet = Math.min(y + 92 * U, playBox(w, h, U).y - 128 * U);
-  const step = Math.min(138 * U, (w - 40 * U) / cols.length);
-  let x = w / 2 - ((cols.length - 1) * step) / 2;
+  const bossW = 92 * U;
+  const left = { x: r.x, y: r.y, w: r.w - bossW, h: r.h };
 
-  // The marks are sized by the room between the blurb above them and their own feet, so a short
-  // window shrinks them rather than letting the boss stand through the line of writing.
-  const fit = Math.max(0.55, Math.min(1, (feet - y - 14 * U) / (52 * U)));
-  for (const col of cols) {
-    if (col.boss) {
-      creatureMark(ctx, col.boss, x, feet, 44 * U * fit, Black);
-      write(ctx, say(UI['foe_' + col.boss] || col.boss), x, feet + 15 * U, 10 * U, 700, 'center');
-    } else {
-      creatureMark(ctx, 'walker', x, feet, 36 * U * fit, Black, col.family);
-      fitWrite(ctx, say(Families[col.family].name).toUpperCase(), x, feet + 15 * U,
-        10 * U, 800, 'center', Black, step - 8 * U);
-
-      const w0 = weakness(col.family);
-      const a0 = armour(col.family);
-      let at = feet + 32 * U;
-      // The triangle and the words are centred as one group. Hung off a fixed offset they
-      // drifted left out of their own column and into the family beside them.
-      const line = (mark, el, much) => {
-        const words = `${say(UI['el_' + el])} ×${much}`;
-        ctx.font = `700 ${10 * U}px ${Face}`;
-        const ww = Math.min(ctx.measureText(words).width, step - 30 * U);
-        const tx = x - (ww + 14 * U) / 2;
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = Black;
-        ctx.beginPath();
-        if (mark > 0) { ctx.moveTo(tx, at - 4 * U); ctx.lineTo(tx - 4 * U, at + 3 * U); ctx.lineTo(tx + 4 * U, at + 3 * U); }
-        else { ctx.moveTo(tx, at + 4 * U); ctx.lineTo(tx - 4 * U, at - 3 * U); ctx.lineTo(tx + 4 * U, at - 3 * U); }
-        ctx.closePath(); ctx.fill();
-        fitWrite(ctx, words, tx + 10 * U, at, 10 * U, 700, 'left', Black, step - 30 * U);
-        ctx.globalAlpha = 1;
-        at += 15 * U;
-      };
-      if (w0) line(1, w0.element, w0.much);
-      if (a0) line(-1, a0.element, a0.much);
-      if (!w0 && !a0) {
-        ctx.globalAlpha = 0.55;
-        fitWrite(ctx, say(UI.noElement), x, at, 9 * U, 600, 'center', Black, step - 8 * U);
-        ctx.globalAlpha = 1;
-      }
-    }
-    x += step;
-  }
-
-  // --- what this run is asking for, named before it starts.
-  //
-  // Beside PLAY rather than on the end screen, because a goal you are told about afterwards is
-  // not a goal, it is a surprise. They pay gold and never gems: a run goal refreshes every run,
-  // and a gem that refreshes every run is a gem that can be farmed.
-  {
-    const jobs = runJobs(data, data.stage);
-    const p0 = playBox(w, h, U);
-    const top = Math.max(feet + 72 * U, p0.y - 70 * U);
-    ctx.globalAlpha = 0.6;
-    write(ctx, say(UI.runJobs), w / 2, top, 10 * U, 800, 'center');
-    ctx.globalAlpha = 1;
-    jobs.forEach((j, i) => {
-      const y = top + 18 * U + i * 15 * U;
-      ctx.globalAlpha = 0.8;
-      // a small open circle, so the three read as a list rather than a sentence
-      ctx.strokeStyle = Black;
-      ctx.lineWidth = 1.6 * U;
-      ctx.beginPath();
-      ctx.arc(w / 2 - 150 * U, y, 3.4 * U, 0, Math.PI * 2);
-      ctx.stroke();
-      fitWrite(ctx, say(j.job.name), w / 2 - 140 * U, y, 10 * U, 600, 'left', Black, 300 * U);
-      ctx.globalAlpha = 1;
-    });
-  }
-
-  const p = playBox(w, h, U);
-  const lit = show.overMenu === 'play';
-  ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-  ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 10 * U); ctx.fill();
+  // the divider, which is what makes this one card and not two
   ctx.strokeStyle = Black;
-  ctx.lineWidth = 3 * U;
-  ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 10 * U); ctx.stroke();
-  write(ctx, say(UI.play), p.x + p.w / 2, p.y + p.h / 2, 21 * U, 800, 'center', lit ? Pale : Black);
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = 1.4 * U;
+  ctx.beginPath();
+  ctx.moveTo(r.x + r.w - bossW, r.y + 14 * U);
+  ctx.lineTo(r.x + r.w - bossW, r.y + r.h - 14 * U);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // --- the families, one column each inside the left half
+  const step = left.w / here.length;
+  here.forEach((family, i) => {
+    const x = left.x + i * step;
+    const markX = x + 34 * U;
+    creatureMark(ctx, 'walker', markX, r.y + r.h / 2, 40 * U, Black, family);
+
+    const textX = x + 64 * U;
+    const room = step - 72 * U;
+    fitWrite(ctx, say(Families[family].name).toUpperCase(), textX, r.y + 28 * U,
+      13 * U, 800, 'left', Black, room);
+
+    const w0 = weakness(family);
+    const a0 = armour(family);
+    let at = r.y + 50 * U;
+    const line = (up, el, much) => {
+      ctx.fillStyle = Black;
+      ctx.beginPath();
+      if (up) { ctx.moveTo(textX + 5 * U, at - 5 * U); ctx.lineTo(textX, at + 3 * U); ctx.lineTo(textX + 10 * U, at + 3 * U); }
+      else { ctx.moveTo(textX + 5 * U, at + 5 * U); ctx.lineTo(textX, at - 3 * U); ctx.lineTo(textX + 10 * U, at - 3 * U); }
+      ctx.closePath(); ctx.fill();
+      fitWrite(ctx, `${say(UI['el_' + el])} ×${much}`, textX + 17 * U, at,
+        11 * U, 700, 'left', Black, room - 17 * U);
+      at += 17 * U;
+    };
+    if (w0) line(true, w0.element, w0.much);
+    if (a0) line(false, a0.element, a0.much);
+    if (!w0 && !a0) {
+      ctx.globalAlpha = 0.55;
+      fitWrite(ctx, say(UI.noElement), textX, at, 10 * U, 600, 'left', Black, room);
+      ctx.globalAlpha = 1;
+    }
+  });
+
+  // --- and the one at the end of it
+  {
+    const cx = r.x + r.w - bossW / 2;
+    creatureMark(ctx, boss, cx, r.y + r.h / 2 - 6 * U, 46 * U, Black);
+    fitWrite(ctx, say(UI['foe_' + boss] || boss), cx, r.y + r.h - 16 * U,
+      11 * U, 800, 'center', Black, bossW - 10 * U);
+  }
+}
+
+/**
+ * The two cards at the foot: a free spin, and what this run is being asked for.
+ *
+ * Neither of them opens anything. They are here because they are true right now and change on
+ * their own - a countdown and three goals - and that is a different kind of thing from a door.
+ */
+function stripRow(ctx, data, col, U, show) {
+  const cut = 10 * U;
+  for (const box of col.strip) {
+    // Only the spin card is a door - it goes where the wheel is. The run's three are read here
+    // and nowhere else, so nothing about that card should look pressable.
+    const lit = box.key === 'spin' && show.overMenu === 'strip:spin';
+    cutBox(ctx, box, U, {
+      cut: { tl: cut, br: cut },
+      fill: lit ? 'rgba(13,12,11,0.06)' : Pale,
+      line: Black,
+      width: 1.5,
+    });
+
+    if (box.key === 'spin') {
+      const ready = canSpin(data);
+      tabMark(ctx, 'wheel', box.x + 26 * U, box.y + 26 * U, 24 * U, Black);
+      fitWrite(ctx, say(UI.stripSpin), box.x + 44 * U, box.y + 24 * U, 11 * U, 800, 'left',
+        Black, box.w - 56 * U);
+      ctx.globalAlpha = ready ? 1 : 0.55;
+      wrapIn(ctx, ready ? say(UI.stripSpinReady) : say(UI.stripSpinWait),
+        box.x + 16 * U, box.y + 38 * U, box.w - 32 * U, box.h - 44 * U, 10 * U, Black, 'left');
+      ctx.globalAlpha = 1;
+    } else {
+      const jobs = runJobs(data, data.stage);
+      boardMark(ctx, 'jobs', box.x + 26 * U, box.y + 26 * U, 20 * U, Black);
+      fitWrite(ctx, say(UI.runJobs), box.x + 44 * U, box.y + 24 * U, 11 * U, 800, 'left',
+        Black, box.w - 56 * U);
+      // Wrapped rather than squeezed onto one line. Three goal names on a single line came out
+      // at the size of a footnote, which is the size nobody reads before pressing PLAY.
+      ctx.globalAlpha = 0.72;
+      wrapIn(ctx, jobs.map((j) => say(j.job.name)).join(' · '),
+        box.x + 16 * U, box.y + 38 * U, box.w - 32 * U, box.h - 44 * U, 10 * U, Black, 'left');
+      ctx.globalAlpha = 1;
+    }
+  }
 }
 
 /** The two halves, drawn the same way the codex draws its two. */
 function half(ctx, box, label, on, lit, U) {
   ctx.fillStyle = on ? Black : 'rgba(13,12,11,0)';
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
+  ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
   ctx.strokeStyle = Black;
   ctx.lineWidth = (on || lit ? 2.6 : 1.4) * U;
   ctx.globalAlpha = on || lit ? 1 : 0.45;
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
   ctx.globalAlpha = 1;
   write(ctx, label, box.x + box.w / 2, box.y + box.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
 }
@@ -1698,7 +1972,7 @@ function elementTag(ctx, key, x, y, U, ink = Black, back = Pale, align = 'left')
   ctx.strokeStyle = ink;
   ctx.lineWidth = 1.3 * U;
   ctx.globalAlpha = 0.55;
-  ctx.beginPath(); ctx.roundRect(left, y - 8 * U, bw, 16 * U, 5 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, left, y - 8 * U, bw, 16 * U, 5 * U); ctx.stroke();
   ctx.globalAlpha = 1;
   write(ctx, words, left + pad, y, size, 800, 'left', ink);
   return bw;
@@ -1752,12 +2026,12 @@ function raiseTab(ctx, data, w, h, U, show) {
     const lit = show.overMenu === 'buySpell:' + r.key && afford;
 
     ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10 * U); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 10 * U); ctx.fill();
     ctx.globalAlpha = open ? 1 : 0.3;
     ctx.strokeStyle = Black;
     ctx.lineWidth = (afford ? 2.6 : 1.4) * U;
     ctx.globalAlpha = open ? (afford ? 1 : 0.45) : 0.25;
-    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 10 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 10 * U); ctx.stroke();
     ctx.globalAlpha = open ? 1 : 0.35;
 
     const ink = lit ? Pale : Black;
@@ -1852,12 +2126,12 @@ function spellsTab(ctx, data, w, h, U, show) {
 
     if (taken) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
     }
     ctx.globalAlpha = open ? 1 : 0.3;
     ctx.strokeStyle = Black;
     ctx.lineWidth = (taken || lit ? 3 : 1.6) * U;
-    ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
 
     const ink = taken ? Pale : Black;
     const at = levelOf(data, t.key);
@@ -1912,11 +2186,11 @@ function codexTab(ctx, data, w, h, U, show) {
 
   const half = (box, label, on, lit) => {
     ctx.fillStyle = on ? Black : 'rgba(13,12,11,0)';
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = (on ? 2.4 : 1.4) * U;
     ctx.globalAlpha = on || lit ? 1 : 0.4;
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
     ctx.globalAlpha = 1;
     write(ctx, label, box.x + box.w / 2, box.y + box.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
   };
@@ -1928,11 +2202,11 @@ function codexTab(ctx, data, w, h, U, show) {
     for (const t of codexGrid(w, h, U)) {
       const lit = show.overMenu === 'codexOpen:' + t.key;
       ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
       ctx.strokeStyle = Black;
       ctx.lineWidth = (lit ? 2.6 : 1.5) * U;
       ctx.globalAlpha = lit ? 1 : 0.6;
-      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
+      ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
       ctx.globalAlpha = 1;
       const ink = lit ? Pale : Black;
       sigil(ctx, t.key, t.x + t.w / 2, t.y + t.h * 0.36, 30 * U, ink);
@@ -1960,7 +2234,7 @@ function codexTab(ctx, data, w, h, U, show) {
       ctx.strokeStyle = Black;
       ctx.lineWidth = 1.5 * U;
       ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 9 * U); ctx.stroke();
+      ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 9 * U); ctx.stroke();
       ctx.globalAlpha = 1;
 
       const nameAt = r.y + Math.min(24 * U, r.h * 0.26);
@@ -2017,10 +2291,10 @@ function codexTab(ctx, data, w, h, U, show) {
     ctx.fillStyle = 'rgba(236,231,220,0.9)';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = Pale;
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 16 * U); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 16 * U); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = 3 * U;
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 16 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 16 * U); ctx.stroke();
 
     sigil(ctx, key, box.x + 46 * U, box.y + 44 * U, 34 * U, Black);
     write(ctx, say(sp.name), box.x + 76 * U, box.y + 34 * U, 22 * U, 800, 'left');
@@ -2294,12 +2568,13 @@ function board(ctx, data, w, h, U, show) {
   ctx.fillStyle = 'rgba(236,231,220,0.9)';
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = Pale;
-  ctx.beginPath(); ctx.roundRect(p.box.x, p.box.y, p.box.w, p.box.h, 16 * U); ctx.fill();
+  ctx.beginPath(); boxPath(ctx, p.box.x, p.box.y, p.box.w, p.box.h, 16 * U); ctx.fill();
   ctx.strokeStyle = Black;
   ctx.lineWidth = 3 * U;
-  ctx.beginPath(); ctx.roundRect(p.box.x, p.box.y, p.box.w, p.box.h, 16 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, p.box.x, p.box.y, p.box.w, p.box.h, 16 * U); ctx.stroke();
 
-  write(ctx, say(key === 'jobs' ? UI.boardJobs : key === 'feats' ? UI.boardFeats : UI.boardNews),
+  write(ctx, say(key === 'jobs' ? UI.boardJobs : key === 'week' ? UI.boardWeek
+    : key === 'feats' ? UI.boardFeats : UI.boardNews),
     p.box.x + 22 * U, p.head - 8 * U, 18 * U, 800, 'left');
 
   // the way out
@@ -2328,7 +2603,7 @@ function board(ctx, data, w, h, U, show) {
     ctx.strokeStyle = Black;
     ctx.lineWidth = (done && !paid ? 3 : 1.5) * U;
     ctx.globalAlpha = paid ? 0.32 : done ? 1 : 0.55;
-    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 11 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 11 * U); ctx.stroke();
 
     const press = boardTake(r, U);
     const room = (done && !paid ? press.x - 10 * U : r.x + r.w - 12 * U) - (r.x + 14 * U);
@@ -2349,10 +2624,10 @@ function board(ctx, data, w, h, U, show) {
       write(ctx, say(UI.dailyDone), r.x + r.w - 14 * U, r.y + r.h / 2, 11 * U, 800, 'right');
     } else if (done) {
       ctx.fillStyle = lit ? Black : Pale;
-      ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 9 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, press.x, press.y, press.w, press.h, 9 * U); ctx.fill();
       ctx.strokeStyle = Black;
       ctx.lineWidth = 2.4 * U;
-      ctx.beginPath(); ctx.roundRect(press.x, press.y, press.w, press.h, 9 * U); ctx.stroke();
+      ctx.beginPath(); boxPath(ctx, press.x, press.y, press.w, press.h, 9 * U); ctx.stroke();
       write(ctx, say(UI.dailyTake), press.x + press.w / 2, press.y + press.h / 2,
         12 * U, 800, 'center', lit ? Pale : Black);
     } else if (prize) {
@@ -2364,13 +2639,39 @@ function board(ctx, data, w, h, U, show) {
     ctx.globalAlpha = 1;
   };
 
-  if (key === 'jobs') {
-    // the week first, because it is the one that only comes round once
+  if (key === 'week') {
     const w0 = week(data);
     row(rows[0], say(UI.weekRun, w0.run, w0.of), w0.run, w0.of, w0.due, false,
       { gems: w0.pays.gems }, show.overMenu === 'week');
+
+    // Seven marks under it, one a day. The bar in the row says how far along you are; these say
+    // what the promise actually is - seven of them, and then it starts over.
+    const r0 = rows[0];
+    const gap = Math.min(46 * U, (r0.w - 20 * U) / Week);
+    const left = r0.x + r0.w / 2 - (gap * (Week - 1)) / 2;
+    const top = r0.y + r0.h + 34 * U;
+    for (let i = 0; i < Week; i++) {
+      const dx = left + i * gap;
+      const on = i < w0.run;
+      const box = { x: dx - 15 * U, y: top - 15 * U, w: 30 * U, h: 30 * U };
+      cutBox(ctx, box, U, {
+        cut: { tl: 7 * U, br: 7 * U },
+        fill: on ? Black : 'rgba(13,12,11,0)',
+        line: Black,
+        width: on ? 2 : 1.4,
+      });
+      ctx.globalAlpha = on ? 1 : 0.45;
+      write(ctx, String(i + 1), dx, top, 12 * U, 800, 'center', on ? Pale : Black);
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 0.6;
+    fitWrite(ctx, say(UI.weekTell), r0.x + r0.w / 2, top + 34 * U, 11 * U, 600, 'center',
+      Black, r0.w - 20 * U);
+    ctx.globalAlpha = 1;
+
+  } else if (key === 'jobs') {
     dailyJobs(data).forEach((j, i) => {
-      row(rows[i + 1], say(j.job.name), j.at, j.need, j.done, j.paid,
+      row(rows[i], say(j.job.name), j.at, j.need, j.done, j.paid,
         { gems: j.pays.gems }, show.overMenu === 'daily:' + j.key);
     });
 
@@ -2386,7 +2687,7 @@ function board(ctx, data, w, h, U, show) {
       ctx.strokeStyle = Black;
       ctx.lineWidth = 1.5 * U;
       ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 11 * U); ctx.stroke();
+      ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 11 * U); ctx.stroke();
       ctx.globalAlpha = 1;
       write(ctx, say(n.title), r.x + 14 * U, r.y + 22 * U, 13 * U, 800, 'left');
       ctx.globalAlpha = 0.5;
@@ -2427,50 +2728,53 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
 
-  // --- the account, along the top
+  // --- the account, on a black band across the top
   {
-    const need = needFor(data.level);
-    const bw = Math.min(narrow(w, h) ? w - 150 * U : 300 * U, w * (narrow(w, h) ? 1 : 0.34));
+    const t = topBand(w, h, U);
+    cutBox(ctx, t.box, U, { cut: { br: t.cut }, fill: Black });
 
-    write(ctx, say(UI.level, data.level), 20 * U, 26 * U, 15 * U, 800, 'left');
-
-    // the stars go on the right of the same line, where nothing else is
-    const count = String(totalStars(data));
-    const right = w - 72 * U;                 // clear of the gear
-    ctx.font = `800 ${16 * U}px ${Face}`;
-    const cw = ctx.measureText(count).width;
-    write(ctx, count, right, 30 * U, 16 * U, 800, 'right');
-    star(ctx, right - cw - 11 * U, 30 * U, 9 * U, true, Black);
-
-    ctx.fillStyle = 'rgba(13,12,11,0.14)';
-    ctx.fillRect(20 * U, 42 * U, bw, 7 * U);
-    ctx.fillStyle = Black;
-    ctx.fillRect(20 * U, 42 * U, bw * Math.max(0, Math.min(1, data.xp / need)), 7 * U);
-
-    const next = nextUnlock(data.level);
-    fitWrite(ctx, next ? say(UI.unlockSoon, say(Spells[next.key].name), next.at) : say(UI.allYours),
-      20 * U + bw, 64 * U, 11 * U, 600, 'right', Black, bw * 0.8);
-  }
-
-  // --- the way into the settings
-  {
-    const g = gearBox(w, h, U);
-    const cx = g.x + g.w / 2, cy = g.y + g.h / 2, r = g.w * 0.34;
-    const lit = show.overMenu === 'openSettings';
-    ctx.globalAlpha = lit ? 1 : 0.75;
-    ctx.strokeStyle = Black;
-    ctx.fillStyle = Black;
-    ctx.lineWidth = 2.4 * U;
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
-      ctx.lineTo(cx + Math.cos(a) * r * 1.34, cy + Math.sin(a) * r * 1.34);
-      ctx.stroke();
+    // the keep this whole place is named after, in its own little frame
+    {
+      const a = t.avatar;
+      cutBox(ctx, a, U, { cut: { tl: 7 * U, br: 7 * U }, line: Pale, width: 2 });
+      keepMark(ctx, a.x + a.w / 2, a.y + a.h / 2, a.h * 0.62, Pale, Black);
     }
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2); ctx.fill();
+
+    const need = needFor(data.level);
+    const barW = Math.min(t.starAt - t.textX - 24 * U, 300 * U);
+    write(ctx, say(UI.level, data.level), t.textX, t.box.h * 0.32, 15 * U, 800, 'left', Pale);
+
+    // The experience bar lives on the band now, so its track has to be a lightened black rather
+    // than a darkened pale - on the band the old track was invisible.
+    const barY = t.box.h * 0.52;
+    ctx.fillStyle = 'rgba(246,243,236,0.22)';
+    ctx.fillRect(t.textX, barY, barW, 7 * U);
+    ctx.fillStyle = Pale;
+    ctx.fillRect(t.textX, barY, barW * Math.max(0, Math.min(1, data.xp / need)), 7 * U);
+
+    // the star total, then a hairline, then the gear: three things, said to be three
+    const count = String(totalStars(data));
+    ctx.font = `800 ${15 * U}px ${Face}`;
+    write(ctx, count, t.starAt, t.box.h / 2, 15 * U, 800, 'right', Pale);
+    star(ctx, t.starAt - ctx.measureText(count).width - 11 * U, t.box.h / 2, 9 * U, true, Pale);
+
+    ctx.strokeStyle = Pale;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1.4 * U;
+    ctx.beginPath();
+    ctx.moveTo(t.rule, t.box.h * 0.28);
+    ctx.lineTo(t.rule, t.box.h * 0.72);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    gearMark(ctx, t.gear, U, Pale, show.overMenu === 'openSettings');
+
+    // What the next level opens, on the band under the bar. It used to sit just below the band,
+    // which is exactly where the row of boards now begins - it was being drawn underneath them.
+    const next = nextUnlock(data.level);
+    ctx.globalAlpha = 0.55;
+    fitWrite(ctx, next ? say(UI.unlockSoon, say(Spells[next.key].name), next.at) : say(UI.allYours),
+      t.textX, t.box.h * 0.84, 10 * U, 600, 'left', Pale, barW);
     ctx.globalAlpha = 1;
   }
 
@@ -2488,49 +2792,38 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   // is the line they share, and the chosen one still lifts clear of the row entirely.
   {
     const bar = navBar(w, h, U);
-    const r = 14 * U;
-
-    // the strip behind them, drawn once
     const first = bar[0];
     const last = bar[bar.length - 1];
-    ctx.fillStyle = Pale;
-    ctx.beginPath();
-    ctx.roundRect(first.x, first.y, last.x + last.w - first.x, first.h, r);
-    ctx.fill();
-    ctx.strokeStyle = Black;
-    ctx.lineWidth = 1.6 * U;
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.roundRect(first.x, first.y, last.x + last.w - first.x, first.h, r);
-    ctx.stroke();
+    const strip = { x: first.x, y: first.y, w: last.x + last.w - first.x, h: first.h };
+    const c = 16 * U;
 
-    // the lines between them
-    ctx.lineWidth = 1.4 * U;
-    for (const t of bar) {
-      if (t.first) continue;
-      ctx.beginPath();
-      ctx.moveTo(t.x, t.y + 10 * U);
-      ctx.lineTo(t.x, t.y + t.h - 10 * U);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
+    cutBox(ctx, strip, U, { cut: { tl: c, br: c }, fill: Black });
 
     for (const t of bar) {
       const on = data.tab === t.key;
       const over = show.overMenu === 'tab:' + t.key;
-      const lift = on ? 12 * U : over ? 3 * U : 0;
-      const y = t.y - lift;
 
+      // The chosen one is a pale tab cut out of the strip, narrower at the top like a real one.
+      // A filled card that lifted clear of the row read as a sixth object; this reads as the row
+      // telling you where you are.
       if (on) {
-        // the chosen one is its own card again, clear of the strip on every side
-        ctx.fillStyle = Black;
-        ctx.beginPath(); ctx.roundRect(t.x, y, t.w, t.h, r); ctx.fill();
-        ctx.strokeStyle = Black;
-        ctx.lineWidth = 3 * U;
-        ctx.beginPath(); ctx.roundRect(t.x, y, t.w, t.h, r); ctx.stroke();
+        const lean = 9 * U;
+        const pad = 4 * U;
+        ctx.fillStyle = Pale;
+        ctx.beginPath();
+        ctx.moveTo(t.x + pad + lean, t.y + pad);
+        ctx.lineTo(t.x + t.w - pad - lean, t.y + pad);
+        ctx.lineTo(t.x + t.w - pad, t.y + t.h - pad);
+        ctx.lineTo(t.x + pad, t.y + t.h - pad);
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.globalAlpha = on ? 1 : over ? 0.9 : 0.7;
-      tabMark(ctx, t.key, t.cx, y + t.h / 2, 32 * U * (on ? 1.18 : 1), on ? Pale : Black);
+
+      const ink = on ? Black : Pale;
+      ctx.globalAlpha = on ? 1 : over ? 0.95 : 0.6;
+      tabMark(ctx, t.key, t.cx, t.y + t.h * 0.42, 26 * U, ink);
+      fitWrite(ctx, say(t.name).toUpperCase(), t.cx, t.y + t.h * 0.78,
+        9 * U, 800, 'center', ink, t.w - 8 * U);
       ctx.globalAlpha = 1;
     }
   }
@@ -2545,10 +2838,10 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
 
     const sp = settingsPanel(w, h, U);
     ctx.fillStyle = Pale;
-    ctx.beginPath(); ctx.roundRect(sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = 3 * U;
-    ctx.beginPath(); ctx.roundRect(sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, sp.box.x, sp.box.y, sp.box.w, sp.box.h, 16 * U); ctx.stroke();
 
     write(ctx, say(UI.settings), sp.box.x + 22 * U, sp.box.y + 34 * U, 20 * U, 800, 'left');
 
@@ -2569,11 +2862,11 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
 
     const row = (box, label, value, lit) => {
       ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 10 * U); ctx.fill();
       ctx.strokeStyle = Black;
       ctx.lineWidth = 1.6 * U;
       ctx.globalAlpha = lit ? 1 : 0.4;
-      ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
+      ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, 10 * U); ctx.stroke();
       ctx.globalAlpha = 1;
       const ink = lit ? Pale : Black;
       write(ctx, label, box.x + 16 * U, box.y + box.h / 2, 12 * U, 700, 'left', ink);

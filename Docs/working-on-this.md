@@ -43,6 +43,45 @@ Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
+## Köşeli kutular — oyunun kendi dili
+
+Oyundaki **her kutu** `cutPath` ile çiziliyor: yuvarlak değil, **sol üst ve sağ alt köşesi
+kesik**. Hep aynı iki köşe, çünkü göz tek tek köşeleri değil o eğimi okuyor.
+
+`boxPath(ctx, x, y, w, h, r)` eski `ctx.roundRect` ile birebir aynı argümanları alıyor — oyunun
+tamamı bu yüzden kırk ayrı yerde değil tek geçişte şekil değiştirdi. `slashes()` ise OYNA gibi
+butonların kenarına üç eğik çizgi koyuyor; hiçbir anlamı yok ve olayı da bu: bu ekranla sonraki
+ekranın aynı elden çıktığını söyleyen tek işaret.
+
+İstisna üç tane: bir kartın kendi küçük ikonu, bir taş bloğu ve manzara kırpması. O ölçekte
+köşenin biçimi zaten görünmüyor.
+
+## Ana menü — tek sütun
+
+Ekran yukarıdan aşağı okunan bir kart sütunu:
+
+1. **Siyah üst bant** — kale işareti, seviye, deneyim çubuğu, sonraki büyü, yıldız toplamı, dişli.
+   Sağ alt köşesi kesik: ekranın geri kalanının nasıl görüneceğini söyleyen ilk kesik.
+2. **Dört kapı** — Görevler · Haftalık Seri · Başarımlar · Neler Değişti. Her birinin altında adı,
+   köşesinde bekleyen sayısı. Eskiden resmin **solunda dikey** üç ikondu: resmi ekranın orta
+   üçte birine sıkıştırıyordu ve alt alta duran üç yazısız ikon, iki kez basılmayan üç ikondur.
+3. **Bölüm kartı** — resim, üstünde koyu bir perdeyle adı, yıldızları ve bir cümlesi. Ad eskiden
+   resmin altında serbest yazıydı; resmin üstünde adlandırdığı yere ait oluyor, boşalan yer de
+   sütunun geri kalanına gidiyor.
+4. **Aile/patron kartı** — kim yaşıyor, neye zayıf, sonunda kim var.
+5. **OYNA** — dolu siyah çubuk.
+6. **İki durum kartı** — günlük çark (hazır mı) ve bu koşunun üç hedefi. Bunlar kapı değil: kendi
+   kendine değişen, şu an doğru olan şeyler.
+
+**Resim esnek olan tek kart.** Diğer hepsi kendi içeriği kadar yüksek; artan yer resmin. Sabit
+yükseklikle sütun 720 piksellik bir pencerede sekme şeridinin sekiz piksel altına taşıyordu —
+ki her yatay pencere 720 civarı. Artan yer resmin alabileceğinden fazlaysa, aradaki boşluklara
+dağılıyor; yoksa sekmelerin üstünde bir delik kalıyordu.
+
+**Haftalık seri artık kendi panosunda.** Günlük görevlerin ilk satırıydı; ikisi aynı söz değil —
+günlükler her gece sıfırlanıyor, seri haftada bir kez geliyor, ve haftada bir gelen bir satır
+her gün yenilenen bir listenin başında durmaz.
+
 ## Menü — beş sekme
 
 Alt barda beş **ayrı kart**: Ödüller · Kahraman · Harita · Büyüler · Külliyat. Altlarında yazı
@@ -787,6 +826,14 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 - **Ok yönü: uç, gösterdiği yöne gider.** Ters yazınca sol ok ">" çizdi.
 - **Siyah zeminin üstüne siyah yazı yazma.** Bölüm adı resmin alt şeridine oturuyordu ve o şerit
   tam siyah; isim görünmüyordu. Artık resmin altında.
+- **`wrapIn` sütunun ORTASINI alıyor, sol kenarını değil.** Sol kenarı verince cümlenin yarısı
+  resmin dışına çizildi. Artık hizası da parametre: sola dayalı bir başlığın altında ortalanmış
+  bir cümle, ayrı bir sütun gibi okunuyor.
+- **Her yerin bir ufku olmalı.** On iki görünümden beşinin arkasında hiçbir şey yoktu — güneş,
+  birkaç ince direk ve üçte biri bomboş gök. Kart büyüyünce ortaya çıktı. Artık hepsinin
+  arkasında onda bir mürekkeple uzak bir sıradağ var, yerin kendi karakterine karışmadan.
+- **İki kere kırpma, köşeyi bozar.** `portrait` kendi içinde yuvarlak kırpıyordu; kartın kesik
+  köşesiyle çakışınca içeride soluk bir çentik kaldı. Çağıran zaten kırpıyor.
 - **Dar ekranda üst bar tek satıra sığmaz.** Seviye, yıldız sayısı ve iki ayar pili üst üste
   bindi; telefonda iki satıra ayrıldı.
 - **Kaydırılan bir listede dokunuş ile sürükleme ayrılmalı.** Kahraman merdiveninde basma

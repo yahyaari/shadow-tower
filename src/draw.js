@@ -73,7 +73,7 @@ export function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
  * which is what the codex did the moment seven rows had to share the height six used to. This one
  * is told how much room it has and finds a size that lives in it.
  */
-export function wrapIn(ctx, text, x, top, width, height, most, colour) {
+export function wrapIn(ctx, text, x, top, width, height, most, colour, align = 'center') {
   for (let size = most; size >= most * 0.45; size -= Math.max(0.5, most * 0.06)) {
     const lead = size * 1.34;
     ctx.font = `500 ${size}px ${Face}`;
@@ -84,16 +84,18 @@ export function wrapIn(ctx, text, x, top, width, height, most, colour) {
       else line = next;
     }
     if (lines * lead <= height || size <= most * 0.5) {
-      wrap(ctx, text, x, top + height / 2, width, size, lead, colour);
+      wrap(ctx, text, x, top + height / 2, width, size, lead, colour, align);
       return;
     }
   }
 }
 
-export function wrap(ctx, text, x, y, width, size, lead, colour) {
+export function wrap(ctx, text, x, y, width, size, lead, colour, align = 'center') {
   ctx.fillStyle = colour;
   ctx.font = `500 ${size}px ${Face}`;
-  ctx.textAlign = 'center';
+  // `x` means whatever the alignment says it means: the centre of the column, or its left edge.
+  // Centred under a left-aligned heading, a wrapped sentence reads as a different column.
+  ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   const lines = [];
   let line = '';
@@ -1297,15 +1299,84 @@ export function hitCard(w, h, px, py, dpr = 1) {
  * conversion back, and it is 1 on an ordinary monitor, which is why none of this changes the
  * look there.
  */
+/**
+ * A box with its corners CUT rather than rounded.
+ *
+ * The one shape the whole game is drawn out of. A rounded corner is a corner that apologises for
+ * being there; a cut one is a decision, and five of them on a screen read as one object made on
+ * purpose. `cut` names the corners that are cut and by how much - `{ tr: 14, bl: 14 }` - and a
+ * corner left out is square. All-zero draws a plain rectangle, which is what makes this safe to
+ * use as the only box-drawing call in the file.
+ */
+export function cutPath(ctx, b, cut = {}) {
+  const tl = cut.tl || 0, tr = cut.tr || 0, br = cut.br || 0, bl = cut.bl || 0;
+  const { x, y, w, h } = b;
+  ctx.beginPath();
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);
+  if (tr) ctx.lineTo(x + w, y + tr);
+  ctx.lineTo(x + w, y + h - br);
+  if (br) ctx.lineTo(x + w - br, y + h);
+  ctx.lineTo(x + bl, y + h);
+  if (bl) ctx.lineTo(x, y + h - bl);
+  ctx.lineTo(x, y + tl);
+  ctx.closePath();
+}
+
+/**
+ * A box with the game's own two corners cut, taking the arguments a rounded one took.
+ *
+ * It stands in for `ctx.roundRect` everywhere, which is how the whole game changed shape in one
+ * pass instead of forty. Top-left and bottom-right: the same pair on every box, so the eye reads
+ * the lean rather than each corner.
+ */
+export function boxPath(ctx, x, y, w, h, r) {
+  cutPath(ctx, { x, y, w, h }, { tl: r, br: r });
+}
+
+/** Fills and/or outlines one. `width` is in units, like everything else that is drawn. */
+export function cutBox(ctx, b, U, o = {}) {
+  cutPath(ctx, b, o.cut);
+  if (o.fill) { ctx.fillStyle = o.fill; ctx.fill(); }
+  if (o.line) {
+    ctx.strokeStyle = o.line;
+    ctx.lineWidth = (o.width ?? 2) * U;
+    ctx.stroke();
+  }
+}
+
+/**
+ * The slashes the game signs its own buttons with.
+ *
+ * Three short diagonals inside an edge. They carry no meaning at all, which is the point: they
+ * are the one mark that says this screen and the next one were made by the same hand.
+ */
+export function slashes(ctx, b, U, ink, many = 3) {
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 2 * U;
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.55;
+  const lean = b.h * 0.42;
+  for (let i = 0; i < many; i++) {
+    const x = b.x + b.w - 14 * U - i * 7 * U;
+    ctx.beginPath();
+    ctx.moveTo(x, b.y + b.h / 2 + lean / 2);
+    ctx.lineTo(x + lean * 0.5, b.y + b.h / 2 - lean / 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
 /** A panel, a row, a button: the same outline, filled when it is the one that is chosen. */
 function slab(ctx, b, U, filled = false, radius = 10) {
-  ctx.beginPath();
-  ctx.roundRect(b.x, b.y, b.w, b.h, radius * U);
-  ctx.fillStyle = filled ? Black : 'rgba(246,243,236,0.97)';
-  ctx.fill();
-  ctx.strokeStyle = Black;
-  ctx.lineWidth = 2 * U;
-  ctx.stroke();
+  // Cut, not rounded, and cut on the same two corners as everything else: top-left and
+  // bottom-right. The run screen and the menu are one game or they are two.
+  const c = radius * U;
+  cutBox(ctx, b, U, {
+    cut: { tl: c, br: c },
+    fill: filled ? Black : 'rgba(246,243,236,0.97)',
+    line: Black,
+  });
 }
 
 function panel(ctx, state, w, h, U, show) {
@@ -1390,14 +1461,14 @@ function panel(ctx, state, w, h, U, show) {
     const pills = Speeds.length;
     ctx.strokeStyle = Black;
     ctx.lineWidth = 2 * U;
-    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, b.h / 2); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, b.x, b.y, b.w, b.h, b.h / 2); ctx.stroke();
     for (let i = 0; i < pills; i++) {
       const pw = b.w / pills;
       const px = b.x + i * pw;
       const on = Speeds[i] === show.speed;
       if (on) {
         ctx.fillStyle = Black;
-        ctx.beginPath(); ctx.roundRect(px + 2 * U, b.y + 2 * U, pw - 4 * U, b.h - 4 * U, (b.h - 4 * U) / 2); ctx.fill();
+        ctx.beginPath(); boxPath(ctx, px + 2 * U, b.y + 2 * U, pw - 4 * U, b.h - 4 * U, (b.h - 4 * U) / 2); ctx.fill();
       }
       write(ctx, `${Speeds[i]}x`, px + pw / 2, b.y + b.h / 2, 12 * U, 800, 'center', on ? Pale : Black);
     }
@@ -1436,7 +1507,7 @@ function panel(ctx, state, w, h, U, show) {
     if (kit.tier > 1) {
       // a filled tag, so a spell that has become something reads differently at a glance
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(126 * U, y - 9 * U, 26 * U, 18 * U, 4 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, 126 * U, y - 9 * U, 26 * U, 18 * U, 4 * U); ctx.fill();
       write(ctx, `T${kit.tier}`, 139 * U, y, 11 * U, 800, 'center', Pale);
     }
     // the climb to the next tier, as pips: five of them, then it becomes something
@@ -1617,11 +1688,11 @@ function picking(ctx, state, w, h, show, U) {
 
     if (lit) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, r.x, top, r.w, r.h, 0.04 * f); ctx.fill();
     }
     ctx.strokeStyle = Black;
     ctx.lineWidth = (lit ? 3 : card.big ? 4 : 2) * U;
-    ctx.beginPath(); ctx.roundRect(r.x, top, r.w, r.h, 0.04 * f); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, r.x, top, r.w, r.h, 0.04 * f); ctx.stroke();
 
     const ink = lit ? Pale : Black;
     const room = r.w - 0.1 * f;
@@ -1792,12 +1863,12 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
 
     if (taken) {
       ctx.fillStyle = Black;
-      ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
+      ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.fill();
     }
     ctx.globalAlpha = open ? 1 : 0.3;
     ctx.strokeStyle = Black;
     ctx.lineWidth = (taken || lit ? 3 : 1.6) * U;
-    ctx.beginPath(); ctx.roundRect(t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, t.x, t.y, t.w, t.h, 9 * U); ctx.stroke();
 
     const ink = taken ? Pale : Black;
     // The fixed slot says so rather than looking like a choice somebody already made for you.
@@ -1823,10 +1894,10 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   const b = begins(w, h, dpr);
   const ready = show.overBegin;
   ctx.fillStyle = ready ? Black : 'rgba(13,12,11,0)';
-  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.fill();
+  ctx.beginPath(); boxPath(ctx, b.x, b.y, b.w, b.h, 10 * U); ctx.fill();
   ctx.strokeStyle = Black;
   ctx.lineWidth = 3 * U;
-  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10 * U); ctx.stroke();
+  ctx.beginPath(); boxPath(ctx, b.x, b.y, b.w, b.h, 10 * U); ctx.stroke();
   write(ctx, `${say(UI.play)}  ·  ${say(UI.stage, meta.stage)}`, b.x + b.w / 2, b.y + b.h / 2,
     19 * U, 800, 'center', ready ? Pale : Black);
 
@@ -1834,10 +1905,10 @@ export function loadout(ctx, meta, w, h, show, dpr = 1) {
   const set = settings(w, h, dpr);
   const pill = (box, label, value, lit) => {
     ctx.fillStyle = lit ? Black : 'rgba(13,12,11,0)';
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, box.h / 2); ctx.fill();
     ctx.strokeStyle = Black;
     ctx.lineWidth = 1.6 * U;
-    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
+    ctx.beginPath(); boxPath(ctx, box.x, box.y, box.w, box.h, box.h / 2); ctx.stroke();
     const ink = lit ? Pale : Black;
     write(ctx, label, box.x + 14 * U, box.y + box.h / 2, 10 * U, 700, 'left', ink);
     write(ctx, value, box.x + box.w - 14 * U, box.y + box.h / 2, 13 * U, 800, 'right', ink);
