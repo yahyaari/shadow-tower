@@ -43,6 +43,44 @@ Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
 
+## Yazı çakışması — `Tools/overlap.mjs`
+
+Kaynak koda bakarak bulunamayan tek kusur bu: iki etiketi iki ayrı fonksiyon yazıyor, boyutları
+pencereye bağlı, ve ancak belirli genişliklerde birbirine değiyorlar. O yüzden koda değil
+**ekranın kendisine** soruyoruz.
+
+`draw.js` çizdiği her yazının kutusunu kaydediyor (`TextSpy`, varsayılan **kapalı**, açıkken
+etiket başına bir `measureText`). Yazı olmayan ama bir satırı paylaşan işaretler de kaydediliyor:
+yıldız, para, gem, parça, büyü mührü, seviye noktaları, deneyim çubuğu, duvar/atış çubukları —
+çünkü oyuncunun bildirdiği iki kusurun ikisi de **yazı-şekil** çakışmasıydı, yazı-yazı değil.
+
+Üç şey olmadan araç yalan söylüyor:
+
+- **Katman.** Bir pano haritanın ÜSTÜNE çiziliyor; `spyLayer()` demeden araç haritanın yazısını
+  panonunkiyle çakıştı sanıyordu. Alt menü şeridi de bir katman: her şey altından kayıyor.
+- **Tuval koordinatı.** Kaydırılan bir pano `translate` ile çiziyor; ham okununca bütün satırları
+  ekranın tepesinde sanılıyordu.
+- **Döndürülmüş yazı hiç bakılmıyor.** Çarkın sekiz ödülü kendi açısıyla çiziliyor; dikdörtgene
+  çevrilince hepsi göbekte toplanıp hiç çakışma olmayan bir resimde 28 çakışma bildirildi.
+
+```sh
+node Tools/overlap.mjs http://127.0.0.1:8050/ 390 844 tr
+```
+
+11 pencere boyutu × 2 dil tarandı. Bulunan ve düzeltilenler:
+
+| nerede | neydi |
+|---|---|
+| üst bant | deneyim çubuğu yıldızın 24 pikseline giriyordu; yıldız ile sayısı arasında 2 piksel kalmıştı |
+| büyüler (kadro) | açıklama satırı tüm genişliği alıyor, "SV 10" rozeti sağda duruyordu |
+| büyüler (kadro) | karo içi boşluklar `74 * U` gibi sabitti: telefonda 300 piksellik karonun 150'sini yiyor, ada yer bırakmıyordu |
+| koşu ekranı | "BÖLÜM 7" dar ekranda hız pillerinin üstünden geçiyordu |
+| sandıklar | "×10" ile dört haneli fiyat dar butonda ortada buluşuyordu |
+
+**Kök neden çoğunda aynıydı:** `fitWrite` sığdıramayınca 8 pikselde duruyor ve **taşıyordu**.
+Artık orada duruyor ve sonunu `…` ile takas ediyor; yer hiç yoksa hiç yazmıyor. Tek satır, bütün
+ekranlarda.
+
 ## Köşeli kutular — oyunun kendi dili
 
 Oyundaki **her kutu** `cutPath` ile çiziliyor: yuvarlak değil, **sol üst ve sağ alt köşesi
@@ -667,6 +705,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/main.js` | İki ekran: menü ve koşu. `window.ShadowTower.menu()` menü tuşlarını, `.ui` koşu ekranının ölçülerini verir. |
 | `Tools/test.mjs` | 501 kontrol + bot. |
 | `Tools/peek.mjs` | Belirli bir ANA atlayıp fotoğraf çeker. Saniyeler. |
+| `Tools/overlap.mjs` | Her ekrandaki yazı/işaret kutularını kesiştirir. Üst üste bineni bulur. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh
@@ -674,6 +713,7 @@ node Tools/test.mjs
 node Tools/serve.mjs . 8050 0.0.0.0
 node Tools/peek.mjs http://localhost:8050/ Logs/peek 1280 720
 node Tools/peek.mjs http://localhost:8050/ Logs/tel 390 844
+node Tools/overlap.mjs http://127.0.0.1:8050/ 390 844 tr
 ```
 
 **Yayınlama:** `master`'a push etmek yeter, GitHub Pages ~1 dakikada yayınlıyor.

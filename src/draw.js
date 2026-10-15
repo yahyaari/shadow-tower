@@ -46,11 +46,76 @@ export function stage(w, h) {
 const place = (S, x, y) => [S.cx + x * S.scale, S.cy + y * S.scale * S.squash];
 const depth = (y) => 0.66 + ((y + Arena) / (Arena * 2)) * 0.62;
 
+/**
+ * Every piece of writing on the screen, measured, while this is on.
+ *
+ * Two labels on top of each other is the one fault that cannot be found by reading the code: the
+ * two are written by different functions, at sizes that depend on the window, and they only meet
+ * at certain widths. So the screen is asked instead. `menu` and `frame` empty `boxes` as they
+ * begin and copy them into `done` as they finish, so whatever is read is always one whole frame
+ * and never half of two.
+ *
+ * Off by default and costs one `measureText` per label when on.
+ */
+export const TextSpy = { on: false, boxes: [], done: [], layer: 0 };
+
+function note(ctx, box) {
+  // In canvas coordinates, not in whatever space the caller happens to be in. A scrolled board
+  // draws through a translate, and read raw its rows all claimed to be at the top of the screen.
+  const m = ctx.getTransform();
+  // Rotated writing is not checked at all. The wheel's eight prizes are each drawn at their own
+  // angle around a circle; squared off they all collapsed onto the hub and the tool reported
+  // twenty-eight collisions in a picture that has none.
+  if (Math.abs(m.b) > 0.001 || Math.abs(m.c) > 0.001) return;
+  TextSpy.boxes.push({
+    ...box,
+    x: m.a * box.x + m.e,
+    y: m.d * box.y + m.f,
+    w: m.a * box.w,
+    h: m.d * box.h,
+    layer: TextSpy.layer,
+    alpha: Math.round(ctx.globalAlpha * 100) / 100,
+  });
+}
+
+function noteText(ctx, text, x, y, size, align) {
+  if (!TextSpy.on) return;
+  const wide = ctx.measureText(String(text)).width;
+  const left = align === 'center' ? x - wide / 2 : align === 'right' ? x - wide : x;
+  note(ctx, { text: String(text), x: left, y: y - size * 0.4, w: wide, h: size * 0.8 });
+}
+
+/**
+ * A mark that is not writing but sits in a row with some: a star, a coin, a spell's pips.
+ *
+ * Added because the two faults a player actually reported were both of this kind - a star glyph
+ * standing on the end of the experience bar, and a row of level pips running into the words
+ * beside them. Text against text was already caught and was never the problem.
+ */
+export function spyMark(ctx, label, x, y, w, h) {
+  if (!TextSpy.on) return;
+  note(ctx, { text: label, x, y, w, h, mark: true });
+}
+
+/**
+ * A new layer. Anything drawn after it is in front of everything before it.
+ *
+ * Without this the tool cried wolf on every panel: a board is drawn over the map, so the map's
+ * writing is "underneath" the board's and the two cross on paper while the player sees only one
+ * of them. Called wherever a screen is washed over.
+ */
+export function spyLayer() { if (TextSpy.on) TextSpy.layer += 1; }
+
+/** Called by whatever owns a screen, so a reading is one frame rather than a pile of them. */
+export function spyOpen() { if (TextSpy.on) { TextSpy.boxes = []; TextSpy.layer = 0; } }
+export function spyShut() { if (TextSpy.on) TextSpy.done = TextSpy.boxes; }
+
 export function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
   ctx.fillStyle = colour;
   ctx.font = `${weight} ${size}px ${Face}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
+  noteText(ctx, text, x, y, size, align);
   ctx.fillText(text, x, y);
 }
 
@@ -62,8 +127,29 @@ export function write(ctx, text, x, y, size, weight = 600, align = 'left', colou
  */
 export function fitWrite(ctx, text, x, y, px, weight, align, colour, room) {
   ctx.font = `${weight} ${Math.round(px)}px ${Face}`;
-  const wide = ctx.measureText(text).width;
-  write(ctx, text, x, y, wide > room ? Math.max(8, px * room / wide) : px, weight, align, colour);
+  let wide = ctx.measureText(text).width;
+  let size = px;
+  if (wide > room) {
+    size = Math.max(8, px * room / wide);
+    ctx.font = `${weight} ${size}px ${Face}`;
+    wide = ctx.measureText(text).width;
+  }
+
+  // Eight pixels is the floor - below that it is not writing, it is texture. When even that does
+  // not fit, the end of the sentence is traded for an ellipsis rather than being allowed to run
+  // over whatever is beside it. This one line is why a long Turkish description no longer sits
+  // under the level badge on a 360-wide phone: the shrinking stopped, the overflowing did not.
+  // No room at all means no writing. Drawn anyway it lands on whatever took the room.
+  if (room <= 2) return;
+
+  let shown = String(text);
+  if (wide > room) {
+    while (shown.length > 1 && ctx.measureText(shown + '…').width > room) {
+      shown = shown.slice(0, -1);
+    }
+    shown = shown.trimEnd() + '…';
+  }
+  write(ctx, shown, x, y, size, weight, align, colour);
 }
 
 /**
@@ -106,7 +192,10 @@ export function wrap(ctx, text, x, y, width, size, lead, colour, align = 'center
   }
   if (line) lines.push(line);
   const top = y - ((lines.length - 1) * lead) / 2;
-  lines.forEach((l, i) => ctx.fillText(l, x, top + i * lead));
+  lines.forEach((l, i) => {
+    noteText(ctx, l, x, top + i * lead, size, align);
+    ctx.fillText(l, x, top + i * lead);
+  });
 }
 
 // --- the scenery ------------------------------------------------------------------------------
@@ -896,6 +985,7 @@ function spellFx(ctx, S, state) {
  * reading as a full stop.
  */
 export function coin(ctx, x, y, r, colour, back) {
+  spyMark(ctx, '[coin]', x - r, y - r, r * 2, r * 2);
   ctx.save();
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = colour; ctx.fill();
@@ -914,6 +1004,7 @@ export function coin(ctx, x, y, r, colour, back) {
  * a flat table, shoulders, and a point, with the facets bitten out in the other ink.
  */
 export function gem(ctx, x, y, r, colour, back) {
+  spyMark(ctx, '[gem]', x - r, y - r, r * 2, r * 2);
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = colour;
@@ -944,6 +1035,7 @@ export function gem(ctx, x, y, r, colour, back) {
 
 /** A shard: a plain rhombus, chosen because nothing else in the game is one. */
 export function shard(ctx, x, y, r, colour) {
+  spyMark(ctx, '[rune]', x - r, y - r, r * 2, r * 2);
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x, y - r);
@@ -957,6 +1049,7 @@ export function shard(ctx, x, y, r, colour) {
 }
 
 export function star(ctx, x, y, r, filled, colour) {
+  spyMark(ctx, '[star]', x - r, y - r, r * 2, r * 2);
   ctx.save();
   ctx.translate(x, y);
   ctx.beginPath();
@@ -987,6 +1080,7 @@ export function stars(ctx, x, y, r, got, colour) {
 
 /** A small mark for each spell. The same vocabulary of shapes as the field uses. */
 export function sigil(ctx, key, x, y, s, colour) {
+  spyMark(ctx, '[' + key + ']', x - s / 2, y - s / 2, s, s);
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = colour;
@@ -1390,9 +1484,16 @@ function panel(ctx, state, w, h, U, show) {
 
   // The stage, and how far through its waves you are. The boss replaces both when it arrives,
   // because at that point there is only one thing worth knowing.
+  // How much room the middle of the top bar actually has: the wall block on the left, the speed
+  // pills on the right, and whatever is between them. Written at a fixed size it ran straight
+  // through "1x" on a 320-wide phone.
+  const sideL = 22 * U + Math.min(240 * U, w * 0.22);
+  const sideR = speedBox(w, h, U).x;
+  const middle = Math.max(70 * U, Math.min(w / 2 - sideL, sideR - w / 2) * 2 - 16 * U);
+
   if (state.boss) {
-    write(ctx, say(UI['foe_' + state.boss.key] || UI.warden).toUpperCase(),
-      w / 2, 30 * U, 15 * U, 800, 'center');
+    fitWrite(ctx, say(UI['foe_' + state.boss.key] || UI.warden).toUpperCase(),
+      w / 2, 30 * U, 15 * U, 800, 'center', Black, middle);
 
     // One bar per boss still standing. With a single bar, killing the shade looked like nothing
     // had happened: the bar simply refilled, because `state.boss` had become one of its halves.
@@ -1412,7 +1513,7 @@ function panel(ctx, state, w, h, U, show) {
       ctx.strokeRect(x, 44 * U, each, 14 * U);
     });
   } else {
-    write(ctx, say(UI.stage, state.stage), w / 2, 32 * U, 24 * U, 800, 'center');
+    fitWrite(ctx, say(UI.stage, state.stage), w / 2, 32 * U, 24 * U, 800, 'center', Black, middle);
     const onW = Math.min(300 * U, w * 0.3);
     ctx.fillStyle = 'rgba(13,12,11,0.15)';
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW, 5 * U);
@@ -1475,6 +1576,8 @@ function panel(ctx, state, w, h, U, show) {
   }
 
   const bw = Math.min(240 * U, w * 0.22);
+  spyMark(ctx, '[wall bar]', 22 * U, 72 * U, bw, 13 * U);
+  spyMark(ctx, '[cast bar]', 22 * U, 110 * U, bw, 7 * U);
   write(ctx, say(UI.wall), 22 * U, 62 * U, 11 * U, 700);
   ctx.lineWidth = 2 * U;
   ctx.strokeStyle = Black;
@@ -1992,6 +2095,7 @@ function spoils(ctx, won, cx, y, U, room) {
 }
 
 export function frame(ctx, w, h, state, show, dpr = 1) {
+  spyOpen();
   const S = stage(w, h);
   const U = Math.max(1, Math.min(2.4, dpr));
 
@@ -2065,11 +2169,12 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     ctx.globalAlpha = 1;
   }
 
-  if (state.phase === 'picking') picking(ctx, state, w, h, show, U);
+  if (state.phase === 'picking') { spyLayer(); picking(ctx, state, w, h, show, U); }
 
   // A panel, which is also a pause: the loop stops stepping while one is open. Over the field
   // rather than instead of it, so the wave you are about to walk back into is still visible.
   if (show.paused) {
+    spyLayer();
     ctx.fillStyle = 'rgba(236,231,220,0.82)';
     ctx.fillRect(0, 0, w, h);
     if (show.paused === 'menu') pausePanel(ctx, state, w, h, U, show);
@@ -2078,6 +2183,7 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   // --- the stage is finished, and scored on how much wall is still standing
   if (state.phase === 'done') {
+    spyLayer();
     ctx.fillStyle = 'rgba(236,231,220,0.93)';
     ctx.fillRect(0, 0, w, h);
     const won = show.won;
@@ -2118,6 +2224,7 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   }
 
   if (state.phase === 'lost') {
+    spyLayer();
     ctx.fillStyle = 'rgba(236,231,220,0.92)';
     ctx.fillRect(0, 0, w, h);
     const row = (n) => h / 2 + (n - 1.6) * 34 * U;
@@ -2129,6 +2236,8 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     write(ctx, say(UI.runLine, state.level, state.kills, clock), w / 2, row(2), 15 * U, 600, 'center');
     endRow(ctx, w, h, U, state, show);
   }
+
+  spyShut();
 }
 
 export const Inks = { Black, Pale };

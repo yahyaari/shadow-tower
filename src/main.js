@@ -6,7 +6,7 @@
 import { begin, advance, click, take, investedIn, spawn, carrying, pressure } from './rules.js';
 import {
   frame, hitCard, cards, hitSpeed, hitRun, hitRunPanel, hitEnd,
-  runBtns, runPanel, runRows, endBtns, endKeys,
+  runBtns, runPanel, runRows, endBtns, endKeys, TextSpy,
 } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, boardReach, boardShape, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
@@ -626,6 +626,10 @@ window.ShadowTower = {
   // that worked this out for itself would only ever check its own arithmetic.
   get dpr() { return dpr; },
   ui: { runBtns, runPanel, runRows, endBtns, endKeys },
+  // Every label of the last drawn frame, with its box, so a tool can find two of them sitting on
+  // top of each other. Nothing can read that off the source: the two are written by different
+  // functions at sizes that depend on the window.
+  spy: TextSpy,
 };
 window.__cards = (w, h) => cards(w, h, dpr);
 console.log('[ShadowTower] ready');

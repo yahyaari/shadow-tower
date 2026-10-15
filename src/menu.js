@@ -9,7 +9,7 @@
 
 import {
   Inks, Face, write, fitWrite, wrap, wrapIn, sigil, star, stars, creatureMark, coin, shard, gem,
-  cutPath, cutBox, boxPath, slashes,
+  cutPath, cutBox, boxPath, slashes, spyOpen, spyShut, spyMark, spyLayer,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
 import { Spells, UnlockAt, LoadoutSize, Always, spellKeys, nextUnlock } from './spells.js';
@@ -1495,11 +1495,15 @@ function chestPanel(ctx, data, box, U, show) {
     const ink = lit ? Pale : Black;
     const back = lit ? Black : Pale;
     const mid = side.y + side.h / 2;
-    write(ctx, side.many > 1 ? `×${side.many}` : '×1', side.x + 12 * U, mid, 13 * U, 800, 'left', ink);
+    // The price is measured and placed first; the ×N gets what is left of the button. A ten at a
+    // fixed size and a four-digit price at the other end met in the middle on a narrow phone.
     ctx.font = `800 ${13 * U}px ${Face}`;
     const cw = ctx.measureText(String(cost)).width;
+    const gemX = side.x + side.w - 14 * U - cw - 8 * U;
     write(ctx, String(cost), side.x + side.w - 10 * U, mid, 13 * U, 800, 'right', ink);
-    gem(ctx, side.x + side.w - 14 * U - cw - 8 * U, mid, 7 * U, ink, back);
+    gem(ctx, gemX, mid, 7 * U, ink, back);
+    fitWrite(ctx, side.many > 1 ? `×${side.many}` : '×1', side.x + 12 * U, mid,
+      13 * U, 800, 'left', ink, gemX - 7 * U - (side.x + 12 * U) - 5 * U);
     ctx.globalAlpha = 1;
   }
 
@@ -1958,7 +1962,17 @@ function half(ctx, box, label, on, lit, U) {
  * there is Orbit. The badge goes wherever a spell is named, which is the only thing that makes
  * the family tables mean anything.
  */
+/** How wide the tag would be, without drawing it - so a caller can decide there is no room. */
+function tagWidth(ctx, key, U) {
+  const el = Spells[key] && Spells[key].element;
+  if (!el) return 0;
+  ctx.font = `800 ${9 * U}px ${Face}`;
+  return ctx.measureText(say(UI['el_' + el])).width + 12 * U;
+}
+
 function elementTag(ctx, key, x, y, U, ink = Black, back = Pale, align = 'left') {
+  // Not reported to the spy. A tag is a pill with its own word inside it, so the pill and the
+  // word overlap by definition - sixty of those drowned the real faults on the first run.
   const el = Spells[key] && Spells[key].element;
   if (!el) return 0;
   const words = say(UI['el_' + el]);
@@ -1980,6 +1994,7 @@ function elementTag(ctx, key, x, y, U, ink = Black, back = Pale, align = 'left')
 
 /** The level a spell has been raised to, as pips rather than a number you have to read. */
 function pips(ctx, x, y, at, gap, ink) {
+  spyMark(ctx, '[pips]', x - gap * 0.4, y - gap * 0.4, gap * SpellSteps, gap * 0.8);
   const r = gap * 0.38;
   for (let i = 1; i <= SpellSteps; i++) {
     ctx.beginPath();
@@ -2137,14 +2152,35 @@ function spellsTab(ctx, data, w, h, U, show) {
     const at = levelOf(data, t.key);
     const under = fixed ? say(UI.always) : open ? say(sp.tells) : say(UI.opensAt, UnlockAt[t.key]);
     if (t.tall) {
-      sigil(ctx, t.key, t.x + 40 * U, t.y + t.h / 2, 28 * U, ink);
-      // The badge is drawn first and measured, and the name gets what is left. Guessing at the
-      // room it would need shrank "Magic Bolt" to nothing on a phone.
-      const badge = open ? elementTag(ctx, t.key, t.x + t.w - 14 * U, t.y + 26 * U, U, ink, Pale, 'right') : 0;
-      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), t.x + 74 * U, t.y + 26 * U,
-        16 * U, 800, 'left', ink, t.w - 96 * U - badge);
-      fitWrite(ctx, under, t.x + 74 * U, t.y + 48 * U, 10 * U, fixed ? 800 : 500, 'left', ink, t.w - 92 * U);
-      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 14 * U, t.y + 50 * U, 12 * U, 800, 'right', ink);
+      // Measured from the tile, not from the pixel ratio alone. The sigil's column was a flat
+      // `74 * U`, which on a phone at ratio two ate a hundred and fifty of a three-hundred-pixel
+      // tile - so "Magic Bolt" was being shrunk to nothing to make room for a badge.
+      const icon = Math.min(28 * U, t.h * 0.4);
+      sigil(ctx, t.key, t.x + 14 * U + icon / 2, t.y + t.h / 2, icon, ink);
+      const tx = t.x + 22 * U + icon;
+      const right = t.x + t.w - 14 * U;
+      const hi = t.y + t.h * 0.36;
+      const lo = t.y + t.h * 0.68;
+
+      // The badge is measured before it is drawn and dropped when the name would be left with
+      // less room than a name can be read in. The element is still named on the upgrade screen
+      // and in the codex, so nothing is lost but a repetition.
+      const want = open ? tagWidth(ctx, t.key, U) : 0;
+      const badge = want && right - tx - want >= 70 * U
+        ? elementTag(ctx, t.key, right, hi, U, ink, Pale, 'right')
+        : 0;
+      fitWrite(ctx, open ? say(sp.name) : say(UI.locked), tx, hi,
+        Math.min(16 * U, t.h * 0.23), 800, 'left', ink,
+        right - tx - (badge ? badge + 8 * U : 0));
+
+      // Same rule on the row below: the level badge is measured first, and what is left is what
+      // the description gets. Given the whole width it ran straight under "LV 10".
+      const lv = open && at > 1 ? say(UI.lv, at) : null;
+      let lvW = 0;
+      if (lv) { ctx.font = `800 ${12 * U}px ${Face}`; lvW = ctx.measureText(lv).width + 12 * U; }
+      fitWrite(ctx, under, tx, lo, Math.min(10 * U, t.h * 0.15), fixed ? 800 : 500, 'left', ink,
+        right - tx - lvW);
+      if (lv) write(ctx, lv, right, lo, Math.min(12 * U, t.h * 0.18), 800, 'right', ink);
     } else {
       const fits = t.w - 16 * U;
       sigil(ctx, t.key, t.x + t.w / 2, t.y + 30 * U, 26 * U, ink);
@@ -2160,8 +2196,14 @@ function spellsTab(ctx, data, w, h, U, show) {
       }
       // ALWAYS goes along the top edge, which is otherwise empty. Under the name it sat on the
       // element badge, and the fixed spell is the one tile where both have to be readable.
-      if (fixed) fitWrite(ctx, say(UI.always), t.x + t.w / 2, t.y + 11 * U, 9 * U, 800, 'center', ink, fits);
-      if (open && at > 1) write(ctx, say(UI.lv, at), t.x + t.w - 10 * U, t.y + 14 * U, 11 * U, 800, 'right', ink);
+      // Same row, same rule: ALWAYS is centred and the level sits on the right, so the badge is
+      // measured first and taken off BOTH sides of the room the centred word is allowed.
+      const lv2 = open && at > 1 ? say(UI.lv, at) : null;
+      let lv2W = 0;
+      if (lv2) { ctx.font = `800 ${11 * U}px ${Face}`; lv2W = ctx.measureText(lv2).width + 10 * U; }
+      if (fixed) fitWrite(ctx, say(UI.always), t.x + t.w / 2, t.y + 11 * U, 9 * U, 800, 'center',
+        ink, Math.max(20 * U, fits - lv2W * 2));
+      if (lv2) write(ctx, lv2, t.x + t.w - 10 * U, t.y + 14 * U, 11 * U, 800, 'right', ink);
     }
     ctx.globalAlpha = 1;
   }
@@ -2719,6 +2761,7 @@ function board(ctx, data, w, h, U, show) {
 // --- the whole screen ---------------------------------------------------------------------------
 
 export function menu(ctx, data, w, h, show, dpr = 1) {
+  spyOpen();
   const U = unit(dpr);
 
   const sky = ctx.createLinearGradient(0, 0, 0, h);
@@ -2740,23 +2783,29 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
       keepMark(ctx, a.x + a.w / 2, a.y + a.h / 2, a.h * 0.62, Pale, Black);
     }
 
+    // The star group is measured BEFORE the bar is given its width, because the bar is what has
+    // to give way. Sized first and the star drawn afterwards, the two shared twenty-four pixels
+    // and the count sat on the end of the bar - which is how a player found it.
+    const count = String(totalStars(data));
+    ctx.font = `800 ${15 * U}px ${Face}`;
+    const starLeft = t.starAt - ctx.measureText(count).width - 18 * U - 9 * U;
+
     const need = needFor(data.level);
-    const barW = Math.min(t.starAt - t.textX - 24 * U, 300 * U);
+    const barW = Math.max(60 * U, Math.min(starLeft - t.textX - 16 * U, 300 * U));
     write(ctx, say(UI.level, data.level), t.textX, t.box.h * 0.32, 15 * U, 800, 'left', Pale);
 
     // The experience bar lives on the band now, so its track has to be a lightened black rather
     // than a darkened pale - on the band the old track was invisible.
     const barY = t.box.h * 0.52;
+    spyMark(ctx, '[xp bar]', t.textX, barY, barW, 7 * U);
     ctx.fillStyle = 'rgba(246,243,236,0.22)';
     ctx.fillRect(t.textX, barY, barW, 7 * U);
     ctx.fillStyle = Pale;
     ctx.fillRect(t.textX, barY, barW * Math.max(0, Math.min(1, data.xp / need)), 7 * U);
 
     // the star total, then a hairline, then the gear: three things, said to be three
-    const count = String(totalStars(data));
-    ctx.font = `800 ${15 * U}px ${Face}`;
     write(ctx, count, t.starAt, t.box.h / 2, 15 * U, 800, 'right', Pale);
-    star(ctx, t.starAt - ctx.measureText(count).width - 11 * U, t.box.h / 2, 9 * U, true, Pale);
+    star(ctx, starLeft + 9 * U, t.box.h / 2, 9 * U, true, Pale);
 
     ctx.strokeStyle = Pale;
     ctx.globalAlpha = 0.35;
@@ -2791,6 +2840,10 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   // five parts rather than five objects adrift at the foot of the screen. What keeps them apart
   // is the line they share, and the chosen one still lifts clear of the row entirely.
   {
+    // The strip is solid and everything scrolls under it, so it is a layer of its own: without
+    // saying so, the tool reported the rewards tab's chest text as colliding with the tab labels
+    // it is hidden behind.
+    spyLayer();
     const bar = navBar(w, h, U);
     const first = bar[0];
     const last = bar[bar.length - 1];
@@ -2829,10 +2882,11 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
   }
 
   // --- a board, over everything
-  if (show.board) board(ctx, data, w, h, U, show);
+  if (show.board) { spyLayer(); board(ctx, data, w, h, U, show); }
 
   // --- the settings, over everything
   if (show.settings) {
+    spyLayer();
     ctx.fillStyle = 'rgba(236,231,220,0.86)';
     ctx.fillRect(0, 0, w, h);
 
@@ -2876,4 +2930,6 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
     row(sp.sound, say(UI.sound), say(data.muted ? UI.off : UI.on), show.overMenu === 'sound');
     row(sp.music, say(UI.music), say(data.music === false ? UI.off : UI.on), show.overMenu === 'music');
   }
+
+  spyShut();
 }
