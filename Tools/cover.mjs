@@ -64,7 +64,7 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   ws.send(JSON.stringify({ id, method, params }));
 });
 const evaluate = async (e) => {
-  const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true })).result;
+  const r = (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result;
   if (r?.exceptionDetails) {
     throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
   }
@@ -84,6 +84,8 @@ if (!log.some((l) => l.includes('[cover] ready'))) {
   browser.kill();
   process.exit(3);
 }
+
+console.log('  kaynak: ' + await evaluate('window.paintReady()'));
 
 for (const [name, w, h] of Sizes) {
   // Tuvali de pencereyi de tam boyuta getiriyoruz: ekran görüntüsü kırpılmış bir kapak değil,

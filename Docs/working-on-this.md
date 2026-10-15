@@ -466,7 +466,13 @@ logo yok, bulanık görsel yok. Tavsiyesi: ekran görüntüsü koyma, basit tut,
 node Tools/cover.mjs http://127.0.0.1:8050/Tools/cover.html Logs/cover
 ```
 
-Kapaklar **oyunun kendi çizim koduyla** üretiliyor — `draw.js`'in `creatureMark`'ı, aynı iki
+**Kapak artık kullanıcının ürettiği illüstrasyondan** (`Art/cover_raw.png`): araç onu bulursa
+çerçeveyi dolduracak şekilde yerleştirip kırpıyor (sığdırmıyor — sığdırsa 16:9'dan 2:3 çıkarırken
+bant kalırdı ve portal bant istemiyor), adı **üç boyda da sağ üste** koyuyor. İllüstrasyon yoksa
+oyunun kendi sahnesini çiziyor, yani **kapaksız kalma ihtimali yok** — Potion Mix'te de böyleydi.
+İllüstrasyonda yazı olmamalı: ad kodla ekleniyor, çünkü üç boyda aynı yerde durması gerek.
+
+Kendi çizimimiz **oyunun kendi çizim koduyla** üretiliyor — `draw.js`'in `creatureMark`'ı, aynı iki
 mürekkep. Elle çizilmiş hiçbir şey yok, projenin baştan beri kuralı.
 
 **Üç denemede öğrenilen:** sahneye her şeyi koymak okunmaz bir kapak veriyor. İlk ikisinde dev bir

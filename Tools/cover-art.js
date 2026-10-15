@@ -20,10 +20,38 @@ const { Black, Pale } = Inks;
 /**
  * Bir kapak çizer.
  *
- * `w/h` oranı neyse kompozisyon ona göre kayıyor: yatayda kule sağda ve ad solda, dikeyde ve
- * karede kule ortada ve ad altta. Üçünde de aynı sahne — portal tutarlılık istiyor.
+ * `art` verilirse ondan, verilmezse oyunun kendi çiziminden. İllüstrasyon **yoksa kapaksız
+ * kalmıyoruz** — Potion Mix'te de böyle kurulmuştu: araç illüstrasyonu bulamazsa oyunun kendi
+ * sahnesini çiziyor, yani üç kapak her zaman üretiliyor.
+ *
+ * İllüstrasyonda YAZI OLMAMALI. Ad kodla ekleniyor, çünkü üç boyun üçünde de aynı yerde ve
+ * aynı puntoda durması gerekiyor — ve çünkü sol üst köşe boş kalmalı, CrazyGames rozetini
+ * oraya basıyor.
  */
-export function drawCover(ctx, w, h) {
+export function drawCover(ctx, w, h, art = null) {
+  if (art) {
+    paste(ctx, art, w, h);
+    title(ctx, w, h, w / h > 1.2, Math.min(w, h), true);
+    return;
+  }
+  drawScene(ctx, w, h);
+}
+
+/**
+ * İllüstrasyonu çerçeveyi DOLDURACAK şekilde yerleştirir ve taşanı kırpar.
+ *
+ * Sığdırmak değil doldurmak: sığdırsaydık 16:9 bir görselden 2:3 bir kapak çıkarırken üstte ve
+ * altta bant kalırdı, ve portal "kapakta bant olmasın" diyor. Kırpma yatayda ortadan, dikeyde
+ * biraz yukarıdan - ilgi çeken şey gökte değil, sahada.
+ */
+function paste(ctx, art, w, h) {
+  const scale = Math.max(w / art.width, h / art.height);
+  const dw = art.width * scale;
+  const dh = art.height * scale;
+  ctx.drawImage(art, (w - dw) / 2, (h - dh) * 0.42, dw, dh);
+}
+
+function drawScene(ctx, w, h) {
   const wide = w / h > 1.2;
   const S = Math.min(w, h);
 
@@ -201,14 +229,17 @@ function wizard(ctx, x, base, tall) {
  */
 const BadgeCorner = { w: 0.3, h: 0.17 };
 
-function title(ctx, w, h, wide, S) {
+function title(ctx, w, h, wide, S, onArt = false) {
   const words = ['SHADOW', 'TOWER'];
-  const size = wide ? h * 0.135 : w * 0.15;
+  const size = wide ? h * 0.135 : w * (onArt ? 0.135 : 0.15);
   const lead = size * 0.98;
-  const x = wide ? w * 0.07 : w / 2;
-  const y = wide ? h * 0.44 : h * 0.24;
+  // İllüstrasyonda ad ÜÇ BOYDA DA SAĞ ÜSTTE: rozetin tam karşısı, ve portal üç kapağın
+  // birbirine benzemesini şart koşuyor. Dikeyde ortalanmıştı ve "SHA" rozetin köşesine
+  // giriyordu. Kendi çizimimizde kule sağda durduğu için ad solda ve aşağıda kalıyor.
+  const x = onArt ? w * 0.95 : (wide ? w * 0.07 : w / 2);
+  const y = onArt ? (wide ? h * 0.14 : h * 0.09) : (wide ? h * 0.44 : h * 0.24);
 
-  ctx.textAlign = wide ? 'left' : 'center';
+  ctx.textAlign = onArt ? 'right' : (wide ? 'left' : 'center');
   ctx.textBaseline = 'middle';
   ctx.font = `900 ${size}px ${Face}`;
 
@@ -225,7 +256,7 @@ function title(ctx, w, h, wide, S) {
 
   // Oyunun kendi işareti: menüdeki OYNA tuşunun üç eğik çizgisi.
   const slashY = y + lead * 1.58;
-  const sx = wide ? x : x - size * 0.86;
+  const sx = onArt ? x - size * 0.86 : (wide ? x : x - size * 0.86);
   ctx.strokeStyle = Black;
   ctx.lineWidth = Math.max(2, S * 0.007);
   ctx.lineCap = 'round';

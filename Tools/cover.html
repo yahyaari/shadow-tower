@@ -10,12 +10,24 @@
 <script type="module">
   import { drawCover } from './cover-art.js';
   const c = document.getElementById('cover');
+
+  // İllüstrasyon varsa o, yoksa oyunun kendi çizimi. Bulunamaması bir hata değil: araç
+  // illüstrasyonsuz da üç kapağı üretiyor.
+  let art = null;
+  const img = new Image();
+  const got = new Promise((done) => {
+    img.onload = () => { art = img; done('illüstrasyon'); };
+    img.onerror = () => done('kendi çizimi');
+  });
+  img.src = '../Art/cover_raw.png';
+
   window.paint = (w, h) => {
     c.width = w; c.height = h;
     c.style.width = w + 'px'; c.style.height = h + 'px';
-    drawCover(c.getContext('2d'), w, h);
+    drawCover(c.getContext('2d'), w, h, art);
     return w + 'x' + h;
   };
+  window.paintReady = () => got;
   console.log('[cover] ready');
 </script>
 </body>
