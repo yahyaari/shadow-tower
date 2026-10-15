@@ -18,6 +18,9 @@ import {
   dailyJobs, runJobs, week, feats, adsLeft,
 } from './meta.js';
 import { News } from './news.js';
+import {
+  Store as EnergyStore, PerRun as EnergyPerRun, energyNow, canRun, untilNext, untilRun, clockOf,
+} from './energy.js';
 import { ready as adsReady } from './ads.js';
 import { Feats, DailyCount, Week } from './missions.js';
 import { Steps as SpellSteps, liftAt } from './upgrades.js';
@@ -74,10 +77,11 @@ export function topBand(w, h, dpr = 1) {
     avatar: { x: pad, y: pad, w: av, h: av },
     textX: pad + av + 13 * U,
     gear,
-    // The experience bar runs to the gear now. The star total used to sit here with a hairline
-    // beside it; a total that opens nothing and buys nothing is a number carried on every screen
-    // for no reason, so it went and the bar got the room.
-    barEnd: gear.x - 18 * U,
+    // The experience bar shares the band with the energy count. The star total used to sit here
+    // and went, because a total that opens nothing and buys nothing is a number carried on every
+    // screen for no reason; energy earned the room because it decides whether you can play.
+    barEnd: gear.x - 112 * U,
+    energy: { x: gear.x - 104 * U, y: tall * 0.2, w: 92 * U, h: tall * 0.6 },
   };
 }
 
@@ -203,6 +207,21 @@ export function mapColumn(w, h, dpr = 1) {
   y += stripH;
 
   return { x, w: cw, gap, boards, art, foes, play, strip, foot: y, height: y - b.top };
+}
+
+/**
+ * The advert that fills the tank: the two status cards' row, when PLAY cannot be pressed.
+ *
+ * It takes their place rather than being squeezed in beside them. Put under PLAY it was drawn
+ * half behind them, and given a row of its own the whole screen jumped the moment the tank ran
+ * dry - a button that arrives by pushing everything down is a button pressed by accident. And
+ * when you cannot play, the free spin and this run's goals are not what you came for.
+ */
+export function energyAdBox(w, h, dpr = 1) {
+  const col = mapColumn(w, h, dpr);
+  const first = col.strip[0];
+  const last = col.strip[col.strip.length - 1];
+  return { x: first.x, y: first.y, w: last.x + last.w - first.x, h: first.h };
 }
 
 /** Where PLAY is. Its own export because the hit test and three other screens ask for it. */
@@ -671,6 +690,12 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
     if (inside(a.prev, px, py)) return { what: 'stage', step: -1 };
     if (inside(a.next, px, py)) return { what: 'stage', step: 1 };
     if (inside(playBox(w, h, dpr), px, py)) return { what: 'play' };
+    if (!canRun(data)) {
+      // Enerji bitmişken alttaki satır dolum reklamı; çark kartı orada değil.
+      if (adsReady() && adsLeft(data, 'energy') > 0
+        && inside(energyAdBox(w, h, dpr), px, py)) return { what: 'energyAd' };
+      return null;
+    }
     // The spin card is the only one of the two at the foot that goes anywhere.
     const spin = mapColumn(w, h, dpr).strip.find((b) => b.key === 'spin');
     if (spin && inside(spin, px, py)) return { what: 'tab', key: 'wheel' };
@@ -745,6 +770,20 @@ export function menuHit(data, show, w, h, px, py, dpr = 1) {
 }
 
 // --- the marks on the tabs ----------------------------------------------------------------------
+
+/** The mark energy is counted in: a bolt, because it is the one thing that is not a currency. */
+function bolt(ctx, x, y, s, ink) {
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.moveTo(x + s * 0.18, y - s * 0.5);
+  ctx.lineTo(x - s * 0.3, y + s * 0.08);
+  ctx.lineTo(x - s * 0.02, y + s * 0.08);
+  ctx.lineTo(x - s * 0.18, y + s * 0.5);
+  ctx.lineTo(x + s * 0.3, y - s * 0.1);
+  ctx.lineTo(x + s * 0.02, y - s * 0.1);
+  ctx.closePath();
+  ctx.fill();
+}
 
 /** The gear, wherever it is asked for, in whichever ink the thing behind it needs. */
 function gearMark(ctx, g, U, ink, lit) {
@@ -1678,31 +1717,78 @@ function mapTab(ctx, data, w, h, U, show) {
   // --- the one button the whole screen is for
   {
     const p = col.play;
+    const now = show.clock || Date.now();
+    const able = canRun(data, now);
     const lit = show.overMenu === 'play';
-    cutBox(ctx, p, U, { cut: { tl: cut * 1.4, br: cut * 1.4 }, fill: Black });
-    if (lit) {
-      // pressed, it loses its fill and keeps its outline - the only button that does
+
+    // Out of energy the button does not go grey and silent - it says what it is waiting for and
+    // offers the one way round it. A button that simply refuses is a button that reads as broken.
+    cutBox(ctx, p, U, {
+      cut: { tl: cut * 1.4, br: cut * 1.4 },
+      fill: able ? Black : 'rgba(13,12,11,0)',
+      line: able ? null : Black,
+      width: 2.5,
+    });
+    if (able && lit) {
       cutBox(ctx, p, U, { cut: { tl: cut * 1.4, br: cut * 1.4 }, fill: Pale, line: Black, width: 3 });
     }
-    const ink = lit ? Black : Pale;
-    // the triangle, then the word, centred as one group
-    ctx.font = `800 ${22 * U}px ${Face}`;
-    const word = say(UI.play);
-    const ww = ctx.measureText(word).width;
-    const left = p.x + p.w / 2 - (ww + 34 * U) / 2;
+    const ink = able ? (lit ? Black : Pale) : Black;
     const cy = p.y + p.h / 2;
-    ctx.fillStyle = ink;
-    ctx.beginPath();
-    ctx.moveTo(left, cy - 11 * U);
-    ctx.lineTo(left + 18 * U, cy);
-    ctx.lineTo(left, cy + 11 * U);
-    ctx.closePath();
-    ctx.fill();
-    write(ctx, word, left + 34 * U, cy, 22 * U, 800, 'left', ink);
+
+    if (able) {
+      // the triangle, then the word, centred as one group
+      ctx.font = `800 ${22 * U}px ${Face}`;
+      const word = say(UI.play);
+      const ww = ctx.measureText(word).width;
+      const left = p.x + p.w / 2 - (ww + 34 * U) / 2;
+      ctx.fillStyle = ink;
+      ctx.beginPath();
+      ctx.moveTo(left, cy - 11 * U);
+      ctx.lineTo(left + 18 * U, cy);
+      ctx.lineTo(left, cy + 11 * U);
+      ctx.closePath();
+      ctx.fill();
+      write(ctx, word, left + 34 * U, cy, 22 * U, 800, 'left', ink);
+      // What it will cost, small, on the right. Only when there is enough: told you the price
+      // while refusing to sell, it would read as the reason rather than the wait.
+      ctx.globalAlpha = 0.6;
+      bolt(ctx, p.x + p.w - 34 * U, cy, 12 * U, ink);
+      write(ctx, String(EnergyPerRun), p.x + p.w - 26 * U, cy, 13 * U, 800, 'left', ink);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.globalAlpha = 0.75;
+      bolt(ctx, p.x + 26 * U, cy, 15 * U, Black);
+      ctx.globalAlpha = 1;
+      fitWrite(ctx, say(UI.energyNeed, EnergyPerRun, say(UI.energyWait, clockOf(untilRun(data, now)))),
+        p.x + 44 * U, cy, 14 * U, 800, 'left', Black, p.w - 60 * U);
+    }
     slashes(ctx, p, U, ink);
+
+    // --- and the advert that fills the tank, where the two status cards would be
+    if (!able) {
+      const a = energyAdBox(w, h, U);
+      const left = adsLeft(data, 'energy');
+      const live = adsReady() && left > 0;
+      const adLit = show.overMenu === 'energyAd' && live;
+      cutBox(ctx, a, U, {
+        cut: { tl: 10 * U, br: 10 * U },
+        fill: adLit ? Black : 'rgba(13,12,11,0)',
+        line: Black,
+        width: live ? 2.4 : 1.4,
+      });
+      const aInk = adLit ? Pale : Black;
+      ctx.globalAlpha = live ? 1 : 0.35;
+      fitWrite(ctx, say(UI.energyAd), a.x + a.w / 2, a.y + a.h * 0.38,
+        14 * U, 800, 'center', aInk, a.w - 24 * U);
+      ctx.globalAlpha = live ? 0.6 : 0.3;
+      fitWrite(ctx, adsReady() ? say(UI.adLeft, left) : say(UI.adSoon),
+        a.x + a.w / 2, a.y + a.h * 0.72, 10 * U, 600, 'center', aInk, a.w - 24 * U);
+      ctx.globalAlpha = 1;
+    }
   }
 
-  stripRow(ctx, data, col, U, show);
+  // Enerji bitmişse bu satırı dolum reklamı alıyor; ikisi birden çizilmiyor.
+  if (canRun(data, show.clock || Date.now())) stripRow(ctx, data, col, U, show);
 }
 
 /**
@@ -2796,6 +2882,27 @@ export function menu(ctx, data, w, h, show, dpr = 1) {
     ctx.fillRect(t.textX, barY, barW, 7 * U);
     ctx.fillStyle = Pale;
     ctx.fillRect(t.textX, barY, barW * Math.max(0, Math.min(1, data.xp / need)), 7 * U);
+
+    // --- enerji: oynayıp oynayamayacağını söyleyen tek sayı
+    {
+      const e = t.energy;
+      const now = show.clock || Date.now();
+      const have = energyNow(data, now);
+      const full = have >= EnergyStore;
+      const mid = e.y + e.h * 0.34;
+
+      bolt(ctx, e.x + 9 * U, mid, 13 * U, Pale);
+      write(ctx, `${have}`, e.x + 22 * U, mid, 15 * U, 800, 'left', Pale);
+      ctx.globalAlpha = 0.5;
+      // Dört piksel, iki değil: "4" ile "/60" tek bir okuma ama birbirine değmemeli.
+      write(ctx, `/${EnergyStore}`, e.x + 22 * U + ctx.measureText(`${have}`).width + 5 * U,
+        mid, 11 * U, 700, 'left', Pale);
+      // The countdown under it, so a player who cannot play knows how long for rather than
+      // finding a button that does nothing.
+      fitWrite(ctx, full ? say(UI.energyFull) : say(UI.energyIn, clockOf(untilNext(data, now))),
+        e.x, e.y + e.h * 0.9, 9 * U, 600, 'left', Pale, e.w);
+      ctx.globalAlpha = 1;
+    }
 
     gearMark(ctx, t.gear, U, Pale, show.overMenu === 'openSettings');
 

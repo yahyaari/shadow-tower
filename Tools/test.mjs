@@ -36,6 +36,10 @@ import {
   progress as portalProgress, watchSettings, mutedByPortal, show as adShow,
 } from '../src/ads.js';
 import { News } from '../src/news.js';
+import {
+  Store as EStore, PerRun as EPerRun, Clean as EClean, PerMinute as EPerMinute, Tick as ETick,
+  energyNow, setEnergy, spendEnergy, giveEnergy, canRun, untilNext, untilRun, clockOf,
+} from '../src/energy.js';
 import { kindsOn, stageOf, Stages, Looks } from '../src/stages.js';
 import {
   Families, FamilyKeys, Elements, Roles, takes, weakness, armour, familiesOn, StageFamilies,
@@ -2062,6 +2066,101 @@ check('son seviyede sıradaki kilit yok', nextUnlock(99) === null);
   check('açılan büyü yer varsa kendi giriyor, yoksa loadout dolu kalıyor',
     d.loadout.length === Carry, d.loadout.join(','));
   check('en iyi bölüm kaydediliyor', d.best === 3);
+}
+
+// --- enerji ----------------------------------------------------------------------------------
+
+// Saat disaridan veriliyor, yani "kirk dakika sonra" beklemeden olculebiliyor.
+const T0 = 1760000000000;
+const mins = (n) => T0 + n * 60000;
+
+check('bir koşu on beş enerji', EPerRun === 15, String(EPerRun));
+check('depo altmış', EStore === 60);
+check('dakikada iki doluyor', EPerMinute === 2 && ETick === 30000);
+
+// BU OZELLIGIN VAR OLMA SEBEBI. Bes dakikalik bir kosu, 5 enerjiye ve dakikada 2 yenilemeye
+// ayarli eski sayilarla, harcadigindan COK DAHA FAZLASINI geri veriyordu: kapi hic kapanmiyordu.
+{
+  const runMin = 5.5;
+  const back = runMin * EPerMinute;
+  check('bir koşu kazandırdığından çok yiyor', EPerRun > back,
+    `koşu -${EPerRun}, bu sürede +${back}`);
+}
+
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  setEnergy(d, EStore, T0);
+  check('dolu başlıyor', energyNow(d, T0) === EStore);
+  check('dolu kalıyor, taşmıyor', energyNow(d, mins(60)) === EStore);
+
+  check('koşu enerji yiyor', spendEnergy(d, EPerRun, T0) === true
+    && energyNow(d, T0) === EStore - EPerRun, String(energyNow(d, T0)));
+
+  // Zamanla doluyor - oyun KAPALIYKEN de. Kaydedilen sey sayi degil, sayi ve an.
+  check('saatle doluyor', energyNow(d, mins(5)) === EStore - EPerRun + 10,
+    String(energyNow(d, mins(5))));
+  check('depoyu aşmıyor', energyNow(d, mins(600)) === EStore);
+}
+
+// Yetmiyorsa hicbir seye dokunmuyor: yarim bir harcama, enerjisi yenmis ama kosmamis bir oyuncu.
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  setEnergy(d, 9, T0);
+  check('yetmeyince harcamıyor', spendEnergy(d, EPerRun, T0) === false);
+  check('ve hiçbir şeye dokunmuyor', energyNow(d, T0) === 9, String(energyNow(d, T0)));
+  check('koşamıyor', canRun(d, T0) === false);
+  // 9 var, 15 gerek: 6 tane daha, her biri 30 saniye = 3 dakika.
+  check('ne kadar bekleyeceğini söylüyor', untilRun(d, T0) === 6 * ETick,
+    `${untilRun(d, T0) / 1000} sn`);
+  check('o kadar sonra koşabiliyor', canRun(d, T0 + untilRun(d, T0)) === true);
+  check('doluyken sıfır bekliyor', untilRun({ energy: { at: EStore, when: T0 } }, T0) === 0);
+}
+
+// Temiz gecisin iadesi: uc yildizin satin aldigi tek somut sey.
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  setEnergy(d, 20, T0);
+  giveEnergy(d, EClean, T0);
+  check('temiz geçiş enerji iade ediyor', energyNow(d, T0) === 20 + EClean);
+  setEnergy(d, EStore - 2, T0);
+  giveEnergy(d, EClean, T0);
+  check('iade depoyu aşmıyor', energyNow(d, T0) === EStore);
+}
+
+// Saat geriye alinirsa eksi enerji olmamali - ve kayit bozuksa oyun acilir acilmaz
+// oynanabilir olmali, yarim saat bekleyen bir oyuncu degil.
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  setEnergy(d, 30, T0);
+  check('saat geri gidince kırılmıyor', energyNow(d, T0 - 600000) === 30,
+    String(energyNow(d, T0 - 600000)));
+  const old = tidy({ level: 5, loadout: ['bolt'], energy: null });
+  check('enerjisiz eski kayıt dolu başlıyor', energyNow(old) === EStore);
+  const broken = tidy({ level: 5, loadout: ['bolt'], energy: { at: 'x', when: 'y' } });
+  check('bozuk kayıt dolu başlıyor', energyNow(broken) === EStore);
+  const future = tidy({ level: 5, loadout: ['bolt'], energy: { at: 0, when: Date.now() + 9e8 } });
+  check('ileri tarihli kayıt dolu başlıyor', energyNow(future) === EStore);
+}
+
+check('geri sayım okunur yazılıyor',
+  clockOf(0) === '0:00' && clockOf(90000) === '1:30' && clockOf(3750000) === '1:02:30',
+  `${clockOf(0)} · ${clockOf(90000)} · ${clockOf(3750000)}`);
+
+// Bir oturum ne kadar surer: dolu depoyla kac kosu, sonra kosu basina ne kadar bekleme.
+{
+  const d = tidy({ level: 5, loadout: ['bolt'] });
+  setEnergy(d, EStore, T0);
+  let at = T0;
+  let runs = 0;
+  // Bes bucuk dakikalik kosular, art arda, enerji bitene kadar.
+  while (spendEnergy(d, EPerRun, at) && runs < 99) {
+    runs += 1;
+    at += 5.5 * 60000;
+  }
+  check('dolu depo kesintisiz bir oturum veriyor', runs >= 8 && runs <= 25,
+    `${runs} koşu, ${Math.round((at - T0) / 60000)} dakika`);
+  console.log(`\nenerji: dolu depoyla ${runs} koşu kesintisiz (~${Math.round((at - T0) / 60000)} dakika), ` +
+    `sonra koşu başına ${clockOf(EPerRun / EPerMinute * 60000)} bekleme`);
 }
 
 // --- portal dikişi ---------------------------------------------------------------------------------

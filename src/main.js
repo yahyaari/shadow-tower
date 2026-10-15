@@ -15,6 +15,10 @@ import * as ads from './ads.js';
 import * as music from './music.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
+import {
+  Store as EnergyStore, PerRun as EnergyPerRun, Clean as EnergyClean,
+  canRun, spendEnergy, giveEnergy, setEnergy,
+} from './energy.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -54,6 +58,9 @@ function fresh() {
     // between two of them - which looks like a spin that landed on nothing.
     turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
     board: null, boardScroll: 0, adMissing: 0,
+    // The menu's clock. Read once a frame and handed to everything that counts down, so the
+    // energy total and the time to the next one can never disagree inside a single frame.
+    clock: Date.now(),
     // Which panel is open over the field, if any: 'menu' or 'cards'. Also the pause, because the
     // panel and the pause are the same thing.
     paused: null,
@@ -81,6 +88,10 @@ window.addEventListener('resize', size);
 size();
 
 function start() {
+  // Paid on the way in, not on the way out. Charged at the end, quitting a run you were losing
+  // would be free, and the one thing an energy gate must not do is reward giving up.
+  if (!spendEnergy(data, EnergyPerRun)) return;
+  meta.save(data);
   state = begin(Date.now(), data.loadout, data.stage, meta.heroBonus(data), meta.spellLevels(data));
   music.start('run', Date.now());
   show = fresh();
@@ -205,6 +216,7 @@ function tick(now) {
     // Clamped here rather than only where it is pushed. Turning a phone sideways, or opening the
     // keyboard, changes how far the tab reaches - and a scroll left over from the taller window
     // shows an empty screen with the content somewhere above it.
+    show.clock = Date.now();
     const what = scroller();
     if (what) setScroll(what, scrollOf(what));
     spinOn(Math.min(0.25, raw));
@@ -236,6 +248,13 @@ function tick(now) {
       show.won = meta.finish(data, state.stage, state.wall, state.maxWall, state.kills,
         investedIn(state),
         { level: state.level, evos: carrying(state).reduce((a, k) => a + state.kit[k].evos.length, 0) });
+      // The wall never touched gives some of it back. The only concrete thing three stars buy,
+      // now that they buy nothing else.
+      if (show.won && show.won.stars >= 3) {
+        giveEnergy(data, EnergyClean);
+        show.energyBack = EnergyClean;
+        meta.save(data);
+      }
       // Read once, here, rather than every frame: `finish` has just moved the account on, and
       // these are the two things the buttons at the foot are decided by.
       show.nextStage = data.stage;
@@ -427,6 +446,16 @@ function doMenu(hit) {
     if (meta.buyHero(data)) sound.levelled();
     return;
   }
+  if (hit.what === 'energyAd') {
+    if (!ads.ready() || meta.adsLeft(data, 'energy') <= 0) { show.adMissing = performance.now(); return; }
+    watchAd().then((watched) => {
+      if (!watched || !meta.useAd(data, 'energy')) { show.adMissing = performance.now(); return; }
+      setEnergy(data, EnergyStore);
+      meta.save(data);
+      sound.prize();
+    });
+    return;
+  }
   if (hit.what === 'lang') {
     const next = Languages[(Languages.indexOf(language()) + 1) % Languages.length];
     setLanguage(next);
@@ -453,7 +482,7 @@ function doMenu(hit) {
     if (want >= 1 && want <= far) { data.stage = want; meta.save(data); }
     return;
   }
-  if (hit.what === 'play') { start(); return; }
+  if (hit.what === 'play') { if (canRun(data)) start(); return; }
   if (hit.what === 'tile') { meta.toggle(data, hit.key); return; }
 }
 

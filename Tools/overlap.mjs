@@ -171,6 +171,11 @@ for (const tab of ['map', 'wheel', 'hero', 'spells', 'codex']) {
   bad += await sniff('sekme:' + tab);
 }
 
+// Enerjisi bitmis harita: OYNA bir geri sayima, alt satir dolum reklamina donuyor.
+await set(`window.ShadowTower.meta.energy = { at: 4, when: Date.now() };`);
+bad += await sniff('harita: enerji bitti');
+await set(`window.ShadowTower.meta.energy = { at: 60, when: Date.now() };`);
+
 await set(`window.ShadowTower.meta.spellTab = 'raise';`);
 bad += await sniff('büyüler: yükseltme');
 await set(`window.ShadowTower.meta.spellTab = 'loadout'; window.ShadowTower.meta.tab = 'map';`);

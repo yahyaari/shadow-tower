@@ -145,6 +145,21 @@ await sleep(400);
 // Açılış ekranı: önce kilitli haliyle, sonra her şey açıkken
 await screenshot('menu_yeni_hesap');
 
+// Enerjisi bitmis bir hesap: OYNA kapisi, geri sayim ve dolum reklami. Bir kosu 15 yiyor,
+// elinde 4 var - yani asla gormek icin beklemeye gerek yok.
+await evaluate(`(() => {
+  const d = window.ShadowTower.meta;
+  d.energy = { at: 4, when: Date.now() };
+  return true;
+})()`);
+await sleep(400);
+await screenshot('enerji_bitti');
+await evaluate(`(() => {
+  window.ShadowTower.meta.energy = { at: 60, when: Date.now() };
+  return true;
+})()`);
+await sleep(300);
+
 // Ilerlemis bir hesap
 await evaluate(`(() => {
   const d = window.ShadowTower.meta;

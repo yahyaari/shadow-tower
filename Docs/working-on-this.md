@@ -416,6 +416,39 @@ Açıklamalardaki sayılar da öyle: Çağırıcı'nın metni "üç tane çağı
 indirdikten sonra bile. Sayılar artık `HeraldCalls` ve `ShadeKeeps`'ten geliyor ve test
 açıklamanın gerçekten olanı söylediğini doğruluyor — kartlarda zaten uyguladığım kural.
 
+## Enerji — `src/energy.js`
+
+| | |
+|---|---|
+| depo | 60 |
+| bir koşu | **15** |
+| %100 geçişin iadesi | +5 |
+| yenileme | dakikada 2 (30 saniyede bir) |
+| reklam | depoyu doldurur, günde 3 |
+
+Ölçüldü: **dolu depoyla 12 koşu kesintisiz (~66 dakika)**, sonra koşu başına 7:30 bekleme.
+
+**Koşu başına 15, çünkü 5 çalışmıyordu.** Kullanıcının sayıları bölüm bir buçuk dakikayken
+seçilmişti: koşu başına ~2 dakikada 5 gidiyor 4 geliyordu, depo yavaşça eriyordu. Bölüm beş
+dakikaya çıkınca aynı sayılarla bir koşuda **5 gidip 11 geliyordu** — enerji asla bitmiyordu ve
+bütün sistem ekranda duran bir sayıdan ibaret kalıyordu. Test bunu tutuyor:
+`EPerRun > bir koşuda dolan`.
+
+**Depoda durmuyor, zamanda duruyor.** Kaydedilen şey "kaç enerjin var" değil, `{ at, when }` —
+şu kadar vardı, şu an. Aradaki fark, oyun kapalıyken de dolması; bir enerji sisteminin tek
+anlamlı davranışı bu. Saat ileri/geri alınırsa kırpılıyor, bozuk veya eski bir kayıt **dolu**
+başlıyor: oyunu açıp yarım saat bekleyen bir oyuncu, bedava depodan beterdir.
+
+**Enerji giderken ödeniyor, gelirken değil.** Sonda tahsil edilseydi kaybettiğin bir koşudan
+çıkmak bedava olurdu, ve bir enerji kapısının yapmaması gereken tek şey pes etmeyi ödüllendirmek.
+
+**Enerji bitince OYNA sessizce kapanmıyor:** ne beklediğini ve ne kadar beklediğini yazıyor, ve
+alttaki iki durum kartının satırını dolum reklamı alıyor. Reklam kendi satırını açsaydı depo
+bittiği anda bütün ekran aşağı kayardı — ve yanlışlıkla basılan buton böyle olur.
+
+Saat `show.clock`'tan okunuyor, karede bir kez: ekrandaki sayı ile geri sayım aynı saatten
+beslenmezse tek bir karede birbirini yalanlar.
+
 ## Kapak görselleri — `Tools/cover-art.js`
 
 Portal **üç kapak** istiyor ve üçünün birbirine benzemesini şart koşuyor:
@@ -812,6 +845,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `src/ads.js` | Portal: CrazyGames SDK'sını bilen tek dosya. SDK yoksa her çağrı boş geçer. |
 | `src/news.js` | Duyurular. Tarihli, kısa, oyuncu için yazılmış. |
 | `src/hero.js` | 50 basamaklı kahraman merdiveni. Saf veri + maliyet eğrisi. |
+| `src/energy.js` | Enerji: depo, maliyet, yenileme. Saat bile dışarıdan verilir. |
 | `src/rewards.js` | Çark dilimleri (türlü), sandık eşiği, "bugün çevrildi mi". DOM yok, saati de yok. |
 | `src/upgrades.js` | Büyülerin kalıcı seviye çizgisi: 10 basamak, maliyetler. Saf veri. |
 | `src/menu.js` | Beş sekmeli menü. Çizim ilkelerini `draw.js`'ten alır. |
@@ -1061,6 +1095,5 @@ Dördüncüsü ve beşincisi artık yakalanıyor: oyun açılmazsa araç duruyor
 
 - Tek arena şekli (patron üç, aile dört, yer on iki, ufuk yere göre değişiyor) — kullanıcı erteledi.
 - Tanıtım videosu yok (ekran kaydı gerek). Kapak görselleri hazır.
-- Enerji sistemi yapılmadı (depo 60, koşu 5, %100'e +5, 60 dakikada 2 — reklam dikişi artık hazır).
 - Reklamların gerçekten oynadığı görülmedi: SDK yalnızca çerçeve içinde yükleniyor.
 - Gerçek parmakla oynanmadı.

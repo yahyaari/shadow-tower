@@ -13,7 +13,7 @@
 //   docs.crazygames.com/sdk/video-ads  requestAd, hasAdblock
 
 /** How many rewarded adverts a day, per thing they buy. */
-export const Allow = { spin: 3, small: 3, great: 3, double: 3, speed: 3 };
+export const Allow = { spin: 3, small: 3, great: 3, double: 3, speed: 3, energy: 3 };
 
 export const Kinds = Object.keys(Allow);
 

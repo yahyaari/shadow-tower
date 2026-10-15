@@ -18,6 +18,7 @@ import {
   Feats, featOf, Week, weekAt, weekDue, weekPays, nextDay,
 } from './missions.js';
 import { Allow as AdAllow, Kinds as AdKinds } from './ads.js';
+import { Store as EnergyStore } from './energy.js';
 
 const Key = 'shadowtower';
 
@@ -52,6 +53,7 @@ const blank = {
   gold: 0,          // shared, and what decides how many spells you can afford to raise
   shards: null,     // spell -> shards held; they decide which spell you are raising
   spell: null,      // spell -> permanent level, 1 to 10
+  energy: null,     // { at, when } - how much there was, and when. It fills from the clock.
 };
 
 /**
@@ -451,6 +453,12 @@ export function load() {
  */
 export function tidy(data) {
   data.level = Math.max(1, Math.floor(data.level || 1));
+  // A save from before energy existed, or one with a broken clock in it, starts full. Better a
+  // free tank than a player who opens the game and cannot press PLAY for half an hour.
+  if (!data.energy || typeof data.energy.at !== 'number' || typeof data.energy.when !== 'number'
+      || data.energy.when > Date.now() + 60000) {
+    data.energy = { at: EnergyStore, when: Date.now() };
+  }
   data.xp = Math.max(0, data.xp || 0);
   if (!Languages.includes(data.lang)) data.lang = 'en';
   data.music = data.music !== false;
