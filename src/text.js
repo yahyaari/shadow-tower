@@ -51,6 +51,13 @@ export const UI = {
   bestStage:    ['best: stage {0}', 'en iyi: bölüm {0}'],
 
   lv:           ['LV {0}', 'SV {0}'],
+  lvMax:        ['LV {0}  MAX', 'SV {0}  MAK'],
+  horde:        ['HORDE', 'SÜRÜ'],
+  reach:        ['reach', 'menzil'],
+  reachNear:    ['close', 'yakın'],
+  reachMid:     ['medium', 'orta'],
+  reachFar:     ['long', 'uzun'],
+  reachAll:     ['the whole field', 'tüm saha'],
   stage:        ['STAGE {0}', 'BÖLÜM {0}'],
   wall:         ['WALL', 'DUVAR'],
   cast:         ['CAST', 'ATIŞ'],

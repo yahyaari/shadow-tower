@@ -10,6 +10,7 @@ import {
   tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps, fusionsFor, FuseAt, RampOver,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
   spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure, Reach,
+  Arena, Base, BossAt, MaxLevel, maxed, Reaches, reachWord, SurgeEvery, SurgeArc, surge, surgeSize,
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry, CarrySize, Fusions, fusionKeys, fusionOf, anySpell } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
@@ -50,6 +51,17 @@ import {
   wholeGold, wholeShards,
 } from '../src/upgrades.js';
 import { Ladder, Steps as HeroSteps, Bonus, costOf as heroCost, totals as heroTotals, wholeLadder } from '../src/hero.js';
+/**
+ * THE bot. Not a copy of it.
+ *
+ * This file carried its own full copy of `botRun` for a long time, three hundred lines below the
+ * place it was needed, shadowing nothing because nothing was imported. The two had already drifted:
+ * this one gave up on a run after 420 seconds and `bot.mjs` gives up after 620, so a boss fight
+ * that ran long counted as a loss here and as a clear in `Tools/tune.mjs` - the same seed, the same
+ * loadout, the same stage, two answers. `bot.mjs` says in its own header that writing a second bot
+ * has already cost this project once; it had cost it twice.
+ */
+import { botRun, Four, Five, fmt } from './bot.mjs';
 
 let passed = 0;
 const failures = [];
@@ -1272,9 +1284,13 @@ check('patronların ailesi yok', (() => {
     s.shots.push({
       key: 'x', child: true, x: 0, y: 0, z: 0, a: 0, at: f.id,
       damage: 100, element, blast: 0, chill: 0, pierce: 0,
-      hits: new Set(), falls: false, life: 1,
+      // `life: 1` idi ve mermi hizi 420'ye inince arenanin bir ucundan obur ucuna bir saniyede
+      // yetismiyor: atis hedefe varmadan sonuyordu. Oyunun kendi atislari 3 tasiyor.
+      hits: new Set(), falls: false, life: 3, reach: Arena,
     });
-    for (let i = 0; i < 60 && f.hp === was; i++) step(s, 1 / 60);
+    // 180 kare, 60 degil. Mermi hizi 560'tan 420'ye indi ve arenanin bir ucundan obur ucuna
+    // bir saniyede yetismiyor artik - bu kontrol o yuzden hasari sifir olcuyordu.
+    for (let i = 0; i < 180 && f.hp === was; i++) step(s, 1 / 60);
     return was - f.hp;
   };
   const plain = hit('folk', 'fire');
@@ -2338,22 +2354,241 @@ check('dalga bütün bölüm boyunca tırmanıyor', RampOver > 0 && RampOver < S
     `beş dakikanın sonunda açılışın ${(end / soon).toFixed(1)} katı`);
 }
 
-// Patron geldikten sonra HIC yeni dusman gelmemeli: son dovus patronla ve sahada kalanla.
+// Patron 4:50'de gelir ve dalga 5:00'e kadar SURER - patron bos bir sahaya degil kalabaligin
+// icine girsin diye. Sonra hicbir sey gelmez: son dovus patronla ve sahada kalanla.
+//
+// Bu kontrolun eski hali `f.spawnedAt`'e bakiyordu ve onu kimse yazmiyordu: tanimsiz bir sayiyi
+// bir sayiyla karsilastirip hic bakmadan geciyordu. Alet bir kez daha oyun sanilmis.
 {
-  const s = begin(13, ['bolt'], 1);
-  s.t = StageWaves + 1;
-  s.stageT = StageWaves + 1;
-  step(s, 1 / 60);
-  check('beşinci dakikada patron geliyor', !!s.boss && s.bossDone, s.boss ? s.boss.key : 'yok');
+  check('patron 4:50de geliyor', BossAt === 290 && BossAt < StageWaves, `${BossAt} / ${StageWaves}`);
 
-  const was = s.foes.length;
-  for (let i = 0; i < 60 * 30; i++) {
+  const s = begin(13, ['bolt'], 1);
+  s.wall = s.maxWall = 1e6;          // duvar olcumu bu kontrolun isi degil
+  s.stageT = BossAt;
+  s.t = BossAt;
+  step(s, 1 / 60);
+  check('patron dalga bitmeden geliyor', !!s.boss && s.bossDone, s.boss ? s.boss.key : 'yok');
+
+  while (s.stageT < StageWaves - 0.3) {
+    if (s.phase === 'picking') { take(s, 0); continue; }
     if (s.phase !== 'playing') break;
     step(s, 1 / 60);
   }
-  const born = s.foes.filter((f) => !f.boss && f.spawnedAt > StageWaves + 1).length;
-  check('patron gelince dalga duruyor', s.foes.filter((f) => !f.boss).length <= was,
-    `${was} → ${s.foes.filter((f) => !f.boss).length}`);
+  const late = s.foes.filter((f) => !f.boss && f.spawnedAt > BossAt).length;
+  check('patron geldikten sonra da yaratık geliyor', late > 0, `${late} tane`);
+
+  while (s.stageT < StageWaves + 20) {
+    if (s.phase === 'picking') { take(s, 0); continue; }
+    if (s.phase !== 'playing') break;
+    step(s, 1 / 60);
+  }
+  const after = s.foes.filter((f) => !f.boss && f.spawnedAt >= StageWaves).length;
+  check('beşinci dakikada dalga duruyor', after === 0, `${after} tane`);
+}
+
+/**
+ * Dalgayı susturur: ölçülecek şey sahaya KONULAN yaratıklar olsun.
+ *
+ * Bu olmadan damla ölçümün altına sürekli yeni yaratık ekliyor ve onlar da ölçülüyordu - "iki
+ * ateş topu iki hedefe gidiyor" kontrolü, sahaya iki hedef koyup DÖRT yaratığın yandığını
+ * görünce düştü. Aletin oyunla karışması, bir kez daha.
+ */
+const hush = (s) => { s.nextIn = 1e9; s.surgeIn = 1e9; return s; };
+
+// --- MENZİL (madde 5) ----------------------------------------------------------------------------
+//
+// Büyülerin menzili yoktu: her biri sahadaki her şeye, bir kare önce kenarda doğmuş olana bile
+// vuruyordu. Hiçbir şeyin birikmemesinin sebebi buydu.
+
+{
+  const every = [...spellKeys, ...fusionKeys];
+  check('her büyünün bir menzili var', every.every((k) => Reaches[k] > 0),
+    every.filter((k) => !Reaches[k]).join(', ') || 'hepsi');
+  check('her menzil duvarı koruyabiliyor', every.every((k) => Reaches[k] > Reach + 80),
+    every.filter((k) => Reaches[k] <= Reach + 80).join(', ') || 'hepsi');
+  check('hiçbir menzil arenadan büyük değil', every.every((k) => Reaches[k] <= Arena),
+    every.filter((k) => Reaches[k] > Arena).join(', ') || 'hepsi');
+  check('her menzilin bir sözcüğü var', every.every((k) => Array.isArray(reachWord(k))));
+}
+
+// Tek tek: her büyü, menzilinin yetmiş piksel dışındaki bir hedefe sekiz saniye boyunca
+// DOKUNAMAMALI. Yörünge ve nova dahil - onların menzili halkası ve patlaması.
+{
+  const reached = [];
+  for (const key of spellKeys) {
+    const s = hush(begin(9, ['bolt'], 1));
+    s.kit = { [key]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
+    s.loadout = [key];
+    s.cools = { [key]: 0 };
+    const f = spawn(s, 'walker');
+    f.a = 0;
+    f.r = Math.min(Arena, Reaches[key] + 70);
+    f.hp = f.maxHp = 1e7;
+    f.family = 'folk';
+    f.speed = 0;
+    for (let i = 0; i < 60 * 8; i++) step(s, 1 / 60);
+    if (f.hp < 1e7) reached.push(key);
+  }
+  check('hiçbir büyü menzilinin dışına vurmuyor', reached.length === 0,
+    reached.join(', ') || 'hepsi menzilinde kalıyor');
+}
+
+// ...ve menzilin içindekine vuruyor. Ikisi birlikte olmazsa kontrol hiçbir şey söylemez.
+{
+  const missed = [];
+  for (const key of spellKeys) {
+    const s = hush(begin(9, ['bolt'], 1));
+    s.kit = { [key]: { tier: 1, boosts: {}, evos: [], taken: 0 } };
+    s.loadout = [key];
+    s.cools = { [key]: 0 };
+    const f = spawn(s, 'walker');
+    f.a = 0;
+    f.r = Math.max(Reach + 20, Reaches[key] - 60);
+    f.hp = f.maxHp = 1e7;
+    f.family = 'folk';
+    f.speed = 0;
+    for (let i = 0; i < 60 * 8; i++) step(s, 1 / 60);
+    if (f.hp >= 1e7) missed.push(key);
+  }
+  check('her büyü menzilinin içine vuruyor', missed.length === 0,
+    missed.join(', ') || 'hepsi vuruyor');
+}
+
+// --- VOLE (madde 1) ------------------------------------------------------------------------------
+//
+// İki ateş topu hedefin sağından ve solundan geçip hiçbir şeye değmiyordu. Yelpaze simetrik
+// olduğu için İKİ mermiyle hedefe giden mermi sayısı SIFIR oluyor; ölçüldü, üç saniyede tek
+// ateş topu 33 hasar verirken ikisi 21 veriyordu. Oyundaki her "+1 atış" kartı bir kayıptı.
+
+{
+  const s = begin(6, ['bolt'], 1);
+  s.kit = { fireball: { tier: 1, boosts: { more: 1 }, evos: [], taken: 0 } };
+  s.loadout = ['fireball'];
+  s.cools = { fireball: 0 };
+  hush(s);
+  const two = [-0.35, 0.35].map((a) => {
+    const f = spawn(s, 'walker', a);
+    f.r = 300;
+    f.hp = f.maxHp = 1e7;
+    f.family = 'folk';
+    f.speed = 0;
+    return f;
+  });
+  for (let i = 0; i < 60 * 3; i++) step(s, 1 / 60);
+  const hurt = two.filter((f) => f.hp < 1e7).length;
+  check('iki ateş topu iki ayrı hedefe gidiyor', hurt === 2, `${hurt} hedef yandı`);
+}
+
+// Ve genel kural: sayı artıran HER kart gerçekten daha çok hasar vermeli.
+{
+  const dealt = (key, boost) => {
+    const s = hush(begin(4, ['bolt'], 1));
+    s.kit = { [key]: { tier: 1, boosts: boost ? { [boost]: 1 } : {}, evos: [], taken: 0 } };
+    s.loadout = [key];
+    s.cools = { [key]: 0 };
+    // Üç hedef, menzilin içinde, yan yana: bir yelpazenin vurması en kolay olan durum.
+    for (const a of [-0.2, 0, 0.2]) {
+      const f = spawn(s, 'walker', a);
+      f.r = Math.max(Reach + 20, Math.min(Arena - 10, Reaches[key] - 50));
+      f.hp = f.maxHp = 1e7;
+      f.family = 'folk';
+      f.speed = 0;
+    }
+    const marks = s.foes.slice();
+    const was = marks.reduce((n, f) => n + f.hp, 0);
+    for (let i = 0; i < 60 * 10; i++) step(s, 1 / 60);
+    return was - marks.reduce((n, f) => n + f.hp, 0);
+  };
+  const worse = [];
+  for (const key of [...spellKeys, ...fusionKeys]) {
+    for (const b of anySpell(key).boosts) {
+      if (!b.does.count) continue;
+      const alone = dealt(key, null);
+      const more = dealt(key, b.key);
+      if (more <= alone * 1.12) {
+        worse.push(`${key}/${b.key} ${Math.round(alone)}→${Math.round(more)}`);
+      }
+    }
+  }
+  check('sayı artıran her kart gerçekten daha çok vuruyor', worse.length === 0,
+    worse.join(' · ') || 'hepsi ödüyor');
+}
+
+// --- TAVAN (madde 3) -----------------------------------------------------------------------------
+
+check('koşunun seviye tavanı 23', MaxLevel === 23, `${MaxLevel}`);
+
+{
+  const s = begin(8, ['bolt', 'fireball', 'frost'], 1);
+  for (let i = 0; i < 2000; i++) {
+    if (s.phase === 'picking') { take(s, 0); continue; }
+    if (s.phase !== 'playing') break;
+    s.xp += 60;                       // bol bol deneyim: tavan dışında hiçbir şey durdurmasın
+    step(s, 1 / 60);
+  }
+  check("koşu seviyesi tavanı geçmiyor", s.level === MaxLevel, `seviye ${s.level}`);
+  check('tavana varınca kart gelmiyor', s.phase !== 'picking', s.phase);
+  check('tavanda çubuk dolu duruyor', s.need > 0 && s.xp === s.need, `${s.xp}/${s.need}`);
+  check('maxed tavanı söylüyor', maxed(s) === true);
+}
+
+check('deneyim merdiveni tırmanıyor', xpForLadder(), '');
+function xpForLadder() {
+  let was = 0;
+  for (let l = 1; l <= MaxLevel; l++) {
+    const n = Math.round(3 * Math.pow(1.18, l - 1));
+    if (n < was) return false;
+    was = n;
+  }
+  return true;
+}
+
+// --- SÜRÜ (madde 4) -----------------------------------------------------------------------------
+
+check('sürüler yirmi altı saniyede bir', SurgeEvery === 26, `${SurgeEvery}`);
+
+{
+  const s = begin(21, ['bolt'], 1);
+  const small = surgeSize(s);
+  s.t = 280;
+  const big = surgeSize(s);
+  check('sürü bölüm boyunca büyüyor', big > small * 1.4, `${small} → ${big}`);
+
+  const was = s.foes.length;
+  const many = surge(s);
+  check('sürü tek seferde geliyor', s.foes.length === was + many, `${many} tane`);
+  const angles = s.foes.slice(was).map((f) => f.a);
+  const span = Math.max(...angles) - Math.min(...angles);
+  check('sürü tek yönden geliyor', span <= SurgeArc + 0.001, `${span.toFixed(2)} radyan`);
+}
+
+// --- YANGIN (madde 2) ---------------------------------------------------------------------------
+//
+// Ateş topunun ilk dönüşümü düştüğü yerde yangın bırakır ve içinden geçen üç saniye boyunca
+// yanar. Zaten vardı; eksik olan, yangının gerçekten yaktığının ölçülmesiydi - ve ateş topu
+// hedefi ıskaladığı sürece yangın da hiç doğru yere düşmüyordu.
+{
+  const s = hush(begin(5, ['bolt'], 1));
+  s.kit = { fireball: { tier: 2, boosts: {}, evos: ['fire'], taken: 5 } };
+  s.loadout = ['fireball'];
+  s.cools = { fireball: 0 };
+  const f = spawn(s, 'walker', 0);
+  f.r = 300;
+  f.hp = f.maxHp = 1e7;
+  f.family = 'folk';
+  f.speed = 0;
+  let burned = 0;
+  let seen = 0;
+  for (let i = 0; i < 60 * 3; i++) {
+    step(s, 1 / 60);
+    seen = Math.max(seen, s.grounds.length);
+    // patlamanın kendisi değil, patlama bittikten sonra devam eden hasar
+    if (s.grounds.length && s.shots.length === 0) burned += 1;
+  }
+  check('ateş topu düştüğü yerde yangın bırakıyor', seen > 0, `${seen} yangın`);
+  check('yangın patlamadan sonra da yakıyor', burned > 60, `${burned} kare`);
+  check('yangın üç saniye sürüyor',
+    s.grounds.every((g) => g.max >= 2 && g.max <= 4), s.grounds.map((g) => g.max).join(', '));
 }
 
 // --- hız kilidi ------------------------------------------------------------------------------------
@@ -2412,60 +2647,7 @@ if (Quick) {
   process.exit(0);
 }
 
-/** Makul bir oyuncu: saniyede altı tıklar ve kartları puanlar. Tek bir bölüm oynar. */
-/**
- * `neutral` scrubs every creature back to the family with no resistances, frame by frame.
- *
- * It is the only way to measure what a family is actually worth. Comparing two loadouts conflates
- * the resistance with the raw power of the spells they differ by; comparing two stages conflates
- * it with how hard those stages are. The same seed, the same loadout, the same stage, with the
- * table on and off, conflates it with nothing.
- */
-function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, spellAt = 1, neutral = false) {
-  const levels = Object.fromEntries(loadout.map((k) => [k, spellAt]));
-  const s = begin(seed, loadout, stage, heroTotals(hero), levels);
-  const dt = 1 / 60;
-  let since = 0;
-  let guard = 0;
-  while ((s.phase === 'playing' || s.phase === 'picking') && guard++ < 60 * 420) {
-    if (s.phase === 'picking') {
-      let best = 0, bestScore = -1e9;
-      s.choices.forEach((c, j) => {
-        let score;
-        if (c.what === 'spell') score = 120;
-        // A fusion scores like the big pick it is. Left out, it fell through to the boost branch
-        // at 18 and the bot went whole runs without ever taking one - and a feature the bot never
-        // touches is a feature no measurement in this file covers.
-        else if (c.what === 'fusion') score = 110;
-        else if (c.what === 'evolution') score = 100;
-        else if (c.what === 'passive') score = 34 - (s.passives[c.key] || 0) * 8;
-        else score = 18 + (s.kit[c.key] ? s.kit[c.key].taken * 4 : 0);
-        if (score > bestScore) { bestScore = score; best = j; }
-      });
-      take(s, best);
-      continue;
-    }
-    since += dt;
-    if (since >= 1 / clicksPerSecond) { since = 0; click(s); }
-    step(s, dt);
-    if (neutral) for (const f of s.foes) if (!f.boss) f.family = 'folk';
-    s.events.length = 0;
-  }
-  return {
-    done: s.phase === 'done',
-    fused: (s.fused || []).length,
-    t: s.t,
-    level: s.level,
-    kills: s.kills,
-    wall: s.wall,
-    maxWall: s.maxWall,
-    stars: s.phase === 'done' ? starsFor(s.wall, s.maxWall) : 0,
-    evos: carrying(s).reduce((a, k) => a + s.kit[k].evos.length, 0),
-  };
-}
-
-const Four = ['bolt', 'fireball', 'frost', 'lightning'];
-const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+// Bot, `Four`, `Five` ve `fmt` artık yukarıda `./bot.mjs`'ten geliyor. Buradaki kopya silindi.
 
 console.log('');
 console.log(`loadout: ${Four.join(', ')} — saniyede 6 tıklayan oyuncu, bölüm başına 40 koşu:`);
@@ -2483,10 +2665,33 @@ for (const stage of Sweep) {
   const midOf = (xs) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)];
   const lv = midOf(runs.map((r) => r.level));
   const ev = midOf(runs.map((r) => r.evos));
-  byStage.push({ stage, rate: done.length / runs.length, spread, times });
+  byStage.push({ stage, rate: done.length / runs.length, spread, times,
+    traces: runs.map((r) => r.trace) });
   console.log(`  ${stage}     %${String(Math.round(done.length / runs.length * 100)).padStart(3)}   ` +
     `${(times.length ? fmt(times[Math.floor(times.length / 2)]) : ' -- ').padStart(5)}    ` +
     `${spread.join(' / ').padEnd(22)}  ${lv} / ${ev}`);
+}
+
+// --- SAHADAKİ KALABALIK (madde 4) ---------------------------------------------------------------
+//
+// Bir bölümün tırmandığı GÖZLE GÖRÜLMELİ. Baskı sayısı bölüm boyunca 1'den 2.83'e çıkıyordu ve
+// hiçbir kontrol düşmüyordu, ama sahada duran yaratık sayısı otuz saniyede bir ölçüldüğünde
+// 1, 3, 9, 11, 12, 11, 11, 11, 8, 13 okuyordu: ikinci dakikadan beşinciye kadar düpedüz düz.
+// Oyuncu da tam bunu söyledi - "sürüler hep aynı oranda geliyor, bir süre sonra artmıyorlar".
+//
+// Hızlanan bir damla, kendisi de hızlanan bir oyuncuya karşı birbirini götüren iki eğridir. Bu
+// yüzden kontrol ORANA değil sahada duran kalabalığa bakıyor: oyuncunun gördüğü şey o.
+{
+  const mid = (xs) => (xs.length ? xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
+  const atMinute = (traces, t) => mid(traces.map((tr) => (tr.find((x) => x.t === t) || {}).foes)
+    .filter((n) => n != null));
+  const shape = [0, 60, 120, 180, 240, 300].map((t) => atMinute(byStage[0].traces, t));
+  console.log('');
+  console.log(`sahada duran kalabalık (1. bölüm, yarım dakikada bir): ${shape.join(' → ')}`);
+  check('kalabalık bölüm boyunca büyüyor', shape[4] > shape[1] * 1.4,
+    `1. dakikada ${shape[1]}, 4. dakikada ${shape[4]}`);
+  check('kalabalık ilk dakikadan sonra da büyümeye devam ediyor', shape[4] > shape[2] * 1.2,
+    `2. dakikada ${shape[2]}, 4. dakikada ${shape[4]}`);
 }
 
 // Tek büyü, erken bölümlerde dolu loadouttan İYİ - ve bu doğru: ilk bölümler affedici ve
@@ -2700,7 +2905,10 @@ console.log('  bölüm   yeni hesap   tam donanım   yer                   ailel
     rows.map((r) => r.full).join('/'));
   // Zorluk duzenli artmali: arada bir bolum kendinden sonrakinden sert olursa oyuncu "ben mi
   // yanlis yapiyorum" diye dusunur, oysa sira yanlistir.
-  const bumps = rows.slice(0, 8).filter((r, i, all) => i > 0 && r.full > all[i - 1].full + 8);
+  // Esik 8 puandi ve bu tablonun kendi gurultu tabani 9: yirmi dort kosuda bir kosu 4 puan, yani
+  // "8 puan" iki kosu demek. Kontrol gercek bir ters cevrilmeyi degil zar atisini olcuyordu.
+  // Dort kosu (17 puan) bir desenin gurultuden ayirt edilebildigi en kucuk fark.
+  const bumps = rows.slice(0, 8).filter((r, i, all) => i > 0 && r.full > all[i - 1].full + 17);
   check('zorluk sırası tersine dönmüyor', bumps.length === 0,
     bumps.map((r) => `${r.n}. bölüm öncekinden kolay`).join(', '));
 }
@@ -2721,27 +2929,37 @@ console.log('');
   check('ama her koşuda olmuyor', made < runs.length,
     `${made}/${runs.length}`);
 
-  // Bot hedef gozetmiyor, eline ne gecerse aliyor. Asil soru: BILEREK birlesmeye oynayan bir
-  // oyuncu alabiliyor mu? Ayni bot, kadrosunda cifti tasiyan ve yayilacak az yeri olan bir elle.
-  const aimed = [];
-  for (let i = 1; i <= R(40); i++) aimed.push(botRun(i * 7919, ['bolt', 'fireball', 'lightning'], 3));
-  const hit = aimed.filter((r) => r.fused > 0).length;
-  console.log(`  çifti kadrosuna alan oyuncu: ${aimed.length} koşunun ${hit} tanesinde`);
-  // Esik "iki kati" idi ve kapi genisletilince aritmetik olarak imkansiz hale geldi: rastgele
-  // oyuncu 20/40 alinca iki kati 40/40 demek. Olculen fark, oranin kendisi degil.
-  // Esik ORAN, cunku kosu sayisi ornekleme ile degisiyor. Mutlak bir "sekiz tane daha" esigi
-  // on iki kosuluk bir ornekte aritmetik olarak imkansiz olurdu.
-  check('birleşmeye oynayan oyuncu belirgin şekilde daha sık alıyor',
-    hit / aimed.length >= made / runs.length + 0.2,
-    `rastgele ${made}/${runs.length} vs hedefli ${hit}/${aimed.length}`);
+  // Bu kontrol uzun sure YANLIS SEYI olcuyordu.
+  //
+  // "Rastgele oyuncu" diye aldigi el `Four` = bolt + fireball + frost + lightning, ve ateş topu
+  // ile yildirim ZATEN bir cift: Fırtına. Karsilastirilan iki elin ikisi de cifti tasiyordu, yani
+  // olculen sey niyet degil loadout'un gucuydu - uc buyulu "hedefli" el daha zayif oldugu icin
+  // ucuncu bolumde daha sik oluyor, daha az pick topluyor ve daha AZ birlesiyordu. Olcum %50'ye
+  // karsi %17 ile tam tersini soyledi.
+  //
+  // Dogru soru ikiye ayriliyor. Birincisi: cifti TASIMAYAN bir el hic birlesememeli. Kodda
+  // zorunlu, ama kirilirsa sessizce kirilir - kadroda olmayan bir buyunun birlesmesi teklif
+  // edilir. Ikincisi: cifti tasiyan el makul bir siklikta alabilmeli; ne her kosuda, ne hic.
+  const none = [];
+  for (let i = 1; i <= R(20); i++) none.push(botRun(i * 7919, ['bolt', 'wisp', 'laser', 'nova'], 3));
+  const slip = none.filter((r) => r.fused > 0).length;
+  console.log(`  çifti kadrosunda olmayan oyuncu: ${none.length} koşunun ${slip} tanesinde`);
+  check('çifti taşımayan el hiç birleşmiyor', slip === 0, `${slip}/${none.length}`);
+  check('çifti taşıyan el makul sıklıkta birleşiyor',
+    made / runs.length >= 0.2 && made / runs.length <= 0.85,
+    `${made}/${runs.length} koşu`);
 }
 
 const solo = [];
 for (let i = 1; i <= R(30); i++) solo.push(botRun(i * 104729, ['bolt'], 3).done);
+// Ucuncu bolumde, birincide degil. Tiklamak bekleme suresini kisaltiyor ve bu gercekten ise
+// yariyor, ama birinci bolumu saniyede bir tiklayan da geciyor: olcum DOYMUS durumdaydi, %100'u
+// %100 ile karsilastirip "tiklamak ise yaramiyor" diyordu. Bir kontrolun gorebilecegi bir yerde
+// sorulmasi gerekir.
 const lazy = [];
-for (let i = 1; i <= R(30); i++) lazy.push(botRun(i * 104729, Four, 1, 1).done);
+for (let i = 1; i <= R(30); i++) lazy.push(botRun(i * 104729, Four, 3, 1).done);
 console.log(`  sadece sabit büyüyle 3. bölüm: %${Math.round(solo.filter(Boolean).length / solo.length * 100)}  (dört büyüyle %${Math.round(byStage[2].rate * 100)})`);
-console.log(`  neredeyse hiç tıklamayan (1/sn), 1. bölüm: %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
+console.log(`  neredeyse hiç tıklamayan (1/sn), 3. bölüm: %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
 // Birinci bölümü neredeyse herkes bitirmeli - ilk oturuşta hiçbir şey başaramayan oyuncu geri
 // gelmez. Ama üç yıldız kolay olmamalı, yoksa yıldızın bir anlamı kalmaz.
@@ -2768,8 +2986,8 @@ check('üç yıldız imkânsız da değil', byStage.some((b) => threes(b) > 0),
 }
 check('dolu loadout derin bölümlerde tek büyüden iyi', byStage[2].rate > solo.filter(Boolean).length / solo.length * 1.3,
   `3. bölüm: %${Math.round(byStage[2].rate * 100)} vs %${Math.round(solo.filter(Boolean).length / solo.length * 100)}`);
-check('tıklamak işe yarıyor', byStage[0].rate > lazy.filter(Boolean).length / lazy.length,
-  `%${Math.round(byStage[0].rate * 100)} vs %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
+check('tıklamak işe yarıyor', byStage[2].rate > lazy.filter(Boolean).length / lazy.length,
+  `%${Math.round(byStage[2].rate * 100)} vs %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
 // --- ödüller ne kadar ediyor --------------------------------------------------------------------
 //

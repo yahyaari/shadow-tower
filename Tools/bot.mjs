@@ -5,7 +5,7 @@
 // oyunun olduğundan çok daha zor olduğunu söyledi — çünkü o kopya hep sıfırıncı kartı alıyordu.
 // Tek bot, tek puanlama, tek sonuç.
 
-import { begin, step, click, take, carrying } from '../src/rules.js';
+import { begin, step, click, take, carrying, StageWaves, investedIn } from '../src/rules.js';
 import { starsFor } from '../src/meta.js';
 import { totals as heroTotals } from '../src/hero.js';
 
@@ -26,6 +26,16 @@ export function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, 
   let since = 0;
   let guard = 0;
   const most = Math.ceil(620 / dt);
+  /**
+   * What the run looked like every thirty seconds.
+   *
+   * Here rather than in a second bot, because that mistake has already been made once in this
+   * project. The run is sampled while it is played and the sample costs nothing; whether the
+   * wave actually climbs CANNOT be read off the end of a run, which is how a stage that was
+   * flat from its second minute to its fifth passed every check in the suite.
+   */
+  const trace = [];
+  let next = 0;
   while ((s.phase === 'playing' || s.phase === 'picking') && guard++ < most) {
     if (s.phase === 'picking') {
       let best = 0, bestScore = -1e9;
@@ -49,9 +59,24 @@ export function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, 
     step(s, dt);
     if (neutral) for (const f of s.foes) if (!f.boss) f.family = 'folk';
     s.events.length = 0;
+    if (s.stageT >= next && next <= StageWaves) {
+      trace.push({
+        t: Math.round(s.stageT),
+        foes: s.foes.filter((f) => !f.boss).length,
+        level: s.level,
+        kills: s.kills,
+        wall: Math.round(s.wall),
+      });
+      next += 30;
+    }
   }
   return {
     done: s.phase === 'done',
+    trace,
+    // Hangi buyuye kac pick gitti. Birlesme kapisi (`FuseAt`) bu sayilara gore secilmeli ve
+    // tahminle secilmisti: kosu seviyesi 23'te durunca pick sayisi 34'ten 22'ye dustu ve
+    // onsekizlik kapi hic acilmaz oldu.
+    fed: investedIn(s),
     fused: (s.fused || []).length,
     t: s.t,
     level: s.level,

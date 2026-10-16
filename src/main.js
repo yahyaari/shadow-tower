@@ -3,7 +3,7 @@
 // Two screens: the loadout you open on, and a run. A run always returns to the loadout, because
 // that is where the account level went up and where the spell it opened is waiting to be picked.
 
-import { begin, advance, click, take, investedIn, spawn, carrying, pressure } from './rules.js';
+import { begin, advance, click, take, investedIn, spawn, surge, carrying, pressure } from './rules.js';
 import {
   frame, hitCard, cards, hitSpeed, hitRun, hitRunPanel, hitEnd,
   runBtns, runPanel, runRows, endBtns, endKeys, TextSpy,
@@ -55,6 +55,8 @@ function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
     hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null, heroScroll: null,
+    // A horde arriving, and which way it is coming from. Counts down to nothing, like the shake.
+    horde: 0, hordeAt: 0,
     // Half a wedge back, so the wheel opens with a wedge under the pointer rather than the seam
     // between two of them - which looks like a spin that landed on nothing.
     turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
@@ -221,6 +223,11 @@ function readEvents() {
       sound.cast(e.key);
     } else if (e.kind === 'levelled') {
       sound.levelled();
+    } else if (e.kind === 'surge') {
+      // Long enough to be read and short enough that it is gone before the horde arrives.
+      show.horde = 1.9;
+      show.hordeAt = e.a;
+      sound.bossIn();
     } else if (e.kind === 'boss') {
       sound.bossIn();
       show.shake = 1;
@@ -307,6 +314,7 @@ function tick(now) {
 
   // The specks run at the same speed as the fight, or they drift about behind it
   show.shake = Math.max(0, show.shake - dts * 4);
+  show.horde = Math.max(0, show.horde - dts);
   for (let i = show.bits.length - 1; i >= 0; i--) {
     const p = show.bits[i];
     p.life -= dts;
@@ -750,6 +758,8 @@ window.ShadowTower = {
   // Lets a tool put a named creature on the field. The families are the one thing a screenshot
   // cannot pose from the outside: they are chosen inside `spawn` from the stage.
   spawnOne: spawn,
+  // Ve bir sürü, aynı sebeple: sürünün ne zaman geldiğini saat söylüyor, dışarıdan poz verilemez.
+  surgeOne: surge,
   // The menu's presses, so a tool can press a button rather than pose the screen. A posed screen
   // only ever proves that the poser and the painter agree; this goes through the same handler a
   // finger does, so a wheel that paid one wedge and stopped on another would show up.

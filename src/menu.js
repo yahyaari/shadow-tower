@@ -31,7 +31,7 @@ import {
 import { Ladder, Steps as HeroSteps, Bonus, amountText, totals as heroTotals } from './hero.js';
 import { stageOf, kindsOn } from './stages.js';
 import { Families, FamilyKeys, Roles, familiesOn, weakness, armour } from './foes.js';
-import { Kinds, BoostsPerTier, MostEvos, HeraldCalls, ShadeKeeps, Bosses } from './rules.js';
+import { Kinds, BoostsPerTier, MostEvos, HeraldCalls, ShadeKeeps, Bosses, reachWord } from './rules.js';
 
 const { Black, Pale } = Inks;
 
@@ -2443,6 +2443,12 @@ function codexTab(ctx, data, w, h, U, show) {
     elementTag(ctx, key, box.x + 76 * U + ctx.measureText(say(sp.name)).width + 12 * U,
       box.y + 34 * U, U);
     fitWrite(ctx, say(sp.tells), box.x + 76 * U, box.y + 58 * U, 12 * U, 500, 'left', Black, box.w - 150 * U);
+    // How far it reaches, in words. The number is in arena pixels and means nothing to anybody,
+    // but which spells are artillery and which are close work is the thing a loadout is chosen on.
+    ctx.globalAlpha = 0.7;
+    write(ctx, `${say(UI.reach).toUpperCase()}  ${say(reachWord(key)).toUpperCase()}`,
+      box.x + 76 * U, box.y + 76 * U, 10 * U, 700, 'left');
+    ctx.globalAlpha = 1;
 
     {
       const c = cp.close;

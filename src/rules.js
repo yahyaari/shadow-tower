@@ -10,16 +10,31 @@
 // cards, most of them ordinary boosts, and every fifth boost on a spell turns into a tier - a
 // card that changes what the spell does rather than how much of it there is.
 
-import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always } from './spells.js';
+import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always, Reaches } from './spells.js';
 import { Fusions, fusionKeys, fusionOf, anySpell } from './spells.js';
 import { takes, familyFor, Roles } from './foes.js';
 import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
 
-export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always };
+export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always, Reaches };
 export const spellKeys = Object.keys(Spells);
 
 export const Arena = 560;
+
+/**
+ * A spell's reach as a word, because the number is arena pixels.
+ *
+ * Nobody can read 430 as anything. What a player needs off the loadout screen is which of these
+ * is artillery and which is close work, so the codex says "long" and "close" and the arithmetic
+ * stays where the arithmetic belongs.
+ */
+export function reachWord(key) {
+  const r = Reaches[key] || Arena;
+  if (r >= Arena * 0.88) return UI.reachAll;
+  if (r >= 400) return UI.reachFar;
+  if (r >= 290) return UI.reachMid;
+  return UI.reachNear;
+}
 export const Wall = 76;
 export const Reach = 96;
 /**
@@ -27,10 +42,19 @@ export const Reach = 96;
  *
  * Five minutes. It was seventy-two seconds, which made a whole stage about a minute and three
  * quarters - long enough to show the game and too short to build anything in. Over five minutes
- * the wave climbs the whole way, the boss arrives at the end of it, and nothing more is spawned
- * once it does: the last fight is the boss and whatever was already on the field.
+ * the wave climbs the whole way and the boss arrives at the end of it.
  */
 export const StageWaves = 300;
+
+/**
+ * When the boss walks in - ten seconds before the wave stops.
+ *
+ * It used to arrive exactly as the wave ended, and the last fight was one enormous creature alone
+ * on an empty field, which looks like a different game. Those ten seconds are worth about forty
+ * creatures at the wave's heaviest, so the boss now arrives in the middle of a crowd and has to
+ * be fought through it.
+ */
+export const BossAt = 290;
 
 /**
  * How long the wave takes to double, in seconds.
@@ -40,7 +64,15 @@ export const StageWaves = 300;
  */
 export const RampOver = 150;
 
-export const Base = { wall: 300, bullet: 560 };
+/**
+ * How fast a projectile crosses the field.
+ *
+ * It was 560, which is the width of the whole arena in a second: a shot was a flicker between the
+ * wall and whatever it hit, and the player never saw their own spells travel. Slower costs
+ * something too - a crowd stays alive longer because the volley aimed at it is still in the air -
+ * and that is half of what makes a crowd a crowd.
+ */
+export const Base = { wall: 300, bullet: 420 };
 
 /**
  * How many evolutions one spell may hold - so, four tiers at most.
@@ -54,13 +86,23 @@ export const MostEvos = 3;
 
 export const Heat = { perClick: 0.22, fade: 0.8, most: 1, lift: 0.9 };
 
+/**
+ * The creatures, and why they all walk slower than they used to.
+ *
+ * Everything here is seven tenths of the speed it was. A walker crossed the arena in ten seconds
+ * and now takes fifteen, and that single number is what lets a crowd exist: what is standing on
+ * the field at any moment is the spawn rate multiplied by how long each one lives, and the
+ * complaint that the game is too fast for anything to build up is that second number being too
+ * small. It is also what makes the walk in readable - at 86 px a second a runner was across the
+ * field before it had been looked at.
+ */
 export const Kinds = {
-  walker: { hp: 12, speed: 44, bite: 3, xp: 1, size: 1 },
-  runner: { hp: 8, speed: 86, bite: 2, xp: 1, size: 0.84, sprint: 1.9 },
-  brute:  { hp: 40, speed: 25, bite: 8, xp: 3, size: 1.12 },
-  warden: { hp: 420, speed: 17, bite: 22, xp: 14, size: 2.5, boss: true },
-  herald: { hp: 460, speed: 27, bite: 13, xp: 14, size: 2.1, boss: true, calls: 5.5 },
-  shade:  { hp: 320, speed: 42, bite: 10, xp: 14, size: 1.9, boss: true, splits: true },
+  walker: { hp: 12, speed: 31, bite: 3, xp: 1, size: 1 },
+  runner: { hp: 8, speed: 60, bite: 2, xp: 1, size: 0.84, sprint: 1.9 },
+  brute:  { hp: 40, speed: 18, bite: 8, xp: 3, size: 1.12 },
+  warden: { hp: 420, speed: 12, bite: 22, xp: 14, size: 2.5, boss: true },
+  herald: { hp: 460, speed: 19, bite: 13, xp: 14, size: 2.1, boss: true, calls: 5.5 },
+  shade:  { hp: 320, speed: 30, bite: 10, xp: 14, size: 1.9, boss: true, splits: true },
 };
 
 /**
@@ -91,7 +133,7 @@ export const ShadeKeeps = 0.7;
 
 export const bossFor = (stage) => Bosses[(Math.max(1, Math.floor(stage)) - 1) % Bosses.length];
 
-export const SprintAt = 210;
+export const SprintAt = 230;
 
 /**
  * How hard it is right now.
@@ -117,7 +159,25 @@ export const Grace = 25;
 export const StageStep = 0.2;
 export const pressure = (s) =>
   (1 + Math.max(0, s.t - Grace) / RampOver) * (1 + ((s.stage || 1) - 1) * StageStep);
-export const spawnEvery = (s) => Math.max(0.05, 0.85 / Math.pow(pressure(s), 1.3));
+export const spawnEvery = (s) => Math.max(0.05, 1.0 / Math.pow(pressure(s), 1.3));
+
+/**
+ * The horde: how often one arrives, and how big it is.
+ *
+ * The drip climbs the whole stage and the measurement says nobody can feel it. Sampled every
+ * thirty seconds through a cleared stage, the crowd standing on the field read
+ * 1, 3, 9, 11, 12, 11, 11, 11, 8, 13 - flat from the second minute to the fifth, because a drip
+ * that gets faster against a player who also gets faster is two curves cancelling each other out.
+ * Pressure that can only be read off a graph is not pressure.
+ *
+ * A horde does not cancel. A dozen arrive at once, from ONE direction - which is the part that
+ * matters, because a ring of twelve is only a faster drip, while twelve from the north is a side
+ * of the tower that is about to be lost. For the twenty seconds after one lands the field is
+ * genuinely full, and that is the shape of a stage: breathe, brace, breathe, brace.
+ */
+export const SurgeEvery = 26;
+export const surgeSize = (s) => Math.round(4 + pressure(s) * 2.8);
+export const SurgeArc = 1.5;
 
 export function seeded(seed) {
   let x = seed >>> 0 || 1;
@@ -128,18 +188,35 @@ export function seeded(seed) {
 }
 
 /**
+ * The highest a run can reach, and the end of the cards.
+ *
+ * Twenty-three, and a run cannot level past it. Before, the level simply went on climbing: a
+ * cleared stage finished at level 35 with thirty-four picks taken, and the last ten of those went
+ * into spells that had already run out of anything to be given, against a wave the player was
+ * already ahead of. A ceiling makes the ladder mean something - twenty-two picks across five
+ * spells is four each, so what a run becomes is a question of where they went, and the last
+ * minute of a stage is fought with what you built rather than with what is still arriving.
+ */
+export const MaxLevel = 23;
+
+/** Whether this run has taken everything it can. */
+export const maxed = (s) => s.level >= MaxLevel;
+
+/**
  * What the next level of a run costs, in kills.
  *
- * Flat enough that a run hands out around thirty picks. It used to climb at 1.3 a level, which
- * gave about eighteen - and with five spells needing five boosts each before any of them becomes
- * anything, eighteen picks meant nothing ever tiered up. The bot carrying five spells reached the
- * two-minute mark with no evolutions at all while the bot carrying one had already tiered twice,
- * which is how a loadout of five ended up weaker than a loadout of one.
+ * Chosen against the measurement rather than guessed. A cleared stage one earns about 930 xp over
+ * its five minutes and this ladder totals 620 to the ceiling: measured over twelve runs, every
+ * one of them reached 23 and the median reached it between the fourth and the fourth-and-a-half
+ * minute - so the last pick lands with the heaviest horde and the boss still to come. The old
+ * ladder was nearly flat and got there in half the time, which is how the second half of a stage
+ * ended up with nothing left to decide.
  *
- * Thirty picks is five spells at six each: everything tiers once, and what you favour tiers twice.
+ * It climbs rather than staying flat because the early picks are the ones that have to arrive
+ * quickly: a run opens with one spell casting and the other four are cards.
  */
 export function xpFor(level) {
-  return Math.round(2 * Math.pow(1.1, level - 1) + (level - 1) * 0.8);
+  return Math.round(3 * Math.pow(1.18, level - 1));
 }
 
 // --- a run --------------------------------------------------------------------------------------
@@ -192,12 +269,16 @@ export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = N
     shots: [],
     grounds: [],                  // fire and storms left lying on the field
     fx: [],
-    bladeAt: 0,
+    // Yörüngede dönen HER büyünün kendi açısı. Tek bir `bladeAt` vardı ve yörünge kodu da
+    // yalnızca `kit.blade`'e bakıyordu: Hale (ok + bıçak birleşmesi) oyunda hiç ateşlenmedi.
+    // Ölçüm bunu üç saniyede söyledi - sıfır hasar.
+    orbitAt: {},
     bladeHits: {},
     aim: -Math.PI / 2,
     cast: 0,
     events: [],
     nextIn: 1.2,
+    surgeIn: SurgeEvery,
     id: 1,
   };
 }
@@ -259,7 +340,8 @@ export function statsOf(s, key) {
   }
 
   const hero = s.hero || NoHero;
-  const tierLift = Math.min(0.9, (kit.tier - 1) * 0.3);
+  // Her kademe, pick sayısı 34'ten 22'ye indiği için eskiden olduğundan daha çok veriyor.
+  const tierLift = Math.min(1.2, (kit.tier - 1) * 0.4);
   // Each spell's own area, from its own Wider cards. There is no global one any more, so this is
   // also what the spell's evolutions are sized by - a wider Fireball leaves a wider fire.
   const size = (1 + add.blast) * (1 + hero.area);
@@ -283,6 +365,17 @@ export function statsOf(s, key) {
     spread: (sp.spread || 0.34) + add.spread,
     blast: (sp.blast || 0) * size,
     pierce: add.pierce,
+    /**
+     * How far from the tower this spell can touch anything.
+     *
+     * Flat, from the table in `spells.js`, except for the two whose reach is already something
+     * else they own: Nova reaches exactly as far as it bursts and Orbit exactly as far as its
+     * blade swings, so for those two it is worked out rather than declared. A Wider Nova really
+     * does reach further out, which is what the card says.
+     */
+    reach: sp.instant === 'nova' ? Math.max(60, (sp.blast || 0) * size)
+      : sp.orbit ? (150 + kit.tier * 14) * (1 + add.ring) + 40
+        : (Reaches[key] || Arena),
     jumps: (sp.jumps || 0) + add.jumps,
     chill: (sp.chill || 0) + add.chill,
     wide: (sp.wide || 0) * size,
@@ -290,6 +383,23 @@ export function statsOf(s, key) {
     whirl: (1.5 + kit.tier * 0.18) * (1 + add.whirl),
     evos: kit.evos,
   };
+}
+
+/**
+ * A horde, from one side.
+ *
+ * Deliberately spawned through the same `spawn` as the drip, so a horde is made of whatever the
+ * stage would have sent anyway - at pressure the brutes turn up in it by themselves. All it
+ * changes is when they arrive and from where.
+ */
+export function surge(s) {
+  const many = surgeSize(s);
+  const from = s.roll() * Math.PI * 2;
+  for (let i = 0; i < many; i++) {
+    spawn(s, null, from + ((many > 1 ? i / (many - 1) : 0.5) - 0.5) * SurgeArc);
+  }
+  s.events.push({ kind: 'surge', many, a: from });
+  return many;
 }
 
 export function spawn(s, kindKey = null, angle = null) {
@@ -308,6 +418,10 @@ export function spawn(s, kindKey = null, angle = null) {
     family: k.boss ? null : familyFor(s.stage, s.roll()),
     a: angle == null ? s.roll() * Math.PI * 2 : angle,
     r: Arena,
+    // When it arrived, in stage time. Only the tests read it, and they could not read it before:
+    // the one checking that the wave stops for the boss was written against `f.spawnedAt`, which
+    // nothing set, so it compared undefined to a number and passed without ever looking.
+    spawnedAt: s.stageT,
     hp: k.hp * tough, maxHp: k.hp * tough,
     speed: k.speed * (1 + (p - 1) * 0.08),
     sprint: k.sprint || 0,
@@ -328,10 +442,18 @@ export const placeOf = (f) => ({ x: Math.cos(f.a) * f.r, y: Math.sin(f.a) * f.r 
 
 // --- finding something to hit ---------------------------------------------------------------
 
-function nearest(s, fromX = 0, fromY = 0, skip = null) {
-  let best = null, near = Infinity;
+/**
+ * Whether a spell may touch this creature at all.
+ *
+ * `f.r` IS the distance from the tower - everything walks straight in - so a range check is one
+ * comparison and not a square root, which is why it can sit in every one of these loops.
+ */
+const inRange = (f, reach) => reach == null || f.r <= reach;
+
+function nearest(s, fromX = 0, fromY = 0, skip = null, reach = null, most = Infinity) {
+  let best = null, near = most;
   for (const f of s.foes) {
-    if (f.hp <= 0 || (skip && skip.has(f.id))) continue;
+    if (f.hp <= 0 || (skip && skip.has(f.id)) || !inRange(f, reach)) continue;
     const p = placeOf(f);
     const d = Math.hypot(p.x - fromX, p.y - fromY);
     if (d < near) { near = d; best = f; }
@@ -339,16 +461,26 @@ function nearest(s, fromX = 0, fromY = 0, skip = null) {
   return best;
 }
 
-function strongest(s) {
+function strongest(s, reach = null) {
   let best = null;
-  for (const f of s.foes) if (f.hp > 0 && (!best || f.hp > best.hp)) best = f;
+  for (const f of s.foes) {
+    if (f.hp > 0 && inRange(f, reach) && (!best || f.hp > best.hp)) best = f;
+  }
   return best;
 }
 
-function crowd(s, within = 120) {
+/**
+ * The thickest part of the crowd - counted among everything, aimed only at what is in range.
+ *
+ * The two halves are deliberately different. A creature standing at the edge of the range with
+ * nine more behind it IS the thickest part of the crowd, and a meteor that refused to see the
+ * nine because they are a few pixels further out would land somewhere emptier for no reason the
+ * player could ever see.
+ */
+function crowd(s, within = 120, reach = null) {
   let best = null, most = -1;
   for (const f of s.foes) {
-    if (f.hp <= 0) continue;
+    if (f.hp <= 0 || !inRange(f, reach)) continue;
     const p = placeOf(f);
     let n = 0;
     for (const o of s.foes) {
@@ -361,7 +493,10 @@ function crowd(s, within = 120) {
   return best;
 }
 
-const aimAt = (s, how) => (how === 'strong' ? strongest(s) : how === 'crowd' ? crowd(s) : nearest(s));
+const aimAt = (s, how, reach = null) => (
+  how === 'strong' ? strongest(s, reach)
+    : how === 'crowd' ? crowd(s, 120, reach)
+      : nearest(s, 0, 0, null, reach));
 
 // --- doing damage -----------------------------------------------------------------------------
 
@@ -422,14 +557,17 @@ function evoke(s, key, x, y, damage) {
       // measuring damage with and without this evolution read exactly the same number both ways.
       const skip = new Set();
       for (let i = 0; i < 2; i++) {
-        const mark = nearest(s, x, y, skip);
+        // Within reach of where the parent landed, not of the tower: the children belong to the
+        // place the spell went off, and one that flew the width of the arena to find something
+        // was a splinter with a mind of its own.
+        const mark = nearest(s, x, y, skip, null, 300);
         if (!mark) break;
         skip.add(mark.id);
         s.shots.push({
           key, child: true,
           x, y, z: 0, a: 0,
           at: mark.id, damage: damage * 0.45, blast: 0, chill: 0, element,
-          pierce: 0, hits: new Set(), falls: false, life: 1.4,
+          pierce: 0, hits: new Set(), falls: false, life: 1.4, reach: Arena,
         });
       }
 
@@ -469,10 +607,43 @@ function throwOne(s, key, st, from, a, markId) {
     blast: st.blast,
     chill: st.chill,
     pierce: st.pierce,
+    reach: st.reach,
     hits: new Set(),
     falls: !!anySpell(key).falls,
     life: 3,
   });
+}
+
+/**
+ * One mark per projectile.
+ *
+ * A fan of angles was how this worked, and a volley of two hit NOTHING. The offsets are
+ * symmetrical, so with two projectiles neither of them goes where the spell was aimed: both leave
+ * at a tenth of a radian to either side, which over 400 px of arena is forty px of miss on each
+ * side of a creature twenty-eight px wide. Measured against a standing target for three seconds,
+ * one fireball did 33 damage and two did 21 - every count card in the game was a downgrade, and
+ * Twin Flame, Second Orb, More Shards and Flanking were all selling a loss.
+ *
+ * So the fan decides WHICH creature each projectile goes for rather than which way it leaves: the
+ * first takes the mark, the rest take whatever stands nearest to it, and `spread` is how far out
+ * from the mark they are willing to look. Fewer creatures than projectiles and the spares double
+ * up on the ones there are, a hand's width apart - two fireballs on one body is twice the damage,
+ * which is what the card promised in the first place.
+ */
+function marksFor(s, mark, n, st) {
+  const out = [mark];
+  if (n <= 1) return out;
+  const p = placeOf(mark);
+  const skip = new Set([mark.id]);
+  // How far from the first mark the volley will look for the others, as a slice of the arena.
+  const within = 90 + st.spread * 420;
+  for (let i = 1; i < n; i++) {
+    const next = nearest(s, p.x, p.y, skip, st.reach, within);
+    if (!next) break;
+    skip.add(next.id);
+    out.push(next);
+  }
+  return out;
 }
 
 function castSpell(s, key) {
@@ -491,13 +662,16 @@ function castSpell(s, key) {
     return true;
   }
 
-  const mark = aimAt(s, sp.seeks || 'near');
+  const mark = aimAt(s, sp.seeks || 'near', st.reach);
   if (!mark) return false;
 
   if (sp.instant === 'chain') {
     for (let round = 0; round < st.count; round++) {
       const hit = new Set();
-      const from0 = round === 0 ? mark : nearest(s, 0, 0, hit);
+      // The first link has to be in range; the jumps after it do not. A chain that leapt outwards
+      // beyond where the spell can reach is the spell being carried by its own victims, which is
+      // what a chain is for.
+      const from0 = round === 0 ? mark : nearest(s, 0, 0, hit, st.reach);
       let from = from0;
       const points = [{ x: 0, y: -46 }];
       for (let i = 0; i < st.jumps && from; i++) {
@@ -524,14 +698,14 @@ function castSpell(s, key) {
   if (sp.instant === 'beam') {
     const seen = new Set();
     for (let i = 0; i < st.count; i++) {
-      const target = i === 0 ? mark : nearest(s, 0, 0, seen);
+      const target = i === 0 ? mark : nearest(s, 0, 0, seen, st.reach);
       if (!target) break;
       seen.add(target.id);
       const p = placeOf(target);
       const a = Math.atan2(p.y, p.x);
       const wide = Math.max(10, st.wide);
       for (const f of s.foes) {
-        if (f.hp <= 0) continue;
+        if (f.hp <= 0 || !inRange(f, st.reach)) continue;
         const q = placeOf(f);
         const along = q.x * Math.cos(a) + q.y * Math.sin(a);
         const off = Math.abs(-q.x * Math.sin(a) + q.y * Math.cos(a));
@@ -541,23 +715,33 @@ function castSpell(s, key) {
         }
       }
       s.aim = a;
-      s.fx.push({ kind: 'beam', a, wide, life: 0.2, max: 0.2, element: st.element });
+      s.fx.push({ kind: 'beam', a, wide, reach: st.reach, life: 0.2, max: 0.2, element: st.element });
     }
     s.cast = 1;
     return true;
   }
 
-  // everything else flies
-  const p = placeOf(mark);
-  const a = Math.atan2(p.y, p.x);
-  s.aim = a;
-  const n = st.count;
-  for (let i = 0; i < n; i++) {
-    const off = n > 1 ? (i / (n - 1) - 0.5) * st.spread * (n - 1) : 0;
+  // everything else flies, one projectile per mark
+  const marks = marksFor(s, mark, st.count, st);
+  for (let i = 0; i < st.count; i++) {
+    const target = marks[i % marks.length];
+    const p = placeOf(target);
+    // Doubled up on a mark somebody else already has: a hand's width over, so two of them read
+    // as two things rather than as one thing drawn twice.
+    const again = i >= marks.length;
+    const a = Math.atan2(p.y, p.x) + (again ? (s.roll() - 0.5) * 0.14 : 0);
+    if (i === 0) s.aim = a;
     const from = sp.falls
-      ? { x: p.x + (i ? (s.roll() - 0.5) * 160 : 0), y: p.y + (i ? (s.roll() - 0.5) * 160 : 0), z: 620 }
-      : { x: Math.cos(a + off) * Wall, y: Math.sin(a + off) * Wall, z: 0 };
-    throwOne(s, key, st, from, a + off, sp.homing && i === 0 ? mark.id : null);
+      ? {
+        x: p.x + (again ? (s.roll() - 0.5) * 90 : 0),
+        y: p.y + (again ? (s.roll() - 0.5) * 90 : 0),
+        z: 620,
+      }
+      : { x: Math.cos(a) * Wall, y: Math.sin(a) * Wall, z: 0 };
+    // Homing locks onto its own mark; everything else is aimed at where the mark is standing.
+    // Straight is enough: the shot leaves the wall along the same line the creature is walking
+    // in on, so the two meet head on.
+    throwOne(s, key, st, from, a, sp.homing ? target.id : null);
   }
   s.cast = 1;
   return true;
@@ -618,8 +802,18 @@ export function boostsFor(s, key) {
  *
  * Eighteen is most of a run's picks poured into two spells. You can still fall into one, but
  * you mostly have to mean it.
+ *
+ * Twelve now, because the run level stops at 23 and a run hands out twenty-two picks rather than
+ * thirty-odd: at eighteen it happened in NONE of twelve runs, and a fusion nobody can reach is
+ * four spells that exist only in the codex.
+ *
+ * Twelve is measured rather than guessed. The picks that land on the best fusable pair in a run
+ * read: smallest 4, median 9, largest 13 - so a gate at fifteen is unreachable by arithmetic and
+ * a gate at nine is most runs. Twelve is half of a whole run's picks poured into two of the five
+ * spells you brought: reachable by a player who means it, and not somewhere you arrive by
+ * accident.
  */
-export const FuseAt = 18;
+export const FuseAt = 12;
 
 /**
  * The fusions this run could still make.
@@ -819,7 +1013,7 @@ export function step(s, dt) {
   s.heat = Math.max(0, s.heat - Heat.fade * dt);
   s.cast = Math.max(0, s.cast - dt * 5);
 
-  if (!s.boss && !s.bossDone && s.stageT >= StageWaves) {
+  if (!s.boss && !s.bossDone && s.stageT >= BossAt) {
     s.bossDone = true;
     s.boss = spawn(s, bossFor(s.stage));
     s.boss.hp *= 1 + (s.stage - 1) * 0.42;
@@ -827,12 +1021,15 @@ export function step(s, dt) {
     s.events.push({ kind: 'boss', stage: s.stage, key: s.boss.key });
   }
 
-  // Nothing more arrives once the boss does. It used to keep spawning at two fifths of the rate,
-  // which at five minutes of climb meant the boss fight was a boss fight plus a wave at its
-  // heaviest - and the stage ended on whoever happened to be on the field, not on the boss.
-  if (!s.boss) {
+  // The wave runs to the five minute mark and then stops - which is ten seconds AFTER the boss
+  // walks in, so it arrives into a full field instead of onto an empty one. It is told by the
+  // clock rather than by whether the boss is here, because the boss is here for the last ten
+  // seconds of it.
+  if (s.stageT < StageWaves) {
     s.nextIn -= dt;
     while (s.nextIn <= 0) { spawn(s); s.nextIn += spawnEvery(s); }
+    s.surgeIn -= dt;
+    if (s.surgeIn <= 0) { surge(s); s.surgeIn = SurgeEvery; }
   }
 
   // --- the walk in
@@ -882,19 +1079,28 @@ export function step(s, dt) {
   }
 
   // --- the orbiting blades, a position rather than a cooldown
-  if (s.kit.blade) {
-    const st = statsOf(s, 'blade');
-    s.bladeAt = (s.bladeAt + dt * st.whirl * (1 + s.heat * 0.4)) % (Math.PI * 2);
+  //
+  // Every orbiting spell, by key. It used to read `if (s.kit.blade)` and work out the numbers for
+  // `'blade'` by name, which meant Halo - the fusion of Magic Bolt and Orbit, two blades circling,
+  // and one of the four things a run can be built towards - never touched anything at all. Nothing
+  // noticed because the fusion still appeared, still drew, still sealed its parents, and simply
+  // did no damage. A fusion is also not a replacement: Orbit goes on turning beside it, so there
+  // genuinely are two of these at once and one shared angle would have pinned them together.
+  for (const key of carrying(s)) {
+    if (!anySpell(key).orbit) continue;
+    const st = statsOf(s, key);
+    s.orbitAt[key] = ((s.orbitAt[key] || 0) + dt * st.whirl * (1 + s.heat * 0.4)) % (Math.PI * 2);
     for (let i = 0; i < st.count; i++) {
-      const a = s.bladeAt + (i / st.count) * Math.PI * 2;
+      const a = s.orbitAt[key] + (i / st.count) * Math.PI * 2;
       const bx = Math.cos(a) * st.ring, by = Math.sin(a) * st.ring;
       for (const f of s.foes) {
-        if (f.hp <= 0 || (s.bladeHits[f.id] || 0) > s.t) continue;
+        const mark = key + ':' + f.id;
+        if (f.hp <= 0 || (s.bladeHits[mark] || 0) > s.t) continue;
         const p = placeOf(f);
         if (Math.hypot(p.x - bx, p.y - by) < 34 + f.size * 12) {
-          s.bladeHits[f.id] = s.t + 0.45;
+          s.bladeHits[mark] = s.t + 0.45;
           wound(s, f, st.damage, st.chill, st.element);
-          evoke(s, 'blade', p.x, p.y, st.damage);
+          evoke(s, key, p.x, p.y, st.damage);
         }
       }
     }
@@ -954,7 +1160,13 @@ export function step(s, dt) {
         const p = placeOf(f);
         if (Math.hypot(p.x - b.x, p.y - b.y) < 16 + f.size * 13) { landed = true; where = p; break; }
       }
-      if (!landed && Math.hypot(b.x, b.y) > Arena * 1.3) { s.shots.splice(i, 1); continue; }
+      // The end of the range, and the end of the shot. A fireball that has gone as far as a
+      // fireball goes stops there rather than sailing off the field - which is also what stops a
+      // piercing shot from carrying on out past the range it was cast with.
+      if (!landed && Math.hypot(b.x, b.y) > Math.min(Arena * 1.3, (b.reach || Arena) + 30)) {
+        s.shots.splice(i, 1);
+        continue;
+      }
     }
 
     if (landed) {
@@ -1027,7 +1239,11 @@ export function step(s, dt) {
     }
   }
 
-  if (s.xp >= s.need) {
+  if (maxed(s)) {
+    // Capped. The bar stays full rather than creeping towards a level that will never come, and
+    // the kills still count for everything else they count for.
+    s.xp = s.need;
+  } else if (s.xp >= s.need) {
     s.xp -= s.need;
     s.level += 1;
     s.need = xpFor(s.level);
@@ -1036,6 +1252,7 @@ export function step(s, dt) {
       s.phase = 'picking';
       s.events.push({ kind: 'levelled', level: s.level });
     }
+    if (maxed(s)) s.events.push({ kind: 'maxed', level: s.level });
   }
   return s;
 }

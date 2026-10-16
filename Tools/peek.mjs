@@ -550,6 +550,23 @@ for (let i = 0; i < 60; i++) {
 console.log('  havadaki vurus sayisi: ' + floats);
 await screenshot('kosu_vurus_sayilari');
 
+// Suru geliyor, ve kosu tavana vardi. Ikisi de yeni cizim: biri sahanin kenarinda kalinlasan bir
+// yay ve ust bantta bir sozcuk, oteki `LV 23 MAX`. Ikisini de bir kare icinde goruyoruz, cunku
+// ikisi de ust banda yaziyor ve ust bant dar.
+const horde = await evaluate(`(() => {
+  const m = window.ShadowTower;
+  const s = m.state;
+  s.level = 23;
+  s.xp = s.need;
+  m.surgeOne(s);
+  for (const e of s.events) if (e.kind === 'surge') { m.show.horde = 1.9; m.show.hordeAt = e.a; }
+  s.events.length = 0;
+  return { sahada: s.foes.length, suru: m.show.horde > 0, seviye: s.level };
+})()`);
+console.log('  sürü: ' + JSON.stringify(horde));
+await sleep(260);
+await screenshot('kosu_suru_ve_tavan');
+
 // Sayilari bekleyen dongu de bir seviye atlatabiliyor. Butonlara basmadan once sahaya bir kez
 // daha donuyoruz: 'picking' sirasinda iki kose butonu ne ciziliyor ne basilabiliyor.
 await evaluate(`(() => {

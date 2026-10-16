@@ -56,8 +56,10 @@ export const Runly = [
     name: ['Finish with the wall over 90%', 'Duvar %90 üstündeyken bitir'], gold: 0.8 },
   { key: 'evos', of: 'evos', need: 5,
     name: ['Take five tier-ups', 'Beş dönüşüm al'], gold: 0.7 },
-  { key: 'level', of: 'level', need: 38,
-    name: ['Reach level 38 in a run', 'Bir koşuda 38. seviyeye çık'], gold: 0.7 },
+  // Twenty, against a ceiling of twenty-three. It asked for 38 and the run level now stops at
+  // 23, so it was a mission that could not be done by anybody at all.
+  { key: 'level', of: 'level', need: 20,
+    name: ['Reach level 20 in a run', 'Bir koşuda 20. seviyeye çık'], gold: 0.7 },
   { key: 'full', of: 'carried', need: 4,
     name: ['Cast four spells at once', 'Aynı anda dört büyü ateşle'], gold: 0.6 },
   { key: 'clear', of: 'cleared', need: 1,

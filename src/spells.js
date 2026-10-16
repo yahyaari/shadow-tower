@@ -15,7 +15,30 @@
 // translation sits beside the thing it names so the two cannot drift apart.
 
 /** How many boosts a spell takes before its next tier. */
-export const BoostsPerTier = 5;
+export const BoostsPerTier = 4;
+
+/**
+ * How far each spell can reach, from the tower.
+ *
+ * `range` is the whole of item five, and it was missing: every spell struck anything anywhere,
+ * including a creature that had appeared a frame ago at the rim. That is why nothing ever piled
+ * up - measured, the crowd standing on the field sat at eleven from the second minute of a stage
+ * to the fifth, because everything was killed the moment it existed and the field was a queue
+ * rather than a crowd.
+ *
+ * The arena is 560 across and the wall is bitten at 96, so every number here has to cover
+ * 96 upwards or the spell cannot defend the thing it is standing on. Beyond that they differ, and
+ * the difference is the spell's character: artillery reaches the rim, a fan of blades does not.
+ *
+ * Nova and Orbit have no number of their own. Their reach IS their blast and their ring, so it is
+ * worked out from those - a Wider Nova really does reach further, and a card that said otherwise
+ * would be a card that lies.
+ */
+export const Reaches = {
+  bolt: 330, shards: 250, wisp: 430, fireball: 430, frost: 300,
+  lightning: 320, laser: 520, nova: 190, meteor: 520, blade: 200,
+  tempest: 360, hail: 300, halo: 215, collapse: 250,
+};
 
 /**
  * What a boost can change, and what the number means.
@@ -27,9 +50,10 @@ export const Knobs = {
   dmg: 'damage, as a fraction',
   cd: 'cooldown, as a fraction (negative is faster)',
   count: 'extra projectiles',
-  spread: 'how wide a fan opens',
+  spread: 'how far out it looks for another mark',
   blast: 'blast radius, as a fraction',
   pierce: 'how many extra it passes through',
+  reach: 'how far from the tower it can touch anything',
   jumps: 'extra chain jumps',
   chill: 'extra seconds of slow',
   ring: 'orbit radius, as a fraction',
@@ -57,26 +81,35 @@ export const Knobs = {
  * percentage, it is a shorter ladder: a spell runs out of upgrades in six or seven picks, so the
  * rest have to go somewhere else.
  *
+ * `Bigger` is the ceiling on the run level, paid for.
+ *
+ * A run used to reach level 35 and hand out thirty-four picks. It stops at 23 now and hands out
+ * twenty-two, which is two thirds of what every one of these percentages was chosen against -
+ * and the measurement said exactly that: a new account cleared stages one to three every time
+ * before the ceiling and cleared the third of them 63 times in a hundred after it. Fewer picks
+ * have to be worth more, or a ceiling on the level is a quiet nerf to the whole game.
+ *
  * The text is built from the number, so a card can never promise a figure it does not deliver.
  */
 const pct = (n) => Math.round(n * 100);
+const Bigger = 1.3;
 
 const hit = (n, most = 2) => ({
   key: 'sharper', name: ['Sharper', 'Keskin'],
-  tells: [`+${pct(n)}% damage`, `+%${pct(n)} hasar`],
-  does: { dmg: n }, most,
+  tells: [`+${pct(n * Bigger)}% damage`, `+%${pct(n * Bigger)} hasar`],
+  does: { dmg: n * Bigger }, most,
 });
 
 const fast = (n, most = 2) => ({
   key: 'quicker', name: ['Quicker', 'Çevik'],
-  tells: [`-${pct(n)}% cooldown`, `-%${pct(n)} bekleme`],
-  does: { cd: -n }, most,
+  tells: [`-${pct(n * Bigger)}% cooldown`, `-%${pct(n * Bigger)} bekleme`],
+  does: { cd: -n * Bigger }, most,
 });
 
 const area = (n, most = 3) => ({
   key: 'wider', name: ['Wider', 'Geniş'],
-  tells: [`+${pct(n)}% area`, `+%${pct(n)} alan`],
-  does: { blast: n }, most,
+  tells: [`+${pct(n * Bigger)}% area`, `+%${pct(n * Bigger)} alan`],
+  does: { blast: n * Bigger }, most,
 });
 
 export const Spells = {
@@ -86,7 +119,7 @@ export const Spells = {
     every: 0.85, damage: 7, seeks: 'near', homing: true, element: 'arcane',
     boosts: [
       { key: 'more', name: ['Twin Bolt', 'İkiz Ok'], tells: ['+1 bolt each cast', 'her atışta +1 ok'], does: { count: 1 }, most: 1 },
-      { key: 'flank', name: ['Flanking', 'Kanat Ateşi'], tells: ['+1 bolt, out to the side', 'yana doğru +1 ok'], does: { count: 1, spread: 0.5 }, most: 1 },
+      { key: 'flank', name: ['Flanking', 'Kanat Ateşi'], tells: ['+1 bolt, at another mark', 'başka bir hedefe +1 ok'], does: { count: 1, spread: 0.5 }, most: 1 },
       { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
       hit(0.4), fast(0.25),
     ],
@@ -101,11 +134,11 @@ export const Spells = {
 
   shards: {
     name: ['Shards', 'Kıymıklar'],
-    tells: ['three splinters in a fan', 'yelpaze şeklinde üç kıymık'],
+    tells: ['three splinters, each at its own mark', 'her biri ayrı hedefe üç kıymık'],
     every: 1.7, damage: 5, seeks: 'near', count: 3, spread: 0.42, element: 'blade',
     boosts: [
       { key: 'more', name: ['More Shards', 'Daha Çok Kıymık'], tells: ['+1 shard', '+1 kıymık'], does: { count: 1 }, most: 1 },
-      { key: 'fan', name: ['Wide Fan', 'Geniş Yelpaze'], tells: ['a wider spread', 'daha geniş açılır'], does: { spread: 0.25 }, most: 1 },
+      { key: 'fan', name: ['Wide Fan', 'Geniş Yelpaze'], tells: ['picks its marks further apart', 'hedeflerini daha uzaktan seçer'], does: { spread: 0.25 }, most: 1 },
       { key: 'pierce', name: ['Piercing', 'Delici'], tells: ['passes through one more', 'bir kişiyi daha delip geçer'], does: { pierce: 1 }, most: 1 },
       hit(0.29), fast(0.18),
     ],
@@ -347,7 +380,7 @@ export const Fusions = {
   },
   hail: {
     name: ['Hail', 'Dolu'],
-    tells: ['a fan of freezing splinters', 'donduran kıymıklardan bir yelpaze'],
+    tells: ['five freezing splinters, spread over the crowd', 'kalabalığa dağılan beş donduran kıymık'],
     of: ['frost', 'shards'],
     every: 1.3, damage: 9, seeks: 'near', count: 5, spread: 0.62, chill: 2.4, element: 'ice',
     boosts: [

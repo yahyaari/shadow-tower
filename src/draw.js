@@ -18,6 +18,7 @@
 import {
   Arena, Wall, Reach, StageWaves, placeOf, Spells, Passives,
   BoostsPerTier, MostEvos, LoadoutSize, Always, spellKeys, statsOf, carrying, describe,
+  maxed, Reaches,
 } from './rules.js';
 import { UnlockAt, nextUnlock, anySpell } from './spells.js';
 import { stageOf } from './stages.js';
@@ -886,6 +887,32 @@ function eyes(ctx, key, family) {
 }
 
 /**
+ * The line on the floor at the end of the longest reach this run has.
+ *
+ * Spells have a range now, and a creature outside it cannot be touched by anything - so without
+ * a line the player is left guessing why the thing at the rim is not dying, which is indis-
+ * tinguishable from the game being broken. Drawn at the longest of them rather than one ring per
+ * spell: four dashed circles is a dartboard, and what the player needs to know is where the
+ * fight begins.
+ */
+function reachRing(ctx, S, state) {
+  let far = 0;
+  for (const key of carrying(state)) {
+    const st = statsOf(state, key);
+    if (st && st.reach > far) far = st.reach;
+  }
+  if (far <= 0 || far >= Arena) return;
+  ctx.save();
+  ctx.setLineDash([9 * S.scale, 11 * S.scale]);
+  ctx.strokeStyle = 'rgba(13,12,11,0.22)';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.ellipse(S.cx, S.cy, far * S.scale, far * S.scale * S.squash, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
  * Fire and storms left lying about.
  *
  * Under the feet of everything, because they are on the floor - drawn over the top they read as
@@ -997,7 +1024,7 @@ function spellFx(ctx, S, state) {
     } else if (e.kind === 'beam') {
       ctx.globalAlpha = k;
       const [ax, ay] = place(S, Math.cos(e.a) * Wall, Math.sin(e.a) * Wall);
-      const [bx, by] = place(S, Math.cos(e.a) * Arena * 1.25, Math.sin(e.a) * Arena * 1.25);
+      const [bx, by] = place(S, Math.cos(e.a) * (e.reach || Arena), Math.sin(e.a) * (e.reach || Arena));
       ctx.lineWidth = e.wide * S.scale * k;
       ctx.beginPath(); ctx.moveTo(ax, ay - up); ctx.lineTo(bx, by - up); ctx.stroke();
       ctx.globalAlpha = 1;
@@ -1028,12 +1055,13 @@ function spellFx(ctx, S, state) {
     }
   }
 
-  // --- the orbiting blades
-  if (state.kit.blade) {
-    const st = statsOf(state, 'blade');
+  // --- the orbiting blades, one ring per orbiting spell
+  for (const key of carrying(state)) {
+    if (!anySpell(key).orbit) continue;
+    const st = statsOf(state, key);
     ctx.fillStyle = inkOf(st.element);
     for (let n = 0; n < st.count; n++) {
-      const at = state.bladeAt + (n / st.count) * Math.PI * 2;
+      const at = (state.orbitAt[key] || 0) + (n / st.count) * Math.PI * 2;
       const bx = Math.cos(at) * st.ring, by = Math.sin(at) * st.ring;
       const [px, py] = place(S, bx, by);
       const k = depth(by) * S.scale;
@@ -1567,7 +1595,7 @@ function panel(ctx, state, w, h, U, show) {
   ctx.fillRect(0, 0, w, 11 * U);
   ctx.fillStyle = Black;
   ctx.fillRect(0, 0, w * part, 11 * U);
-  write(ctx, say(UI.lv, state.level), 22 * U, 34 * U, 20 * U, 800);
+  write(ctx, say(maxed(state) ? UI.lvMax : UI.lv, state.level), 22 * U, 34 * U, 20 * U, 800);
 
   // The stage, and how far through its waves you are. The boss replaces both when it arrives,
   // because at that point there is only one thing worth knowing.
@@ -1607,6 +1635,14 @@ function panel(ctx, state, w, h, U, show) {
     ctx.fillStyle = Black;
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW * Math.min(1, state.stageT / StageWaves), 5 * U);
   }
+  // A horde is worth a word as well as a mark on the floor: the floor is where the player is
+  // looking when things are calm and the top bar is where they look when they are not.
+  if (show.horde > 0 && !state.boss) {
+    ctx.globalAlpha = Math.min(1, show.horde);
+    fitWrite(ctx, say(UI.horde), w / 2, 62 * U, 13 * U, 800, 'center', Black, middle);
+    ctx.globalAlpha = 1;
+  }
+
   // Pushed below the two buttons rather than kept at 70. It sat exactly where the menu button
   // now is, and a kill counter under a button is a kill counter nobody can read.
   write(ctx, say(UI.down, state.kills), w - 22 * U, 112 * U, 13 * U, 700, 'right');
@@ -2299,6 +2335,27 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     ctx.beginPath();
     ctx.ellipse(S.cx, S.cy, r * S.scale, r * S.scale * S.squash, 0, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  // How far this run can touch anything: the longest reach of everything it is casting, drawn
+  // as a line on the floor. Spells have a range now, so a creature outside this ring cannot be
+  // hit by anything - and a limit the player cannot see is a limit they experience as the game
+  // being broken.
+  reachRing(ctx, S, state);
+
+  // A horde on its way in, as a thickening of the rim where it is coming from. Drawn before
+  // anything stands on the floor, because it IS the floor.
+  if (show.horde > 0) {
+    const k = Math.min(1, show.horde);
+    ctx.save();
+    ctx.strokeStyle = Black;
+    ctx.globalAlpha = 0.1 + 0.3 * k;
+    ctx.lineWidth = 16 * S.scale * k;
+    ctx.beginPath();
+    ctx.ellipse(S.cx, S.cy, Arena * S.scale, Arena * S.scale * S.squash,
+      0, show.hordeAt - 0.8, show.hordeAt + 0.8);
+    ctx.stroke();
+    ctx.restore();
   }
 
   platform(ctx, S);

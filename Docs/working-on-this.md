@@ -1,18 +1,43 @@
 # Shadow Tower — bu projede çalışırken
 
-> **NEREDE KALDIK** — 2026-10-16
+> **NEREDE KALDIK** — 2026-10-16 (akşam)
 >
-> **Oyun bitti. CrazyGames gönderim formu dolduruluyor.**
+> **Oynanış elden geçti: menzil, hedefleme, seviye tavanı, sürüler.** Oyuncunun yedi maddesi.
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
-> `node Tools/test.mjs --quick` → 542 · tam paket → **573 kontrol geçiyor**.
+> `node Tools/test.mjs --quick` → 565 · tam paket → **599 kontrol geçiyor**.
 >
-> ## Açık iki mesele — ikisi de kullanıcıdan cevap bekliyor
+> ## 16 Ekim akşamı yapılanlar
 >
-> **1. KRİTİK — QA paneli "SDK not currently detected" diyor.** Basic Launch'ın zorunlu şartı
-> `gameplayStart`; bu hâliyle geçmez. Sebep: kullanıcının **reklam engelleyicisi** CrazyGames'in
+> | # | istenen | ne yapıldı |
+> |---|---|---|
+> | 1 | ateş topu ikiye çıkınca ıskalıyor | **Yelpaze kaldırıldı.** Her mermi kendi hedefini alıyor (`marksFor`). Ölçüldü: tek ateş topu 33 hasar, ikisi 21 veriyordu — oyundaki HER "+1 atış" kartı bir kayıptı |
+> | 2 | ateş topuna yangın yükseltmesi | **Zaten vardı** (Wildfire, ilk dönüşüm, 3.2 sn). Eksik olan ölçülmesiydi; artık üç kontrolü var |
+> | 3 | maksimum seviye 23 | `MaxLevel = 23`, xp merdiveni yeniden seçildi (toplam 620, tavan 4:00–4:30 arası) |
+> | 4 | sürüler artmıyor, stres yok | Yaratık hızları ×0.7, mermi 560→420, **sürüler** (26 sn'de bir, tek yönden). Sahadaki kalabalık 9 → 20 |
+> | 5 | **büyülerin menzili olmalı** | `Reaches` tablosu, her büyüye bir menzil; sahada kesik çizgili halka |
+> | 6 | patron 4:50, mob 5:00'e kadar | `BossAt = 290`, dalga `StageWaves = 300`'e kadar sürüyor |
+> | 7 | reklam engelleyici kapalıyken SDK düzeldi | **Kapandı** — aşağıdaki 1. mesele çözüldü |
+>
+> Yolda çıkan iki gerçek hata: **Hale (Halo) birleşmesi hiç ateşlenmiyordu** (yörünge kodu
+> yalnızca `kit.blade`'e bakıyordu) ve **`test.mjs` kendi bot kopyasını taşıyordu** — `bot.mjs`'i
+> hiç içe almıyordu ve ikisi birbirinden farklıydı (420 sn'ye karşı 620 sn).
+>
+> Denge, tam süpürmeyle: yeni hesap 1-3. bölümleri %100, 6. bölüme kadar · tam donanım 7. bölüme
+> kadar %100, 14. bölüme kadar. Ekonomi değişmedi (3. bölümde ~966 altın, büyü sonuna ~11 koşu).
+>
+> ## Açık mesele — kullanıcıdan cevap bekliyor
+>
+> **Üst bant QA oynatıcısında görünmüyor** (aşağıdaki 2. madde). Hâlâ cevap yok.
+>
+> <details><summary>Kapanmış: QA paneli "SDK not currently detected" diyordu</summary>
+>
+> **1. ÇÖZÜLDÜ (16 Ekim) — reklam engelleyici kapatılınca SDK göründü.** Basic Launch'ın zorunlu
+> şartı `gameplayStart`; bu hâliyle geçmezdi. Sebep: kullanıcının **reklam engelleyicisi** CrazyGames'in
 > kendi scriptlerini engelliyor (konsolda onlarca `ERR_BLOCKED_BY_ADBLOCKER`), `init()` başarısız
 > oluyor, ve başlatılmamış SDK'ya artık dokunmadığımız için portala hiçbir şey gidemiyor.
 > Kullanıcıya söylendi: engelleyiciyi `crazygames.com` için kapat → Relaunch → bir koşu başlat.
+>
+> </details>
 >
 > **2. Üst bant QA oynatıcısında görünmüyor** — kale işareti, SEVİYE, deneyim çubuğu, enerji ve
 > **ayarlar dişlisi** orada. Aynı pencere ölçüsünde (1345×635) yerelde çizdirildi ve **bant
