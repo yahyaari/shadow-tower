@@ -1,44 +1,47 @@
 # Shadow Tower — bu projede çalışırken
 
-> **NEREDE KALDIK** — 2026-10-14
+> **NEREDE KALDIK** — 2026-10-16
 >
-> Oyun **yayında ve oynanabilir**: https://yahyaari.github.io/shadow-tower/
-> Depo: `yahyaari/shadow-tower` · `master`'a push → GitHub Pages ~1 dakikada yayınlıyor.
-> `node Tools/test.mjs` → **472 kontrol geçiyor**.
+> **Oyun bitti. CrazyGames gönderim formu dolduruluyor.**
+> Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
+> `node Tools/test.mjs --quick` → 542 · tam paket → **573 kontrol geçiyor**.
 >
-> ## SIRADAKİ İŞ — seçilmedi
+> ## Açık iki mesele — ikisi de kullanıcıdan cevap bekliyor
 >
-> 1. **Gerçek parmakla test** — iki büyüden yeni bir büyü doğması hiç yapılmadı.
->    — kullanıcı hâlâ oynamadı, bütün denge bot ölçümü.
-> 2. **CrazyGames SDK** — reklam, kapak görseli, tanıtım videosu. Dikiş hazır (`src/ads.js`).
+> **1. KRİTİK — QA paneli "SDK not currently detected" diyor.** Basic Launch'ın zorunlu şartı
+> `gameplayStart`; bu hâliyle geçmez. Sebep: kullanıcının **reklam engelleyicisi** CrazyGames'in
+> kendi scriptlerini engelliyor (konsolda onlarca `ERR_BLOCKED_BY_ADBLOCKER`), `init()` başarısız
+> oluyor, ve başlatılmamış SDK'ya artık dokunmadığımız için portala hiçbir şey gidemiyor.
+> Kullanıcıya söylendi: engelleyiciyi `crazygames.com` için kapat → Relaunch → bir koşu başlat.
 >
-> ## Enerji — karar verildi, SDK'ya bırakıldı
+> **2. Üst bant QA oynatıcısında görünmüyor** — kale işareti, SEVİYE, deneyim çubuğu, enerji ve
+> **ayarlar dişlisi** orada. Aynı pencere ölçüsünde (1345×635) yerelde çizdirildi ve **bant
+> çiziliyor** (`Logs/peek/qa/menu_map.png`), yani görünür alanın üstünde kalıyor. Kullanıcıya
+> söylendi: sayfayı en yukarı kaydırıp bak. Yine çıkmazsa o bandın içeriği aşağı taşınmalı.
 >
-> Depo **60**, koşu **5**, %100 bitirişte **+5** iade, dakikada **2** yenilenme. SDK ile birlikte,
-> "enerjin bitti → reklam izle doldur" üstüne kurulacak. CrazyGames enerji yasaklamıyor
-> (kontrol edildi), itiraz ekonomikti: gelir oynanma süresine bağlı ve satacak bir şey yok.
+> ## Gönderim için hazır olanlar
 >
-> ## Bitmiş olanlar
+> `Docs/crazygames-submission.md` (formun her alanı) · üç kapak `Logs/cover/` ·
+> iki video `Logs/promo/` · yüklenen paket `index.html` + `src/` = **399 KB, 20 dosya**.
+> Upload sayfası cevapları: HTML5 · Data Module · mobil ✓ · SDK mute ✓ · Basic sekmesi.
 >
-> Oyun döngüsü · bölüm seçimi + yıldızlar · 10 büyü / 48 yükseltme / 41 dönüşüm (24'ü kombo
-> kilitli) · **üç patron** (Gardiyan/Çağırıcı/Gölge) · **dört düşman ailesi + element direnci** ·
-> **12 yer** · **dört para birimi** (deneyim/altın/parça/gem) · gem farmlanamaz · **iki sandık +
-> 10x** · **kalıcı büyü seviyeleri** · 50 hücreli kahraman peteği · **görevler** (günlük + koşu) ·
-> **7 günlük seri** · **12 başarım** · **reklam dikişi** · beş sekmeli menü · külliyat · iki dil ·
-> 1x-1.5x-2x hız · dosyasız ses.
+> ## Yapılmadı
+>
+> Tek arena şekli (kullanıcı erteledi) · Safari'de hiç denenmedi (bu makinede yok).
 >
 > ## Kullanıcının cevaplamadığı sorular
 >
-> Aile çarpanları (×2.1 / ×0.55) · kahraman basamak fiyatları · bölüm uzunluğu (~1:45) ·
-> gem temposu · hafta ödülü (250 gem) · başarım ödülleri.
+> Kahraman basamak fiyatları · gem temposu · hafta ödülü (250 gem) · başarım ödülleri ·
+> hangi büyüler zayıf hissettiriyor.
 
 Ortada bir büyücü, etrafında alçak bir duvar, her yönden gelen düşmanlar. Üç katman:
 
 - **Hesap.** Bölüm bitince kalıcı deneyim kazanılır, ana seviye atlanır, yeni büyüler açılır.
-- **Loadout.** Dört slot, ilki **sabit: Magic Bolt**. Diğer üçünü sen seçersin. Bu bir "başlangıç
-  eli" değil bir **havuz**: ne getirdiğin, kartların sana ne önerebileceğini belirler.
-- **Bölüm.** Ana menüden seçilir (`◀ BÖLÜM 3 ▶`). Açılışta **sadece Magic Bolt ateşler**;
-  getirdiğin diğer üçü "YENİ BÜYÜ" kartı olarak çıkar ve ancak alınca ateşler. Bölüm, patronu
+- **Loadout.** **Beş** slot, ilki **sabit: Magic Bolt**. Ama sahada en fazla **dört** büyü
+  ateşleyebilirsin — aradaki fark bu özelliğin tamamı (bkz. "Beş getir, dördünü oyna"). Bu bir
+  "başlangıç eli" değil bir **havuz**: ne getirdiğin, kartların sana ne önerebileceğini belirler.
+- **Bölüm.** Ana menüden seçilir. Açılışta **sadece Magic Bolt ateşler**; getirdiklerin
+  "YENİ BÜYÜ" kartı olarak çıkar ve ancak alınca ateşler. Bölüm, patronu
   indirince biter ve **ayakta kalan duvara göre yıldız** verir.
 
 Motor yok, derleme yok, bağımlılık yok. **Canlı: https://yahyaari.github.io/shadow-tower/**
