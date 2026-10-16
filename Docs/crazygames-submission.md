@@ -27,7 +27,7 @@ Hold the wall. Spells fire themselves — you choose which ones grow. Five minut
 A wizard, a waist-high wall, and five minutes of everything in the dark walking towards it.
 
 Your spells fire on their own. What you decide is which of them becomes something else. Every
-level-up offers three cards, and a spell fed five times changes: Magic Bolt splits in two,
+level-up offers three cards, and a spell fed four times changes: Magic Bolt splits in two,
 Fireball leaves the ground burning, Lightning starts leaping between targets. Feed two of them
 far enough and they fuse into a spell that was not in your book at all.
 
@@ -35,8 +35,12 @@ You bring five spells and only four can be cast at once, so no two runs with the
 play the same way.
 
 Every stage has its own creatures and they are not all hurt by the same things. Spiders take
-double from fire and shrug off lightning. Wurms are the other way round. The map tells you before
-you press PLAY — reading it is the difference between a clear and a wall coming down.
+nearly three times the damage from fire and shrug off lightning. Wurms are the other way round.
+The map tells you before you press PLAY — reading it is the difference between a clear and a
+wall coming down.
+
+Each spell also has a reach. Magic Bolt, the weakest thing you own, throws the furthest; Nova and
+Meteor only answer what is already close. What you bring decides how far out the fight happens.
 
 - 12 places, 4 creature families, 3 bosses
 - 10 spells, 48 upgrades, 41 transformations, 4 fusions
@@ -53,7 +57,7 @@ you press PLAY — reading it is the difference between a clear and a wall comin
 ```
 Mouse or touch: tap anywhere to speed up your casting. The spells aim themselves.
 Tap a card to take it when you level up, or press 1, 2 or 3.
-Space: speed up casting. Esc: pause. Tab: see what you are carrying.
+Space: speed up casting. Esc: pause. Tab: see what you are carrying. M: mute.
 ```
 
 ## Category
@@ -79,7 +83,7 @@ survival · magic (veya wizard) · upgrade · arcade · 1 player
 |---|---|
 | Game name | `Shadow Tower` |
 | Game engine | **HTML5** — *rehberdeki "Unity 6" bu oyun için geçerli değil* |
-| Upload files | **Oyunun tamamı, `index.html` kökte olacak şekilde.** *Rehberdeki "sadece Build klasörü" Unity'ye özeldi.* Yüklenecekler sadece `index.html` ve `src/`. Toplam **399 KB, 20 dosya** (sınır 50 MB / 1500 dosya). |
+| Upload files | **Oyunun tamamı, `index.html` kökte olacak şekilde.** *Rehberdeki "sadece Build klasörü" Unity'ye özeldi.* Yüklenecekler sadece `index.html` ve `src/`. Toplam **~472 KB, 20 dosya** (sınır 50 MB / 1500 dosya). |
 | Does your game save progress? | **Yes** — CrazyGames SDK **Data modülü** kullanılıyor (`SDK.data.getItem/setItem`), localStorage'a da aynı anda yazılıyor (modül bir saniye geciktirmeli). |
 | The game supports mobile devices | ☑ |
 | The game is an online multiplayer game | ☐ |
@@ -97,7 +101,7 @@ src/*.js   (19 dosya)
 
 | Madde | Cevap | Neden |
 |---|---|---|
-| Initial download size <50MB | otomatik ✓ | **399 KB** — mobil ana sayfa eşiği olan 20 MB'ın da çok altında |
+| Initial download size <50MB | otomatik ✓ | **~472 KB** — mobil ana sayfa eşiği olan 20 MB'ın da çok altında |
 | First gameplay start | otomatik ✓ | |
 | First gameplay start implemented correctly | **Yes** | `gameplayStart()` koşu başlayınca çağrılıyor, açılışta değil; duraklatmada `gameplayStop()` |
 | Complies to Gameplay requirements | **Yes** | açılışta reklam yok, **ara reklam hiç yok**, ödül sadece reklam tamamlanınca veriliyor |
