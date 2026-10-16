@@ -1,10 +1,16 @@
 # Shadow Tower — bu projede çalışırken
 
-> **NEREDE KALDIK** — 2026-10-16 (gece)
+> **GÖNDERİLDİ — 2026-10-16 · CrazyGames'te inceleme bekliyor**
 >
-> **Oynanış iki turda elden geçti.** Oyuncunun önce yedi, sonra altı maddesi.
+> Basic Launch · PEGI 12 · paket `index.html` + `src/` (20 dosya, ~472 KB).
+> QA panelinde dokuz SDK çağrısının hepsi yeşil. Düzeltme isterlerse **"Submit new version"**:
+> yalnızca dosyalar yeniden yüklenir, metinler ve kapaklar yerinde kalır.
+>
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
-> `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
+> `node Tools/test.mjs --quick` → 580 · tam paket → **615 kontrol geçiyor**.
+> Hâlâ denenmemiş tek şey: **Safari**.
+>
+> Gönderimden önceki son üç tur aşağıda, en yenisi üstte.
 >
 > ## Onarım kartı, patronun yeri, ve iki doymuş ölçüm daha
 >
