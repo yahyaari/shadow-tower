@@ -10,13 +10,13 @@
 // cards, most of them ordinary boosts, and every fifth boost on a spell turns into a tier - a
 // card that changes what the spell does rather than how much of it there is.
 
-import { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always, Reaches } from './spells.js';
+import { Spells, Passives, BoostsPerTier, MostPassive, MendPart, MendAfter, passiveKeys, LoadoutSize, CarrySize, Always, Reaches } from './spells.js';
 import { Fusions, fusionKeys, fusionOf, anySpell } from './spells.js';
 import { takes, familyFor, Roles } from './foes.js';
 import { liftAt } from './upgrades.js';
 import { say, UI } from './text.js';
 
-export { Spells, Passives, BoostsPerTier, MostPassive, passiveKeys, LoadoutSize, CarrySize, Always, Reaches };
+export { Spells, Passives, BoostsPerTier, MostPassive, MendPart, MendAfter, passiveKeys, LoadoutSize, CarrySize, Always, Reaches };
 export const spellKeys = Object.keys(Spells);
 
 export const Arena = 560;
@@ -185,7 +185,7 @@ export const Grace = 25;
  * has nowhere to arrive - it is just six stages further out, which is the whole set of twelve
  * places seen comfortably and some of them twice.
  */
-export const StageStep = 0.25;
+export const StageStep = 0.28;
 export const StageBend = 0.75;
 export const stageLift = (stage) =>
   1 + Math.pow(Math.max(0, (stage || 1) - 1), StageBend) * StageStep;
@@ -931,7 +931,10 @@ export function offer(s) {
   // every choice in the opening minute, when nothing has reached the wall yet.
   for (const k of passiveKeys) {
     if ((s.passives[k] || 0) >= MostPassive) continue;
-    if (k === 'mend' && s.wall >= s.maxWall && !s.passives.mend) continue;
+    if (k === 'mend' && s.wall >= s.maxWall) continue;
+    // Late, and once. A repair offered in the first minute is a card spent on a wall nothing has
+    // reached yet, and with one passive left in the game it was a third of every early choice.
+    if (k === 'mend' && s.stageT < MendAfter) continue;
     pool.push({ what: 'passive', key: k });
   }
 
@@ -1008,7 +1011,11 @@ export function take(s, index) {
   if (pick) {
     if (pick.what === 'passive') {
       s.passives[pick.key] = (s.passives[pick.key] || 0) + 1;
-      if (pick.key === 'mend') { s.maxWall += 20; s.wall += 20; }
+      // A repair, there and then - not a trickle and not a bigger wall. Both of those were
+      // things you took early and forgot about; this one is a decision made while losing.
+      if (pick.key === 'mend') {
+        s.wall = Math.min(s.maxWall, s.wall + s.maxWall * MendPart);
+      }
     } else if (pick.what === 'spell') {
       s.kit[pick.key] = { tier: 1, boosts: {}, evos: [], taken: 0 };
       s.cools[pick.key] = 0.15;
@@ -1123,7 +1130,8 @@ export function step(s, dt) {
     }
   }
 
-  const repair = (s.passives.mend || 0) * 1.1 + (s.hero ? s.hero.mend : 0);
+  // Only the hero comb rebuilds the wall over time now. Mend is a one-off repair.
+  const repair = s.hero ? s.hero.mend : 0;
   if (repair > 0) s.wall = Math.min(s.maxWall, s.wall + repair * dt);
 
   // --- the spells, each on its own clock

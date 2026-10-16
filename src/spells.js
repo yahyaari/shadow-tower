@@ -47,11 +47,18 @@ export const BoostsPerTier = 4;
 export const Reaches = {
   bolt: 520,
   wisp: 450,
+  // Kiymiklar burada, ucuncu sirada, ve sebebi kuralin kendisi: menzil BIRINCI SEVIYEDEKI gucun
+  // bedeli, ve bir kiymik bes hasar veriyor - oyundaki en zayif ikinci atis. 290'dayken bicak
+  // elementi YAPISAL olarak eziliyordu: bicagin iki buyusu var, Yorunge zaten temasli ve kisa,
+  // yani haritada "kurtlar bicaga x2.9 zayif" yazisini okuyup elini ona gore kuran oyuncu
+  // menzilsiz kaliyordu. Olculdu: on ikinci bolumde elemente UYGUN el 259 oldurup, kagit
+  // uzerinde guclu ama ters olan el 297 olduruyordu - yani harita yanlis tavsiye veriyordu.
+  shards: 380,
   fireball: 380, frost: 380,
-  lightning: 330, laser: 310, shards: 290,
+  lightning: 330, laser: 310,
   meteor: 250,
   blade: 200, nova: 190,
-  tempest: 310, hail: 280, halo: 215, collapse: 250,
+  tempest: 310, hail: 320, halo: 215, collapse: 250,
 };
 
 /**
@@ -316,11 +323,26 @@ export const spellKeys = Object.keys(Spells);
  * faster"; this one says "last longer", and a run needs both to be a choice.
  */
 export const Passives = {
-  mend: { name: ['Mend', 'Onarım'], tells: ['the wall rebuilds itself', 'duvar kendini onarır'] },
+  mend: {
+    name: ['Mend', 'Onarım'],
+    tells: ['repairs a tenth of the wall', 'duvarın onda birini onarır'],
+  },
 };
 
 export const passiveKeys = Object.keys(Passives);
-export const MostPassive = 5;
+
+/**
+ * How many times a passive may be taken in a run. One.
+ *
+ * It was five, and with a single passive left in the game that meant Mend could be most of what
+ * a run spent its picks on - and it kept coming back, because a wall that has been hit stays hit.
+ * The player asked for it plainly: one a run, late, and a repair rather than a trickle.
+ */
+export const MostPassive = 1;
+
+/** How much of the wall Mend puts back, and how late in a stage it may be offered. */
+export const MendPart = 0.1;
+export const MendAfter = 180;
 
 /**
  * The loadout: four slots, and the first one is not a choice.

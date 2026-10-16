@@ -8,7 +8,8 @@
 // first; what goes inside each tab is a conversation per tab.
 
 import {
-  Inks, Face, write, fitWrite, wrap, wrapIn, sigil, star, stars, creatureMark, coin, shard, gem,
+  Inks, Face, write, fitWrite, wrap, wrapIn, sigil, star, stars, creatureMark, markFor,
+  coin, shard, gem,
   cutPath, cutBox, boxPath, slashes, spyOpen, spyShut, spyMark, spyLayer,
 } from './draw.js';
 import { say, UI, LanguageNames, language } from './text.js';
@@ -1943,6 +1944,10 @@ function foeCard(ctx, data, col, U, cut) {
   const here = familiesOn(data.stage);
   const boss = kindsOn(data.stage).slice(-1)[0];
   const bossW = 92 * U;
+  // Everything on this card stands on one line, near the floor of it. The boss used to be hung
+  // off the middle at a size that is a SCALE and not a height, so it reached 28px out through
+  // the top of the card - which is what the player saw and reported.
+  const feet = r.y + r.h - 26 * U;
   const left = { x: r.x, y: r.y, w: r.w - bossW, h: r.h };
 
   // the divider, which is what makes this one card and not two
@@ -1960,7 +1965,7 @@ function foeCard(ctx, data, col, U, cut) {
   here.forEach((family, i) => {
     const x = left.x + i * step;
     const markX = x + 34 * U;
-    creatureMark(ctx, 'walker', markX, r.y + r.h / 2, 40 * U, Black, family);
+    creatureMark(ctx, 'walker', markX, feet, 40 * U, Black, family);
 
     const textX = x + 64 * U;
     const room = step - 72 * U;
@@ -1992,7 +1997,9 @@ function foeCard(ctx, data, col, U, cut) {
   // --- and the one at the end of it
   {
     const cx = r.x + r.w - bossW / 2;
-    creatureMark(ctx, boss, cx, r.y + r.h / 2 - 6 * U, 46 * U, Black);
+    // Asked for by HEIGHT, so it fits the card whichever of the three bosses it is: the Warden
+    // and the Herald are two thirds taller than the Shade in their own drawings.
+    creatureMark(ctx, boss, cx, feet, markFor(boss, 52 * U), Black);
     fitWrite(ctx, say(UI['foe_' + boss] || boss), cx, r.y + r.h - 16 * U,
       11 * U, 800, 'center', Black, bossW - 10 * U);
   }

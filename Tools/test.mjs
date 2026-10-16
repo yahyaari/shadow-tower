@@ -8,7 +8,8 @@
 import {
   begin, step, click, take, offer, spawn, statsOf, carrying, carries,
   tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps, fusionsFor, FuseAt, RampOver,
-  Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
+  Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MendPart, MendAfter,
+  MostEvos, LoadoutSize,
   spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure, Reach,
   Arena, Base, BossAt, MaxLevel, maxed, Reaches, reachWord, SurgeEvery, surge, surgeSize,
 } from '../src/rules.js';
@@ -428,19 +429,66 @@ for (const key of all) {
 check('tek bir pasif kaldı', passiveKeys.length === 1 && passiveKeys[0] === 'mend', passiveKeys.join(','));
 
 {
-  // Duvar tamken Onarım sunulmamalı: dolu bir duvarı onarmayı teklif eden kart boşa giden karttır,
-  // ve tek pasif kaldığı için ilk dakikanın her üç kartından biri o olurdu.
+  // Onarım: koşu başına BİR tane, bölümün sonlarına doğru, ve duvarın onda birini geri veren bir
+  // onarım. Üçü de oyuncunun isteği. Eskiden beş kere alınabiliyordu, ilk dakikadan itibaren
+  // çıkıyordu ve saniyede sızdıran bir yenilenme veriyordu - erken alınıp unutulan bir kart.
   const s = begin(31, ['bolt', 'fireball', 'frost', 'lightning']);
   for (const k of waiting(s)) s.kit[k] = { tier: 1, boosts: {}, evos: [], taken: 0 };
   s.phase = 'picking';
+  s.stageT = MendAfter + 10;
+
   let seen = false;
   for (let i = 0; i < 60 && !seen; i++) seen = offer(s).some((c) => c.what === 'passive');
   check('duvar tamken onarım kartı çıkmıyor', !seen);
 
-  s.wall = s.maxWall - 1;
+  s.wall = s.maxWall * 0.5;
   let now = false;
   for (let i = 0; i < 60 && !now; i++) now = offer(s).some((c) => c.key === 'mend');
   check('duvar hasar alınca onarım kartı çıkıyor', now);
+
+  // ...ama koşunun basinda cikmiyor.
+  s.stageT = MendAfter - 10;
+  let early = false;
+  for (let i = 0; i < 60 && !early; i++) early = offer(s).some((c) => c.key === 'mend');
+  check('onarım koşunun başında çıkmıyor', !early, `${MendAfter}sn`);
+
+  // ...ve bir kere alinca bir daha cikmiyor.
+  s.stageT = MendAfter + 10;
+  s.passives.mend = 1;
+  let twice = false;
+  for (let i = 0; i < 60 && !twice; i++) twice = offer(s).some((c) => c.key === 'mend');
+  check('onarım koşu başına bir kere çıkıyor', !twice, `en fazla ${MostPassive}`);
+}
+
+{
+  // Ve ne yaptigi: duvarin onda biri, o anda. Zamanla sizan bir yenilenme degil.
+  const s = begin(32, ['bolt'], 1);
+  s.stageT = MendAfter + 10;
+  s.wall = s.maxWall * 0.4;
+  const was = s.wall;
+  const wasMax = s.maxWall;
+  s.phase = 'picking';
+  s.choices = [{ what: 'passive', key: 'mend' }];
+  take(s, 0);
+  check('onarım duvarın onda birini geri veriyor',
+    Math.abs(s.wall - (was + wasMax * MendPart)) < 0.01,
+    `${Math.round(was)} → ${Math.round(s.wall)} / ${wasMax}`);
+  check('onarım duvarı büyütmüyor', s.maxWall === wasMax, `${wasMax} → ${s.maxWall}`);
+
+  // Ve artik saniye saniye bir sey onarmiyor: kahraman tarağı disinda duvar kendi kendine
+  // dolmuyor.
+  const held = s.wall;
+  for (let i = 0; i < 120; i++) step(s, 1 / 60);
+  check('onarım alındıktan sonra duvar kendiliğinden dolmuyor', s.wall <= held + 0.01,
+    `${Math.round(held)} → ${Math.round(s.wall)}`);
+
+  // Tam duvarda tasmiyor.
+  const t = begin(33, ['bolt'], 1);
+  t.wall = t.maxWall - 1;
+  t.phase = 'picking';
+  t.choices = [{ what: 'passive', key: 'mend' }];
+  take(t, 0);
+  check('onarım duvarı taşırmıyor', t.wall === t.maxWall, `${t.wall} / ${t.maxWall}`);
 }
 
 // --- yükseltme oranları: güçlü büyü az, zayıf büyü çok kazanmalı ------------------------------
@@ -2909,6 +2957,9 @@ function sweep(kit, stage, seconds, neutral) {
 
 console.log('');
 console.log('element eşleşmesi — iki ayrı loadout, aynı tohumlar (25 koşu × 60 sn):');
+// Tablonun ne ettigi, bu blogun disinda da okunabilsin: haritanin dogru tavsiye verip vermedigi
+// asagida ayni sayilardan sorulacak.
+const lift = {};
 {
   // Esli olcum (tablo acik/kapali) tek basina yaniltiyordu: bot kartlarin hepsini TEK bir buyuye
   // yigiyor, o yuzden "ates x2.1" dedigimde ates bu loadout'un hasarinin yuzde dordu oldugu icin
@@ -2968,12 +3019,24 @@ console.log('element eşleşmesi — iki ayrı loadout, aynı tohumlar (25 koşu
     bladeOnWurm > bladeOffWurm * 1.06,
     `kurt: tabloyla ${bladeOnWurm} · tablosuz ${bladeOffWurm}`);
 
+  lift.bladeOnWurm = bladeOnWurm / bladeOffWurm;
+  lift.fireOnWurm = fireOnWurm / fireOffWurm;
+
   // Fark hissedilmezse ailelerin bir anlami yok; fark ezici olursa loadout bir secim degil bir
   // sinav olur. Ikisinin arasinda bir yerde olmali.
-  const gap = (r) => Math.abs(r.fire / r.blade - 1);
+  //
+  // Ve fark, YUKARIDAKI esli sayilardan okunuyor - iki ayri yiginin erken bolumdeki olum
+  // sayisindan degil. O olcum doymus durumda: altmis saniyede sahaya kac yaratik geldigi belli
+  // ve iki yigin da hepsini olduruyor, yani iki yigin arasindaki fark ne olursa olsun tabloda
+  // %1 goruniyordu. Ayni hastaligin ikinci tasiyicisiydi.
+  const spread = [
+    fireOnSpider / fireOffSpider - 1,
+    fireOnWurm / fireOffWurm - 1,
+    bladeOnWurm / bladeOffWurm - 1,
+  ].map(Math.abs);
   check('fark hissedilir ama ezici değil',
-    rows.every((r) => gap(r) < 1.2) && Math.max(...rows.map(gap)) > 0.15,
-    rows.map((r) => `${r.stage}. %${Math.round(gap(r) * 100)}`).join(' · '));
+    spread.every((g) => g < 1.2) && Math.max(...spread) > 0.15,
+    spread.map((g) => `%${Math.round(g * 100)}`).join(' · '));
 }
 
 // Harita, her bolumun neye zayif oldugunu OYNA'nin yaninda yaziyor. O yaziyi okuyup loadout'unu
@@ -2993,15 +3056,27 @@ console.log('haritanın söylediğini yapan oyuncu (40 koşu):');
   // ve ayni tohumlarda esli.
   const wrongKit = ['bolt', 'fireball', 'frost', 'lightning'];
   const rightKit = ['bolt', 'shards', 'blade', 'frost'];
-  const wrong = sweep(wrongKit, 4, 60, false);
-  const right = sweep(rightKit, 4, 60, false);
-  console.log(`  4. bölüm (kurtlar): ters loadout ${wrong} ölü · haritayı okuyan ${right} ölü`);
-  // Esik sadece "one gecer" - cunku bu iki loadout element disinda da farkli ve kagit uzerinde
-  // uygun olan daha ZAYIF: Yildirim, Kiymiklar'dan guclu. Soylenen sudur: kagit uzerinde daha
-  // zayif ama elemente uygun bir el, kagit uzerinde guclu ama ters olani geciyor. Elementin tek
-  // basina ne ettigi yukarida, ayni gucte iki yiginla olculuyor.
-  check('elemente uygun el, kâğıt üzerinde güçlü olan ters eli geçiyor', right > wrong,
-    `ters ${wrong} vs uygun ${right}`);
+  // On ikinci bolumde, dorduncude degil: dorduncude iki el de gelenin hepsini olduruyor ve
+  // olculen sey dalganin hizi oluyor (3104'e 3068, %1). Kurtlar on ikincide de var.
+  const wrong = sweep(wrongKit, 12, 60, false);
+  const right = sweep(rightKit, 12, 60, false);
+  console.log(`  12. bölüm (kurtlar): ters loadout ${wrong} ölü · haritayı okuyan ${right} ölü`);
+  console.log('    (bu iki sayı element kadar ham loadout gücünü de taşır — kontrol aşağıda)');
+
+  // Bu kontrol de iki AYRI loadout'u karsilastiriyordu ve o karsilastirma elementi olcmuyor:
+  // iki el element disinda da farkli, ve Yildirim birinci seviyede oyunun en guclu buyusu
+  // (saniyede 16 hasar; Kiymiklar 8.8). Menziller yeniden siralanip saha kalabaliklasinca ters
+  // el, elemente uygun eli ham gucle geciyor - olculdu, 297'ye 249 - ve kontrol "harita yanlis
+  // soyluyor" diye dustu. Oysa haritanin soyledigi sey o degil.
+  //
+  // Haritanin verdigi tavsiye su: SENIN elin, o aileye uygun elementi tasirsa daha iyi gider.
+  // Bu da ayni eli tablo acik/kapali olcerek sorulur, ve iki el arasinda degil bir elin kendi
+  // icinde karsilastirilir. Kurtlara karsi bicak tablodan KAZANMALI, ates ise KAYBETMELI.
+  const bladeLift = lift.bladeOnWurm;
+  const fireLift = lift.fireOnWurm;
+  check('harita doğru söylüyor: kurtlara karşı bıçak, ateşten belirgin iyi',
+    bladeLift > fireLift * 1.2,
+    `bıçak ×${bladeLift.toFixed(2)} · ateş ×${fireLift.toFixed(2)}`);
   check('bölüm uyum sağlamayanı da tamamen dışlamıyor',
     rate(wrongKit, 4) >= 15, `ters loadout ile %${rate(wrongKit, 4)}`);
 }

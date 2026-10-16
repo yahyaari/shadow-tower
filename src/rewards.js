@@ -23,9 +23,13 @@
 // Bunlar bir kosunun odediginin yanindaki agirligiyla secilmisti: carkin bir gununun, sekiz
 // kosuluk bir oturumun yaninda hissedilmesi gerek. Bolum bes dakikaya cikinca kosu basina gelir
 // ikiye katlandi ve cark %8'den %3'e dustu - yani gunluk cevirme menuye gitmeye degmez oldu.
-export const unitOf = (level) => 45 + 26 * Math.max(1, level);
-export const goldUnitOf = (level) => 55 + 55 * Math.max(1, level);
-export const ShardUnit = 9;
+//
+// Ve bir kez daha: dengelemeler kosu gelirini yine buyuttu, cark ucuncu bolumde %5'in altina
+// indi. Bu sayilarin bir koşunun odediginden BAGIMSIZ olarak dogru olmasi mumkun degil - bu
+// yuzden kontrol oranı olcuyor ve bu yuzden oyun her hizlandiginda buraya donmek gerekiyor.
+export const unitOf = (level) => 58 + 33 * Math.max(1, level);
+export const goldUnitOf = (level) => 70 + 70 * Math.max(1, level);
+export const ShardUnit = 11;
 
 /**
  * The eight wedges.

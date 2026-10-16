@@ -807,6 +807,25 @@ function wurmBody(ctx, key, swing) {
 }
 
 /** A creature standing still, for a list or a card. */
+/**
+ * How tall each creature is drawn, in the local units `body()` works in - feet at 0, head up.
+ *
+ * `creatureMark` scales by `size / 70`, which means `size` is not a height: a Warden drawn at
+ * 46 comes out 68 tall and a walker drawn at 46 comes out 40, because the Warden's horns reach
+ * -104 in its own drawing and the walker's head reaches -61. That difference is WANTED almost
+ * everywhere - a boss should loom over the crowd beside it - and wrong in the one place where
+ * the mark has to fit a box: on the map's family card the Warden stood out through the top of
+ * its own card.
+ *
+ * So the table is here, next to the drawing it describes, and `markFor` is for the call sites
+ * that need a height rather than a scale. If a creature's drawing changes shape, this changes
+ * with it or the mark starts leaning out of its box again.
+ */
+export const Tall = { walker: 61, runner: 54, brute: 67, warden: 104, herald: 101, shade: 63 };
+
+/** The `size` that makes `creatureMark` draw this creature exactly `tall` pixels high. */
+export const markFor = (key, tall) => (tall * 70) / (Tall[key] || 70);
+
 export function creatureMark(ctx, key, x, y, size, colour = Black, family = 'folk') {
   ctx.save();
   ctx.translate(x, y);

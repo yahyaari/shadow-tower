@@ -6,6 +6,32 @@
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
 > `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
 >
+> ## Onarım kartı, patronun yeri, ve iki doymuş ölçüm daha
+>
+> Oyuncunun iki isteği: **Onarım koşu başına bir tane, geç gelsin, duvarın %10'unu onarsın**
+> (eskiden beş kere alınabiliyor, ilk dakikadan çıkıyor ve saniyede sızdıran bir yenilenme
+> veriyordu) · **haritadaki patron kartın dışına taşıyordu**.
+>
+> Patron: `creatureMark`'ın `size` parametresi bir YÜKSEKLİK değil, 70 birimlik bir ölçek.
+> Gardiyan'ın boynuzları kendi çiziminde -104'e gidiyor, yürüyenin başı -61'e; aynı `size` ile
+> Gardiyan 68px, yürüyen 40px çıkıyor. Bu fark **her yerde isteniyor** (patron kalabalığın
+> üstünde durmalı) ve sadece kutuya sığması gereken yerde yanlış. `Tall` tablosu + `markFor`
+> eklendi; kart artık yüksekliği istiyor.
+>
+> Onarım'a giden pickler büyülere gidince oyun kolaylaştı, duvar 20'ye kaydı → `StageStep`
+> 0.25 → 0.28. Son hâl: **yeni hesap 7. bölüme, tam donanım ~16-17'ye** (20'ye kadar sızıyor).
+>
+> İki ölçüm daha doymuş çıktı — ikisi de erken bölümde 60 saniyede ÖLDÜRÜLEN sayısına bakıyordu,
+> oysa o sayı dalganın hızıyla sınırlı: "fark hissedilir ama ezici değil" ve "haritanın dediğini
+> yapan oyuncu". İkisi de artık **aynı elin tablo açık/kapalı** sayılarından okunuyor.
+>
+> Ve bir gerçek denge bulgusu: **bıçak elementi yapısal olarak eziliyordu.** Bıçağın iki büyüsü
+> var, Yörünge zaten temaslı/kısa menzilli; Kıymıklar da 290'dayken haritada "kurtlar bıçağa
+> ×2.9 zayıf" yazısını okuyup elini ona göre kuran oyuncu menzilsiz kalıyordu. Kıymıklar 380'e
+> çıktı (kuralın kendisi gereği: bir kıymık beş hasar, oyunun en zayıf ikinci atışı).
+>
+> Çark da koşu geliri büyüdükçe %5'in altına inmişti; birim ödülleri ~%27 artırıldı.
+>
 > ## Portalı beklemek, ama sınırsız beklememek — ve o 109 saniye
 >
 > QA panelinde yedi zorunlu çağrının hepsi yeşil (Happytime dahil). Ama panel **Load time:
