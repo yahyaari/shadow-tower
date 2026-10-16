@@ -190,6 +190,22 @@ for (const key of ['jobs', 'feats', 'news']) {
   await sleep(400);
   await screenshot('pano_' + key);
 }
+// Ve ALINMIS hali. Oyuncunun sikayeti tam buydu: aliyor, satirda yalnizca "alindi" yaziyor ve ne
+// aldigi hicbir yerde yazmiyordu. Odulun, alinmadan onceki yeriyle AYNI yerde kaldigi gorunmeli.
+// Gunun hangi uc gorevi geldigi tarihe gore degisiyor, o yuzden hepsine basiliyor: olmayan bir
+// gorevin tusu zaten hicbir sey yapmiyor.
+await evaluate(`(() => {
+  const m = window.ShadowTower;
+  m.show.board = 'jobs';
+  m.show.boardScroll = 0;
+  for (const key of ['clears', 'kills', 'clean', 'deep', 'chest', 'raise', 'spin', 'hero']) {
+    m.menu({ what: 'daily', key });
+  }
+  return (m.meta.paid || []).length;
+})()`);
+await sleep(400);
+await screenshot('pano_jobs_alindi');
+
 await evaluate(`(() => { window.ShadowTower.show.board = null; return true; })()`);
 
 // Harita, bolum bolum: ailelerin ve zayifliklarinin OYNA'nin yaninda gorunmesi gerekiyor.
@@ -566,6 +582,30 @@ const horde = await evaluate(`(() => {
 console.log('  sürü: ' + JSON.stringify(horde));
 await sleep(260);
 await screenshot('kosu_suru_ve_tavan');
+
+// Kosunun iki ucundaki nefes. Ikisi de canli sahanin ustunde duruyor ve ikisinde de kurallar
+// adimlanmiyor; bir bolum eskiden iki kare arasinda baslayip iki kare arasinda bitiyordu.
+await evaluate(`(() => { window.ShadowTower.show.ready = 2; return true; })()`);
+await sleep(300);
+await screenshot('kosu_hazir');
+await evaluate(`(() => { window.ShadowTower.show.ready = 0; return true; })()`);
+
+await evaluate(`(() => {
+  const m = window.ShadowTower;
+  m.state.phase = 'done';
+  m.show.booked = true;
+  m.show.over = 1.2;
+  return true;
+})()`);
+await sleep(300);
+await screenshot('kosu_bitti_nefes');
+await evaluate(`(() => {
+  const m = window.ShadowTower;
+  m.show.over = 0;
+  m.show.booked = false;
+  m.state.phase = 'playing';
+  return true;
+})()`);
 
 // Sayilari bekleyen dongu de bir seviye atlatabiliyor. Butonlara basmadan once sahaya bir kez
 // daha donuyoruz: 'picking' sirasinda iki kose butonu ne ciziliyor ne basilabiliyor.

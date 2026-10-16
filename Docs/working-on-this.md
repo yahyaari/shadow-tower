@@ -1,12 +1,31 @@
 # Shadow Tower — bu projede çalışırken
 
-> **NEREDE KALDIK** — 2026-10-16 (akşam)
+> **NEREDE KALDIK** — 2026-10-16 (gece)
 >
-> **Oynanış elden geçti: menzil, hedefleme, seviye tavanı, sürüler.** Oyuncunun yedi maddesi.
+> **Oynanış iki turda elden geçti.** Oyuncunun önce yedi, sonra altı maddesi.
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
-> `node Tools/test.mjs --quick` → 565 · tam paket → **599 kontrol geçiyor**.
+> `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
 >
-> ## 16 Ekim akşamı yapılanlar
+> ## İkinci tur (denge) — 16 Ekim gece
+>
+> | # | istenen | ne yapıldı |
+> |---|---|---|
+> | 1 | ilerleme çubuğunun yanında süre | Çubuğun sağ ucunda `0:00`, solunda SÜRÜ uyarısı |
+> | 2 | 4:30'da 23 olmayalım, sıkılıyoruz | Merdiven `3 × 1.21^n`, bölümle birlikte **merdivenin üst ucundan** esniyor ve **5. bölümde donuyor**. Tavan artık son 30 saniyede doluyor |
+> | 3 | menzil sırası: Sihirli Ok en uzun | `bolt 520 · wisp 450 · fireball/frost 380 · lightning 330 · laser 310 · shards 290 · meteor 250 · blade 200 · nova 190`. Sahada **her menzil için ayrı kesik halka** |
+> | 4 | ödülü alınca ne aldığımı anlamıyorum | Ödül her satırda, **üç hâlde de** aynı yerde: beklerken, TAKE'in yanında, ve alındıktan sonra |
+> | 5 | bölüm bir anda başlayıp bir anda bitiyor | İki nefes: başta 2.2 sn (bölüm adı + HAZIR), sonda 1.7 sn (BÖLÜM GEÇİLDİ). Kurallar adımlanmıyor, basınca atlanıyor |
+> | 6 | dört yönden değil, çemberin tamamından | Sürü artık halkanın her yerinden; damla 1.0 → 0.92, sürü `5 + 3.2×baskı`, 24 sn'de bir |
+>
+> Denge: 1. bölümde sahada duran kalabalık `0 → 7 → 10 → 13 → 17 → 22`.
+> Yeni hesap 5. bölüme kadar, tam donanım 13. bölüme kadar.
+>
+> Yolda çıkan üç **alet** hatası: `text.js`'te `cleared` ve `nextStage` **iki kere** yazılmıştı
+> (JS sessizce sonuncuyu alıyor, ekrana `STAGE {0} CLEARED` çıktı) · element ölçümü erken
+> bölümlerde **doymuştu** (60 saniyede gelen yaratık sayısı sabit, iki loadout da hepsini
+> öldürüyor) · `byStage[2]` `--deep`'te 3. bölüm, örnekleme modunda 5. bölüm demekti.
+>
+> ## Birinci tur (16 Ekim akşamı)
 >
 > | # | istenen | ne yapıldı |
 > |---|---|---|

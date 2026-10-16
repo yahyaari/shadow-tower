@@ -10,7 +10,7 @@ import {
   tierDue, evolutionsFor, boostsFor, Bosses, bossFor, HeraldCalls, ShadeKeeps, fusionsFor, FuseAt, RampOver,
   Spells, Passives, Kinds, StageWaves, BoostsPerTier, MostPassive, MostEvos, LoadoutSize,
   spellKeys, passiveKeys, haste, describe, advance, waiting, Always, pressure, Reach,
-  Arena, Base, BossAt, MaxLevel, maxed, Reaches, reachWord, SurgeEvery, SurgeArc, surge, surgeSize,
+  Arena, Base, BossAt, MaxLevel, maxed, Reaches, reachWord, SurgeEvery, surge, surgeSize,
 } from '../src/rules.js';
 import { UnlockAt, unlocked, nextUnlock, LoadoutSize as Carry, CarrySize, Fusions, fusionKeys, fusionOf, anySpell } from '../src/spells.js';
 import { say, setLanguage, language, Languages, UI } from '../src/text.js';
@@ -63,6 +63,8 @@ import { Ladder, Steps as HeroSteps, Bonus, costOf as heroCost, totals as heroTo
  */
 import { botRun, Four, Five, fmt } from './bot.mjs';
 
+import { readFileSync } from 'node:fs';
+
 let passed = 0;
 const failures = [];
 const check = (what, ok, detail = '') => {
@@ -71,6 +73,27 @@ const check = (what, ok, detail = '') => {
 };
 
 const all = spellKeys;
+
+/**
+ * Iki kere yazilmis bir UI anahtari.
+ *
+ * JavaScript bunu sessizce yutuyor: ayni adi tasiyan ikinci giris birincisini eziyor, hata yok,
+ * uyari yok. `cleared` boyle iki kere yazildi ve koşu sonundaki yeni yazi ekrana "STAGE {0}
+ * CLEARED" diye cikti - yer tutucuyu dolduran taraf artik oteki satirdi. Nesneye bakarak
+ * anlasilmaz, cunku nesnede tek bir anahtar var; dosyanin METNINE bakmak gerekiyor.
+ */
+{
+  const src = readFileSync(new URL('../src/text.js', import.meta.url), 'utf8');
+  const seen = new Map();
+  const twice = [];
+  for (const line of src.split('\n')) {
+    const m = /^ {2}([A-Za-z0-9_]+):\s*\[/.exec(line);
+    if (!m) continue;
+    if (seen.has(m[1])) twice.push(m[1]);
+    else seen.set(m[1], true);
+  }
+  check('hiçbir yazı anahtarı iki kere yazılmamış', twice.length === 0, twice.join(', '));
+}
 
 // --- the spell book ---------------------------------------------------------------------------
 
@@ -2409,6 +2432,16 @@ const hush = (s) => { s.nextIn = 1e9; s.surgeIn = 1e9; return s; };
   check('hiçbir menzil arenadan büyük değil', every.every((k) => Reaches[k] <= Arena),
     every.filter((k) => Reaches[k] > Arena).join(', ') || 'hepsi');
   check('her menzilin bir sözcüğü var', every.every((k) => Array.isArray(reachWord(k))));
+
+  // Sira oyuncunun kurali: menzil, buyunun BIRINCI SEVIYEDEKI gucunun bedeli. Tek hedefe vuran
+  // zayif buyu en uzaga gider, kalabaliga vuran agir buyu kalabaligin gelmesini bekler.
+  check('en uzun menzil Sihirli Ok', spellKeys.every((k) => k === 'bolt' || Reaches[k] < Reaches.bolt),
+    spellKeys.filter((k) => k !== 'bolt' && Reaches[k] >= Reaches.bolt).join(', ') || 'öyle');
+  check('ateş topu ile buz küresi aynı menzilde', Reaches.fireball === Reaches.frost,
+    `${Reaches.fireball} / ${Reaches.frost}`);
+  check('tek hedefli büyüler alan büyülerinden uzağa gidiyor',
+    Math.min(Reaches.bolt, Reaches.wisp) > Math.max(Reaches.nova, Reaches.meteor),
+    `tek ${Math.min(Reaches.bolt, Reaches.wisp)} vs alan ${Math.max(Reaches.nova, Reaches.meteor)}`);
 }
 
 // Tek tek: her büyü, menzilinin yetmiş piksel dışındaki bir hedefe sekiz saniye boyunca
@@ -2545,7 +2578,7 @@ function xpForLadder() {
 
 // --- SÜRÜ (madde 4) -----------------------------------------------------------------------------
 
-check('sürüler yirmi altı saniyede bir', SurgeEvery === 26, `${SurgeEvery}`);
+check('sürüler yirmi dört saniyede bir', SurgeEvery === 24, `${SurgeEvery}`);
 
 {
   const s = begin(21, ['bolt'], 1);
@@ -2557,9 +2590,14 @@ check('sürüler yirmi altı saniyede bir', SurgeEvery === 26, `${SurgeEvery}`);
   const was = s.foes.length;
   const many = surge(s);
   check('sürü tek seferde geliyor', s.foes.length === was + many, `${many} tane`);
-  const angles = s.foes.slice(was).map((f) => f.a);
-  const span = Math.max(...angles) - Math.min(...angles);
-  check('sürü tek yönden geliyor', span <= SurgeArc + 0.001, `${span.toFixed(2)} radyan`);
+  // Cemberin TAMAMINDAN. Ilk hali suruyu bir buçuk radyanlik bir yaya birakiyordu ve oynandiginda
+  // "arenayi dorde bolmussun, kuzeyden guneyden sirayla geliyorlar" diye okundu - kulenin her
+  // yandan kusatilmasinin tam tersi. Kontrol: her ceyrekte en az bir tane olmali.
+  const born = s.foes.slice(was);
+  const quarters = new Set(born.map((f) => Math.floor((((f.a % (Math.PI * 2)) + Math.PI * 2)
+    % (Math.PI * 2)) / (Math.PI / 2))));
+  check('sürü çemberin her yanından geliyor', quarters.size === 4,
+    `${quarters.size} çeyrek, ${born.length} yaratık`);
 }
 
 // --- YANGIN (madde 2) ---------------------------------------------------------------------------
@@ -2812,16 +2850,43 @@ console.log('element eşleşmesi — iki ayrı loadout, aynı tohumlar (25 koşu
     console.log(`  ${r.stage}. bölüm (${r.family}): ateş yığını ${r.fire} ölü · bıçak yığını ${r.blade} ölü  → ${lead} %${by} önde`);
   }
 
-  const swarm = rows.find((r) => r.family.includes('swarm'));   // ateşe zayıf, bıçağa dayanıklı
-  const spider = rows.find((r) => r.family.includes('spider')); // ateşe zayıf
-  const wurm = rows.find((r) => r.family.includes('wurm'));     // bıçağa zayıf, ateşe dayanıklı
+  // Yukarisi BILGI. Kontrol asagida, ve iki loadout'u karsilastirmiyor.
+  //
+  // Karsilastiriyordu, ve yanlis seyi olcuyordu: iki yigin element disinda da farkli, ve o fark
+  // menziller yeniden siralaninca degisti. Meteor 520'den 250'ye, Isin 520'den 310'a indi -
+  // ikisi de ates yiginindaydi - ve saha kalabaliklasinca Yorunge gibi TEMASLI bir buyu
+  // kendiliginden guclendi. Sonuc: ates yigini, atese zayif aileye karsi bicak yiginiyla
+  // berabere kaldi (2452'ye 2455) ve kontrol dustu. Oysa tablo calisiyordu; aletin olctugu sey
+  // tablo degildi.
+  //
+  // Simdi olculen sey tam olarak tablo: AYNI loadout, AYNI bolum, AYNI tohumlar, tablo acik ve
+  // kapali. Arada loadout gucu, menzil, kalabalik, hicbir sey degismiyor - yalnizca direncler.
+  //
+  // Ve ucuncu bolumde degil, ON BIRINCIDE. Ucuncu bolumde olcum DOYMUS durumda: altmis saniyede
+  // sahaya kac yaratik geldigi bellidir ve iki yigin da hepsini olduruyor, yani daha cok hasar
+  // daha cok olum demek degil - olculen sey dalganin hizi oluyor, loadout'un degil. Rakamlar
+  // bunu acikca soyluyordu: tabloyla 2811, tablosuz 2734, aradaki fark %3. On birinci ve on
+  // ikinci bolumde bot gelenin cok gerisinde kaliyor, orada oldurulen sayi gercekten hasari
+  // olcuyor. (Aileler orada yarisi folk, yani etki de yariya iniyor; esik ona gore.)
+  const fireOnSpider = sweep(fireKit, 11, 60, false);
+  const fireOffSpider = sweep(fireKit, 11, 60, true);
+  const fireOnWurm = sweep(fireKit, 12, 60, false);
+  const fireOffWurm = sweep(fireKit, 12, 60, true);
+  const bladeOnWurm = sweep(bladeKit, 12, 60, false);
+  const bladeOffWurm = sweep(bladeKit, 12, 60, true);
+  console.log(`  tablo açık/kapalı (11. ve 12. bölüm, doymamış) — ateş yığını: ` +
+    `örümcek ${fireOnSpider}/${fireOffSpider} · kurt ${fireOnWurm}/${fireOffWurm} · ` +
+    `bıçak yığını: kurt ${bladeOnWurm}/${bladeOffWurm}`);
 
-  check('ateşe zayıf ailelere karşı ateş yığını önde',
-    swarm.fire > swarm.blade && spider.fire > spider.blade,
-    `sürü ${swarm.fire}/${swarm.blade} · örümcek ${spider.fire}/${spider.blade}`);
-  check('ateşe dayanıklı aileye karşı sıralama tersine dönüyor',
-    wurm.blade > wurm.fire,
-    `kurt: ateş ${wurm.fire} · bıçak ${wurm.blade}`);
+  check('ateş yığını, ateşe zayıf aileye karşı tablodan kazanıyor',
+    fireOnSpider > fireOffSpider * 1.06,
+    `örümcek: tabloyla ${fireOnSpider} · tablosuz ${fireOffSpider}`);
+  check('ateş yığını, ateşe dayanıklı aileye karşı tablodan kaybediyor',
+    fireOnWurm < fireOffWurm * 0.96,
+    `kurt: tabloyla ${fireOnWurm} · tablosuz ${fireOffWurm}`);
+  check('bıçak yığını, bıçağa zayıf aileye karşı tablodan kazanıyor',
+    bladeOnWurm > bladeOffWurm * 1.06,
+    `kurt: tabloyla ${bladeOnWurm} · tablosuz ${bladeOffWurm}`);
 
   // Fark hissedilmezse ailelerin bir anlami yok; fark ezici olursa loadout bir secim degil bir
   // sinav olur. Ikisinin arasinda bir yerde olmali.
@@ -2950,6 +3015,16 @@ console.log('');
     `${made}/${runs.length} koşu`);
 }
 
+/**
+ * Bir bolumun satiri, SIRASIYLA degil NUMARASIYLA.
+ *
+ * `byStage[2]` yaziliyordu ve bu `--deep`'te 3. bolum, ornekleme modunda 5. bolum demekti -
+ * ayni satir, iki ayri bolum. "Tiklamak ise yariyor" kontrolu bu yuzden 5. bolumun bitirme
+ * oranini 3. bolumde az tiklayan botunkiyle karsilastiriyordu; %17'ye %22 cikti ve "tiklamak
+ * ise yaramiyor" dedi. Karsilastirilan iki sey ayni bolum bile degildi.
+ */
+const atStage = (n) => byStage.find((b) => b.stage === n) || byStage[byStage.length - 1];
+
 const solo = [];
 for (let i = 1; i <= R(30); i++) solo.push(botRun(i * 104729, ['bolt'], 3).done);
 // Ucuncu bolumde, birincide degil. Tiklamak bekleme suresini kisaltiyor ve bu gercekten ise
@@ -2958,7 +3033,7 @@ for (let i = 1; i <= R(30); i++) solo.push(botRun(i * 104729, ['bolt'], 3).done)
 // sorulmasi gerekir.
 const lazy = [];
 for (let i = 1; i <= R(30); i++) lazy.push(botRun(i * 104729, Four, 3, 1).done);
-console.log(`  sadece sabit büyüyle 3. bölüm: %${Math.round(solo.filter(Boolean).length / solo.length * 100)}  (dört büyüyle %${Math.round(byStage[2].rate * 100)})`);
+console.log(`  sadece sabit büyüyle 3. bölüm: %${Math.round(solo.filter(Boolean).length / solo.length * 100)}  (dört büyüyle %${Math.round(atStage(3).rate * 100)})`);
 console.log(`  neredeyse hiç tıklamayan (1/sn), 3. bölüm: %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
 // Birinci bölümü neredeyse herkes bitirmeli - ilk oturuşta hiçbir şey başaramayan oyuncu geri
@@ -2984,10 +3059,11 @@ check('üç yıldız imkânsız da değil', byStage.some((b) => threes(b) > 0),
   check('bir bölüm beş dakika sürüyor', mid > StageWaves * 0.98 && mid < StageWaves + 180,
     byStage[0].times.length ? fmt(mid) : 'hiç bitmedi');
 }
-check('dolu loadout derin bölümlerde tek büyüden iyi', byStage[2].rate > solo.filter(Boolean).length / solo.length * 1.3,
-  `3. bölüm: %${Math.round(byStage[2].rate * 100)} vs %${Math.round(solo.filter(Boolean).length / solo.length * 100)}`);
-check('tıklamak işe yarıyor', byStage[2].rate > lazy.filter(Boolean).length / lazy.length,
-  `%${Math.round(byStage[2].rate * 100)} vs %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
+check('dolu loadout derin bölümlerde tek büyüden iyi',
+  atStage(3).rate > solo.filter(Boolean).length / solo.length * 1.3,
+  `3. bölüm: %${Math.round(atStage(3).rate * 100)} vs %${Math.round(solo.filter(Boolean).length / solo.length * 100)}`);
+check('tıklamak işe yarıyor', atStage(3).rate > lazy.filter(Boolean).length / lazy.length,
+  `3. bölüm: %${Math.round(atStage(3).rate * 100)} vs az tıklayan %${Math.round(lazy.filter(Boolean).length / lazy.length * 100)}`);
 
 // --- ödüller ne kadar ediyor --------------------------------------------------------------------
 //

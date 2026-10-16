@@ -24,10 +24,14 @@ import { UnlockAt, nextUnlock, anySpell } from './spells.js';
 import { stageOf } from './stages.js';
 import { say, UI, LanguageNames, Languages, language } from './text.js';
 import { needFor, Speeds, starsFor, nextStarAt, stageOpen, furthestStage, starsAt } from './meta.js';
+import { clockOf } from './energy.js';
 
 const Black = '#0d0c0b';
 const Pale = '#ece7dc';
 export const Face = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+/** How long the breath after a run lasts. `main.js` counts down from it; this fades up to it. */
+export const OverFade = 1.7;
 
 /**
  * The third ink, and where it is allowed.
@@ -887,28 +891,35 @@ function eyes(ctx, key, family) {
 }
 
 /**
- * The line on the floor at the end of the longest reach this run has.
+ * A dashed line on the floor at every reach this run is carrying.
  *
- * Spells have a range now, and a creature outside it cannot be touched by anything - so without
- * a line the player is left guessing why the thing at the rim is not dying, which is indis-
- * tinguishable from the game being broken. Drawn at the longest of them rather than one ring per
- * spell: four dashed circles is a dartboard, and what the player needs to know is where the
- * fight begins.
+ * Spells have a range and a creature outside it cannot be touched, so without these the player
+ * is left guessing why the thing at the rim is not dying - which is indistinguishable from the
+ * game being broken.
+ *
+ * One ring per spell rather than one at the longest, and that is the second attempt. With the
+ * reaches ordered by the spell's power at level one, Magic Bolt has the longest of them and
+ * Magic Bolt is always carried - so a single ring at the longest was the same ring in every run
+ * of the game, and said nothing about the four spells drawn inside it. Rounded to ten pixels and
+ * capped at four, so two spells that reach the same distance draw one line and not two.
  */
 function reachRing(ctx, S, state) {
-  let far = 0;
+  const seen = new Set();
   for (const key of carrying(state)) {
     const st = statsOf(state, key);
-    if (st && st.reach > far) far = st.reach;
+    if (!st || st.reach <= 0 || st.reach >= Arena) continue;
+    seen.add(Math.round(st.reach / 10) * 10);
   }
-  if (far <= 0 || far >= Arena) return;
+  if (!seen.size) return;
   ctx.save();
   ctx.setLineDash([9 * S.scale, 11 * S.scale]);
-  ctx.strokeStyle = 'rgba(13,12,11,0.22)';
-  ctx.lineWidth = 2.4;
-  ctx.beginPath();
-  ctx.ellipse(S.cx, S.cy, far * S.scale, far * S.scale * S.squash, 0, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.strokeStyle = 'rgba(13,12,11,0.18)';
+  ctx.lineWidth = 2.2;
+  for (const far of [...seen].sort((a, b) => a - b).slice(0, 4)) {
+    ctx.beginPath();
+    ctx.ellipse(S.cx, S.cy, far * S.scale, far * S.scale * S.squash, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -1634,12 +1645,21 @@ function panel(ctx, state, w, h, U, show) {
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW, 5 * U);
     ctx.fillStyle = Black;
     ctx.fillRect(w / 2 - onW / 2, 50 * U, onW * Math.min(1, state.stageT / StageWaves), 5 * U);
+
+    // The clock, on the right end of the bar. A bar on its own says how far along you are and
+    // nothing about how long that is - and a five minute stage is long enough that the
+    // difference matters.
+    ctx.globalAlpha = 0.72;
+    write(ctx, clockOf(state.stageT * 1000), w / 2 + onW / 2, 66 * U, 11 * U, 800, 'right');
+    ctx.globalAlpha = 1;
   }
   // A horde is worth a word as well as a mark on the floor: the floor is where the player is
-  // looking when things are calm and the top bar is where they look when they are not.
+  // looking when things are calm and the top bar is where they look when they are not. On the
+  // LEFT end of the bar, because the clock has the right end.
   if (show.horde > 0 && !state.boss) {
+    const onW = Math.min(300 * U, w * 0.3);
     ctx.globalAlpha = Math.min(1, show.horde);
-    fitWrite(ctx, say(UI.horde), w / 2, 62 * U, 13 * U, 800, 'center', Black, middle);
+    fitWrite(ctx, say(UI.horde), w / 2 - onW / 2, 66 * U, 11 * U, 800, 'left', Black, onW * 0.6);
     ctx.globalAlpha = 1;
   }
 
@@ -2343,17 +2363,17 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
   // being broken.
   reachRing(ctx, S, state);
 
-  // A horde on its way in, as a thickening of the rim where it is coming from. Drawn before
-  // anything stands on the floor, because it IS the floor.
+  // A horde on its way in, as the whole rim thickening. It used to be an arc on the side the
+  // horde came from, and the hordes came from one side each - which played as the arena having
+  // four sides taking turns. They come from all the way round now and so does this.
   if (show.horde > 0) {
     const k = Math.min(1, show.horde);
     ctx.save();
     ctx.strokeStyle = Black;
-    ctx.globalAlpha = 0.1 + 0.3 * k;
-    ctx.lineWidth = 16 * S.scale * k;
+    ctx.globalAlpha = 0.05 + 0.17 * k;
+    ctx.lineWidth = 12 * S.scale * k;
     ctx.beginPath();
-    ctx.ellipse(S.cx, S.cy, Arena * S.scale, Arena * S.scale * S.squash,
-      0, show.hordeAt - 0.8, show.hordeAt + 0.8);
+    ctx.ellipse(S.cx, S.cy, Arena * S.scale, Arena * S.scale * S.squash, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -2415,6 +2435,65 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
     ctx.fillRect(0, 0, w, h);
     if (show.paused === 'menu') pausePanel(ctx, state, w, h, U, show);
     else cardsPanel(ctx, state, w, h, U);
+  }
+
+  // --- the breath at each end of a run
+  //
+  // Both are stillness over the live field rather than a panel: the rules are not being stepped,
+  // so what is on the floor is exactly where it stopped. The opening one is why the first
+  // creature is not already walking when the stage appears, and the closing one is why the boss
+  // can be seen to fall - the end panel used to replace the field in the same frame the last
+  // creature died, and the player never saw it happen.
+  /**
+   * A band of paper behind whatever a breath has to say.
+   *
+   * Without it the words were drawn straight over the wizard and the wall, which stand in the
+   * middle of the field and are solid black - "STAGE 5" was unreadable across the middle of its
+   * own letters. A band rather than a wash over the whole screen, because the point of a breath
+   * is that the field is still there.
+   */
+  const breath = (midY, tall, k) => {
+    ctx.globalAlpha = 0.86 * k;
+    ctx.fillStyle = Pale;
+    ctx.fillRect(0, midY - tall / 2, w, tall);
+    ctx.globalAlpha = 0.16 * k;
+    ctx.strokeStyle = Black;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, midY - tall / 2); ctx.lineTo(w, midY - tall / 2);
+    ctx.moveTo(0, midY + tall / 2); ctx.lineTo(w, midY + tall / 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  };
+
+  if (show.ready > 0) {
+    spyLayer();
+    const k = Math.min(1, show.ready / 0.4);
+    const midY = h * 0.42;
+    breath(midY, 132 * U, k);
+    ctx.globalAlpha = k;
+    write(ctx, say(UI.stage, state.stage), w / 2, midY - 26 * U, 40 * U, 800, 'center');
+    fitWrite(ctx, say(stageOf(state.stage).name).toUpperCase(), w / 2, midY + 14 * U,
+      14 * U, 700, 'center', Black, w - 60 * U);
+    ctx.globalAlpha = Math.min(1, show.ready * 2) * 0.7 * k;
+    write(ctx, say(UI.ready), w / 2, midY + 44 * U, 12 * U, 800, 'center');
+    ctx.globalAlpha = 1;
+    spyShut();
+    return;
+  }
+  if (show.over > 0 && (state.phase === 'done' || state.phase === 'lost')) {
+    spyLayer();
+    // Fades up rather than appearing: at full ink from the first frame it reads as the panel
+    // arriving early rather than as the fight settling.
+    const k = Math.min(1, (OverFade - show.over) * 1.6);
+    const midY = h * 0.42;
+    breath(midY, 76 * U, k);
+    ctx.globalAlpha = k;
+    fitWrite(ctx, state.phase === 'done' ? say(UI.cleared, state.stage) : say(UI.fallen),
+      w / 2, midY, 24 * U, 800, 'center', Black, w - 60 * U);
+    ctx.globalAlpha = 1;
+    spyShut();
+    return;
   }
 
   // --- the stage is finished, and scored on how much wall is still standing

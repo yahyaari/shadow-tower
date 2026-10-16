@@ -36,6 +36,7 @@ export function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, 
    */
   const trace = [];
   let next = 0;
+  let earned = 0;
   while ((s.phase === 'playing' || s.phase === 'picking') && guard++ < most) {
     if (s.phase === 'picking') {
       let best = 0, bestScore = -1e9;
@@ -58,6 +59,9 @@ export function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, 
     if (since >= 1 / clicksPerSecond) { since = 0; click(s); }
     step(s, dt);
     if (neutral) for (const f of s.foes) if (!f.boss) f.family = 'folk';
+    // Toplam kazanilan deneyim. `s.xp` her seviyede sifirlaniyor, yani merdiveni ona bakarak
+    // secmek mumkun degil: tavanin kosunun neresine dustugu ancak bu sayiyla bilinir.
+    for (const e of s.events) if (e.kind === 'killed') earned += e.xp;
     s.events.length = 0;
     if (s.stageT >= next && next <= StageWaves) {
       trace.push({
@@ -65,6 +69,7 @@ export function botRun(seed, loadout, stage = 1, clicksPerSecond = 6, hero = 0, 
         foes: s.foes.filter((f) => !f.boss).length,
         level: s.level,
         kills: s.kills,
+        earned,
         wall: Math.round(s.wall),
       });
       next += 30;

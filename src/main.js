@@ -6,7 +6,7 @@
 import { begin, advance, click, take, investedIn, spawn, surge, carrying, pressure } from './rules.js';
 import {
   frame, hitCard, cards, hitSpeed, hitRun, hitRunPanel, hitEnd,
-  runBtns, runPanel, runRows, endBtns, endKeys, TextSpy,
+  runBtns, runPanel, runRows, endBtns, endKeys, TextSpy, OverFade,
 } from './draw.js';
 import { menu, menuHit, heroHome, heroReach, wheelReach, boardReach, boardShape, restFor } from './menu.js';
 import { Wedges } from './rewards.js';
@@ -15,6 +15,20 @@ import * as ads from './ads.js';
 import * as music from './music.js';
 import * as meta from './meta.js';
 import { setLanguage, Languages, language } from './text.js';
+
+/**
+ * How long the breath at each end of a run lasts, in seconds.
+ *
+ * A stage used to begin and end between two frames. You pressed PLAY and the wave was already
+ * walking; you fought the Warden, its bar emptied, and the end panel was simply there - the
+ * thing you had spent five minutes on was never seen to die. Both ends are stillness rather than
+ * animation: the rules are not stepped at all, so nothing can walk, bite or be cast during them.
+ *
+ * A press skips either one, because a wait you cannot skip is a wait that is too long the second
+ * time.
+ */
+const ReadyFor = 2.2;
+const OverFor = OverFade;
 import {
   Store as EnergyStore, PerRun as EnergyPerRun, Clean as EnergyClean,
   canRun, spendEnergy, giveEnergy, setEnergy,
@@ -55,8 +69,20 @@ function fresh() {
   return {
     bits: [], floats: [], overCard: null, overMenu: null,
     hint: true, shake: 0, booked: false, won: null, speed: data.speed, settings: false, codexPick: null, heroScroll: null,
-    // A horde arriving, and which way it is coming from. Counts down to nothing, like the shake.
-    horde: 0, hordeAt: 0,
+    // A horde arriving. Counts down to nothing, like the shake.
+    horde: 0,
+    /**
+     * The two beats a run needs at its ends.
+     *
+     * `ready` holds the field still before the first creature is spawned, and `over` holds it
+     * still after the last one falls. Without them a stage began and ended between two frames:
+     * the player was fighting the Warden, its bar emptied, and the end panel was simply there -
+     * they never saw it die. A fight needs a breath at each end to be a fight.
+     *
+     * They live here rather than in the rules because neither is simulation: the rules are not
+     * stepped at all while either is running, which is also why `advance` never sees them.
+     */
+    ready: ReadyFor, over: 0,
     // Half a wedge back, so the wheel opens with a wedge under the pointer rather than the seam
     // between two of them - which looks like a spin that landed on nothing.
     turn: -Math.PI / Wedges.length, spin: null, spinWon: null, chestWon: null, wheelScroll: 0,
@@ -275,14 +301,27 @@ function tick(now) {
   // The bed keeps time with the same number the wave is spawned from, so it tightens as the
   // field fills and opens out again when it clears.
   music.feel(pressure(state));
+  // The breath before it starts. Nothing is stepped: the wall and the wizard stand there, the
+  // stage says its name, and the first creature has not been spawned yet.
+  if (show.ready > 0) {
+    show.ready = Math.max(0, show.ready - dt);
+    frame(ctx, canvas.width, canvas.height, state, show, dpr);
+    requestAnimationFrame(tick);
+    return;
+  }
+
   // A panel you read while the wave keeps walking is a panel that costs you the run. Nothing is
-  // stepped while one is open - not the fight, not the specks, not the floating numbers.
-  const dts = show.paused ? 0 : advance(state, dt, data.speed, readEvents);
+  // stepped while one is open - not the fight, not the specks, not the floating numbers. Nor is
+  // it stepped during the breath after the end, which is there so the last creature can be seen
+  // to fall.
+  const dts = (show.paused || show.over > 0) ? 0 : advance(state, dt, data.speed, readEvents);
+  if (show.over > 0) show.over = Math.max(0, show.over - dt);
 
 
   // Booked once: `step` runs every frame and a run that ended ten frames ago is still ended.
   if (!show.booked && (state.phase === 'done' || state.phase === 'lost')) {
     show.booked = true;
+    show.over = OverFor;
     if (state.phase === 'done') {
       // `investedIn` is read here rather than inside meta, because what the run put into each
       // spell is the run's business and shards are the account's.
@@ -590,6 +629,9 @@ addEventListener('pointerdown', (e) => {
     return;
   }
 
+  // The breath before the first wave: a press skips it, and nothing else happens.
+  if (show.ready > 0) { show.ready = 0; return; }
+
   // The speed control and the two corner buttons sit over the field, so they are read before a
   // tap counts as a cast.
   if (state.phase === 'playing') {
@@ -602,6 +644,8 @@ addEventListener('pointerdown', (e) => {
   // A finished run is answered by its buttons and by nothing else. It used to take a press
   // anywhere, which on a loss put you back in the stage before you had read why you lost.
   if (state.phase === 'done' || state.phase === 'lost') {
+    // A press during the breath skips it rather than pressing a button that is not drawn yet.
+    if (show.over > 0) { show.over = 0; return; }
     doEnd(hitEnd(canvas.width, canvas.height, p.x, p.y, dpr, state, show));
     return;
   }
@@ -743,6 +787,7 @@ addEventListener('keydown', (e) => {
     if (n >= 1 && n <= 3) take(state, n - 1);
     return;
   }
+  if (show.over > 0) { show.over = 0; return; }
   if (state.phase === 'done') { toMenu(); return; }
   if (state.phase === 'lost') { start(); return; }
   if (e.code === 'Space') { e.preventDefault(); click(state); show.hint = false; }

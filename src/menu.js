@@ -2745,7 +2745,52 @@ function board(ctx, data, w, h, U, show) {
   ctx.clip();
   ctx.translate(0, -up);
 
-  /** One row of a list, with a press on the end when there is something to take. */
+  /**
+   * What a row pays, drawn as a gem count and a gold count.
+   *
+   * Right-aligned to `right`, and it returns how wide it was so what sits beside it can be given
+   * the rest.
+   */
+  const prizeWide = (prize, size) => {
+    if (!prize) return 0;
+    ctx.font = `800 ${size}px ${Face}`;
+    let wide = 0;
+    if (prize.gold > 0) wide += ctx.measureText(String(prize.gold)).width + size * 1.95;
+    if (prize.gems > 0) wide += ctx.measureText(String(prize.gems)).width + size * 1.95;
+    return wide;
+  };
+
+  const prizeAt = (right, y, prize, size) => {
+    if (!prize) return 0;
+    const gold = prize.gold || 0;
+    const gems = prize.gems || 0;
+    ctx.font = `800 ${size}px ${Face}`;
+    let x = right;
+    if (gold > 0) {
+      const gw = ctx.measureText(String(gold)).width;
+      write(ctx, String(gold), x, y, size, 800, 'right');
+      // Simge ile sayinin arasi, isaretin yaricapindan belirgin sekilde genis olmali: 0.62'de
+      // aralarinda uc piksel kaliyordu ve tarama bunu cakisma diye okudu, hakli olarak.
+      coin(ctx, x - gw - size * 0.92, y, size * 0.44, Black, Pale);
+      x -= gw + size * 1.95;
+    }
+    if (gems > 0) {
+      const mw = ctx.measureText(String(gems)).width;
+      write(ctx, String(gems), x, y, size, 800, 'right');
+      gem(ctx, x - mw - size * 0.98, y, size * 0.5, Black, Pale);
+      x -= mw + size * 1.95;
+    }
+    return right - x;
+  };
+
+  /**
+   * One row of a list, with a press on the end when there is something to take.
+   *
+   * Every row says what it pays, in all three of its states. It used to say the prize only while
+   * the mission was unfinished: the moment you pressed TAKE the row went to the word "taken" and
+   * nothing else, so the one thing you wanted to know - what did I just get - was the one thing
+   * it stopped telling you. The player reported exactly that.
+   */
   const row = (r, name, at, need, done, paid, prize, lit) => {
     ctx.strokeStyle = Black;
     ctx.lineWidth = (done && !paid ? 3 : 1.5) * U;
@@ -2753,8 +2798,15 @@ function board(ctx, data, w, h, U, show) {
     ctx.beginPath(); boxPath(ctx, r.x, r.y, r.w, r.h, 11 * U); ctx.stroke();
 
     const press = boardTake(r, U);
-    const room = (done && !paid ? press.x - 10 * U : r.x + r.w - 12 * U) - (r.x + 14 * U);
+    // The prize sits in the SAME place on every row - first line, hard right, inside the button
+    // when there is one - and the name is given whatever is left of the line. Tucked under the
+    // button instead, it hung over the bottom edge of the row and read as belonging to the row
+    // below.
+    const edge = (done && !paid ? press.x - 10 * U : r.x + r.w - 14 * U);
+    const wide = prizeWide(prize, 12 * U);
+    const room = edge - (r.x + 14 * U) - (wide ? wide + 10 * U : 0);
     fitWrite(ctx, name, r.x + 14 * U, r.y + 22 * U, 12 * U, 800, 'left', Black, room);
+    prizeAt(edge, r.y + 22 * U, prize, 12 * U);
 
     if (need > 1 || at < need) {
       const bw = room * 0.6;
@@ -2768,7 +2820,8 @@ function board(ctx, data, w, h, U, show) {
     }
 
     if (paid) {
-      write(ctx, say(UI.dailyDone), r.x + r.w - 14 * U, r.y + r.h / 2, 11 * U, 800, 'right');
+      // The prize is already drawn above; this is only the word that says it is in the bank.
+      write(ctx, say(UI.tookIt), r.x + r.w - 14 * U, r.y + 44 * U, 10 * U, 800, 'right');
     } else if (done) {
       ctx.fillStyle = lit ? Black : Pale;
       ctx.beginPath(); boxPath(ctx, press.x, press.y, press.w, press.h, 9 * U); ctx.fill();
@@ -2777,11 +2830,6 @@ function board(ctx, data, w, h, U, show) {
       ctx.beginPath(); boxPath(ctx, press.x, press.y, press.w, press.h, 9 * U); ctx.stroke();
       write(ctx, say(UI.dailyTake), press.x + press.w / 2, press.y + press.h / 2,
         12 * U, 800, 'center', lit ? Pale : Black);
-    } else if (prize) {
-      ctx.font = `800 ${12 * U}px ${Face}`;
-      const pw = ctx.measureText(String(prize.gems)).width;
-      gem(ctx, r.x + r.w - 16 * U - pw - 11 * U, r.y + r.h / 2, 7 * U, Black, Pale);
-      write(ctx, String(prize.gems), r.x + r.w - 14 * U, r.y + r.h / 2, 12 * U, 800, 'right');
     }
     ctx.globalAlpha = 1;
   };
@@ -2789,7 +2837,7 @@ function board(ctx, data, w, h, U, show) {
   if (key === 'week') {
     const w0 = week(data);
     row(rows[0], say(UI.weekRun, w0.run, w0.of), w0.run, w0.of, w0.due, false,
-      { gems: w0.pays.gems }, show.overMenu === 'week');
+      w0.pays, show.overMenu === 'week');
 
     // Seven marks under it, one a day. The bar in the row says how far along you are; these say
     // what the promise actually is - seven of them, and then it starts over.
@@ -2819,7 +2867,7 @@ function board(ctx, data, w, h, U, show) {
   } else if (key === 'jobs') {
     dailyJobs(data).forEach((j, i) => {
       row(rows[i], say(j.job.name), j.at, j.need, j.done, j.paid,
-        { gems: j.pays.gems }, show.overMenu === 'daily:' + j.key);
+        j.pays, show.overMenu === 'daily:' + j.key);
     });
 
   } else if (key === 'feats') {

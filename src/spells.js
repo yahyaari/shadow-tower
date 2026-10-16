@@ -27,17 +27,31 @@ export const BoostsPerTier = 4;
  * rather than a crowd.
  *
  * The arena is 560 across and the wall is bitten at 96, so every number here has to cover
- * 96 upwards or the spell cannot defend the thing it is standing on. Beyond that they differ, and
- * the difference is the spell's character: artillery reaches the rim, a fan of blades does not.
+ * 96 upwards or the spell cannot defend the thing it is standing on.
+ *
+ * The ORDER is the design, and it is the player's: range is what a spell pays for its power at
+ * level one. Magic Bolt is the weakest thing in the game - seven damage to one creature - and it
+ * reaches furthest. Everything that hits a crowd, or hits hard, has to let the crowd come to it.
+ * So the ladder runs: one target and weak (Bolt, then Wisp), one target and heavy or an area and
+ * light (Fireball and Frost Orb, which sit together), several targets at once (Lightning, Beam,
+ * Shards), and then the heavy area spells last (Meteor, Nova).
+ *
+ * It also fixes the thing that made the first table wrong: Meteor and Beam reached the whole
+ * field while Magic Bolt could not see past the middle, so the strongest spells also had the
+ * longest arms and the opening spell of every run was the one that could not defend the wall.
  *
  * Nova and Orbit have no number of their own. Their reach IS their blast and their ring, so it is
  * worked out from those - a Wider Nova really does reach further, and a card that said otherwise
  * would be a card that lies.
  */
 export const Reaches = {
-  bolt: 330, shards: 250, wisp: 430, fireball: 430, frost: 300,
-  lightning: 320, laser: 520, nova: 190, meteor: 520, blade: 200,
-  tempest: 360, hail: 300, halo: 215, collapse: 250,
+  bolt: 520,
+  wisp: 450,
+  fireball: 380, frost: 380,
+  lightning: 330, laser: 310, shards: 290,
+  meteor: 250,
+  blade: 200, nova: 190,
+  tempest: 310, hail: 280, halo: 215, collapse: 250,
 };
 
 /**

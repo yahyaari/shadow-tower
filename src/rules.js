@@ -159,7 +159,7 @@ export const Grace = 25;
 export const StageStep = 0.2;
 export const pressure = (s) =>
   (1 + Math.max(0, s.t - Grace) / RampOver) * (1 + ((s.stage || 1) - 1) * StageStep);
-export const spawnEvery = (s) => Math.max(0.05, 1.0 / Math.pow(pressure(s), 1.3));
+export const spawnEvery = (s) => Math.max(0.05, 0.92 / Math.pow(pressure(s), 1.3));
 
 /**
  * The horde: how often one arrives, and how big it is.
@@ -170,14 +170,18 @@ export const spawnEvery = (s) => Math.max(0.05, 1.0 / Math.pow(pressure(s), 1.3)
  * that gets faster against a player who also gets faster is two curves cancelling each other out.
  * Pressure that can only be read off a graph is not pressure.
  *
- * A horde does not cancel. A dozen arrive at once, from ONE direction - which is the part that
- * matters, because a ring of twelve is only a faster drip, while twelve from the north is a side
- * of the tower that is about to be lost. For the twenty seconds after one lands the field is
- * genuinely full, and that is the shape of a stage: breathe, brace, breathe, brace.
+ * A horde does not cancel. A dozen or more arrive at once and the field is genuinely full for
+ * the twenty seconds after one lands, which is the shape of a stage: breathe, brace, breathe,
+ * brace.
+ *
+ * They come from ALL THE WAY ROUND, and that was the player's correction. The first version
+ * dropped each horde inside an arc of a radian and a half, on the reasoning that one side of the
+ * tower about to be lost reads better than a ring. Played, it read as the arena having four
+ * sides - north, south, east and west, taking turns - which is the opposite of a tower with
+ * things closing in on it from everywhere. A ring it is, and the crowd is what carries it.
  */
-export const SurgeEvery = 26;
-export const surgeSize = (s) => Math.round(4 + pressure(s) * 2.8);
-export const SurgeArc = 1.5;
+export const SurgeEvery = 24;
+export const surgeSize = (s) => Math.round(5 + pressure(s) * 3.2);
 
 export function seeded(seed) {
   let x = seed >>> 0 || 1;
@@ -203,20 +207,38 @@ export const MaxLevel = 23;
 export const maxed = (s) => s.level >= MaxLevel;
 
 /**
- * What the next level of a run costs, in kills.
+ * What the next level of a run costs, in kills - and why the stage number is in it.
  *
- * Chosen against the measurement rather than guessed. A cleared stage one earns about 930 xp over
- * its five minutes and this ladder totals 620 to the ceiling: measured over twelve runs, every
- * one of them reached 23 and the median reached it between the fourth and the fourth-and-a-half
- * minute - so the last pick lands with the heaviest horde and the boss still to come. The old
- * ladder was nearly flat and got there in half the time, which is how the second half of a stage
- * ended up with nothing left to decide.
+ * Chosen against the measurement rather than guessed. Sampled every thirty seconds, a cleared
+ * stage one earns 27, 78, 132, 198, 299, 402, 524, 649, 804, 975 experience; this ladder totals
+ * about 945 to the ceiling, so the last pick lands at around five minutes - with the heaviest
+ * horde and the boss still to come. The first ladder totalled 620 and got there by 4:15, and the
+ * player said exactly what that feels like: nothing left to choose while the stage runs on.
+ *
+ * The stage is in it because a deeper stage pays far more experience for the same five minutes -
+ * stage three earns 1473 where stage one earns 975 - so a fixed ladder would hand stage eight its
+ * last card at the three minute mark.
+ *
+ * But that scaling is spread ACROSS the ladder rather than applied flat to it, and the difference
+ * is a whole stage. Flat, the first card of stage five cost nearly twice what the first card of
+ * stage one costs - so the hardest openings were also the slowest to arm themselves, and a bare
+ * account at stage five died at forty-five seconds having reached level six. The opening is when
+ * cards are needed most and it is now identical everywhere; it is the TOP of the ladder that
+ * stretches, which is the end that was arriving too early.
+ *
+ * And it STOPS at stage five, which is the other thing the measurement insisted on. Carried on
+ * climbing, the last level of stage twelve cost four times the last level of stage one, and a
+ * fully kitted account went from reaching stage thirteen to stalling at ten - three stages of
+ * the game deleted to fix the pacing of the three stages anybody is actually playing. Past the
+ * fifth they all use the fifth's ladder: the ceiling arrives early down there, and a run that is
+ * being overrun at stage twelve has nothing to complain about on that score.
  *
  * It climbs rather than staying flat because the early picks are the ones that have to arrive
  * quickly: a run opens with one spell casting and the other four are cards.
  */
-export function xpFor(level) {
-  return Math.round(3 * Math.pow(1.18, level - 1));
+export function xpFor(level, stage = 1) {
+  const along = Math.min(1, (level - 1) / (MaxLevel - 1));
+  return Math.round(3 * Math.pow(1.21, level - 1) * (1 + (Math.min(5, Math.max(1, stage)) - 1) * 0.27 * along));
 }
 
 // --- a run --------------------------------------------------------------------------------------
@@ -257,7 +279,7 @@ export function begin(seed = Date.now(), loadout = [Always], stage = 1, hero = N
     sealed: [],
     fused: [],
     wall: Base.wall + (hero.wall || 0), maxWall: Base.wall + (hero.wall || 0),
-    level: 1, xp: 0, need: xpFor(1),
+    level: 1, xp: 0, need: xpFor(1, stage),
     kills: 0,
     heat: 0,
     loadout: carried,
@@ -394,11 +416,13 @@ export function statsOf(s, key) {
  */
 export function surge(s) {
   const many = surgeSize(s);
+  // Evenly round the circle, with a random quarter-turn so two hordes are never the same ring,
+  // and a little jitter on each so it is a crowd rather than a clock face.
   const from = s.roll() * Math.PI * 2;
   for (let i = 0; i < many; i++) {
-    spawn(s, null, from + ((many > 1 ? i / (many - 1) : 0.5) - 0.5) * SurgeArc);
+    spawn(s, null, from + (i / many) * Math.PI * 2 + (s.roll() - 0.5) * 0.5);
   }
-  s.events.push({ kind: 'surge', many, a: from });
+  s.events.push({ kind: 'surge', many });
   return many;
 }
 
@@ -813,7 +837,7 @@ export function boostsFor(s, key) {
  * spells you brought: reachable by a player who means it, and not somewhere you arrive by
  * accident.
  */
-export const FuseAt = 12;
+export const FuseAt = 9;
 
 /**
  * The fusions this run could still make.
@@ -1246,7 +1270,7 @@ export function step(s, dt) {
   } else if (s.xp >= s.need) {
     s.xp -= s.need;
     s.level += 1;
-    s.need = xpFor(s.level);
+    s.need = xpFor(s.level, s.stage);
     s.choices = offer(s);
     if (s.choices.length) {
       s.phase = 'picking';
