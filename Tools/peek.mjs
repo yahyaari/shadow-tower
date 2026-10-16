@@ -572,6 +572,9 @@ await screenshot('kosu_vurus_sayilari');
 const horde = await evaluate(`(() => {
   const m = window.ShadowTower;
   const s = m.state;
+  // Kart ekrani aciksa sahadan hicbir sey gorunmuyor. Bu uc kare sahayi cekiyor, karti degil.
+  if (s.phase === 'picking') { s.phase = 'playing'; s.choices = []; }
+  s.xp = 0;
   s.level = 23;
   s.xp = s.need;
   m.surgeOne(s);
@@ -585,7 +588,12 @@ await screenshot('kosu_suru_ve_tavan');
 
 // Kosunun iki ucundaki nefes. Ikisi de canli sahanin ustunde duruyor ve ikisinde de kurallar
 // adimlanmiyor; bir bolum eskiden iki kare arasinda baslayip iki kare arasinda bitiyordu.
-await evaluate(`(() => { window.ShadowTower.show.ready = 2; return true; })()`);
+await evaluate(`(() => {
+  const m = window.ShadowTower;
+  if (m.state.phase === 'picking') { m.state.phase = 'playing'; m.state.choices = []; }
+  m.show.ready = 2;
+  return true;
+})()`);
 await sleep(300);
 await screenshot('kosu_hazir');
 await evaluate(`(() => { window.ShadowTower.show.ready = 0; return true; })()`);

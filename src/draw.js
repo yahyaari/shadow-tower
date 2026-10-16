@@ -908,14 +908,17 @@ function reachRing(ctx, S, state) {
   for (const key of carrying(state)) {
     const st = statsOf(state, key);
     if (!st || st.reach <= 0 || st.reach >= Arena) continue;
-    seen.add(Math.round(st.reach / 10) * 10);
+    // Kirkar piksele yuvarlaniyor, ona degil: bir koşuda dort buyunun menzilleri 520/380/330/310
+    // olunca yerde dort ayri kesik halka cikiyordu ve oyuncunun yapabilecegi hicbir sey bu
+    // otuz pikseli ayirt etmeye bagli degil. Uc halka, yerde okunabilen en fazla sayi.
+    seen.add(Math.round(st.reach / 40) * 40);
   }
   if (!seen.size) return;
   ctx.save();
   ctx.setLineDash([9 * S.scale, 11 * S.scale]);
-  ctx.strokeStyle = 'rgba(13,12,11,0.18)';
+  ctx.strokeStyle = 'rgba(13,12,11,0.16)';
   ctx.lineWidth = 2.2;
-  for (const far of [...seen].sort((a, b) => a - b).slice(0, 4)) {
+  for (const far of [...seen].sort((a, b) => a - b).slice(0, 3)) {
     ctx.beginPath();
     ctx.ellipse(S.cx, S.cy, far * S.scale, far * S.scale * S.squash, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -2349,9 +2352,12 @@ export function frame(ctx, w, h, state, show, dpr = 1) {
 
   backdrop(ctx, S, state, w, h);
 
+  // Iki halka, dort degil. Ortadaki ikisi sahaya olcek vermek icin vardi ve menzil halkalari
+  // geldikten sonra yerde sekiz tane cember oluyordu - bir de yere birakilan firtinalar kesik
+  // cizgili. Kalan ikisi bilgi tasiyor: biri isirilan yer, oteki sahanin kenari.
   ctx.strokeStyle = 'rgba(13,12,11,0.08)';
   ctx.lineWidth = 2;
-  for (const r of [Reach, Arena * 0.5, Arena * 0.78, Arena]) {
+  for (const r of [Reach, Arena]) {
     ctx.beginPath();
     ctx.ellipse(S.cx, S.cy, r * S.scale, r * S.scale * S.squash, 0, 0, Math.PI * 2);
     ctx.stroke();
