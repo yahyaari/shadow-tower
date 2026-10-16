@@ -85,7 +85,24 @@ await send('Emulation.setDeviceMetricsOverride',
 // `--gercek` verilirse sahte SDK kurulmuyor: oyun `?sdk=1` ile açılıp CrazyGames'in KENDİ
 // SDK'sını indiriyor. Portal ortamını yerelde tekrarlamanın tek dürüst yolu bu.
 const real = process.argv.includes('--gercek');
-if (!real) await send('Page.addScriptToEvaluateOnNewDocument', {
+// `--kirik`: SDK yüklendi ama `init()` başarısız oldu. Reklam engelleyici portalın kendi
+// scriptlerini engelleyince CrazyGames QA'de olan tam buydu, ve o hâlde SDK'nın ÖZELLİKLERİNE
+// DOKUNMAK bile patlıyor - oyunu donduran şey buydu.
+const broken = process.argv.includes('--kirik');
+if (broken) await send('Page.addScriptToEvaluateOnNewDocument', {
+  source: `
+    (function () {
+      var boom = function () { throw { name: 'CrazySDK', message: 'CrazySDK is not initialized yet.' }; };
+      var sdk = { init: function () { return Promise.reject({ code: 'blocked' }); } };
+      for (var i = 0, names = ['ad', 'data', 'game', 'user', 'banner']; i < names.length; i++) {
+        Object.defineProperty(sdk, names[i], { get: boom });
+      }
+      window.CrazyGames = { SDK: sdk };
+    })();
+  `,
+});
+
+if (!real && !broken) await send('Page.addScriptToEvaluateOnNewDocument', {
   source: `
     window.CrazyGames = {
       SDK: {
@@ -134,23 +151,25 @@ const shot = async (name) => {
 };
 
 /**
- * Bir kare ÇİZİLDİ Mİ, yoksa döngü mü öldü.
+ * Döngü hâlâ ATIYOR MU.
  *
- * Donmuş bir tuval hâlâ bir resim gösteriyor, yani ekran görüntüsü tek başına bir şey söylemiyor.
- * Sayaç `draw.js`'teki casusun kare sayacı: iki okuma arasında artmadıysa döngü ölmüştür.
+ * İlk hâli `spy.done.length > 0` diye bakıyordu ve bu HİÇBİR ŞEY ölçmüyordu: donmuş bir döngüde
+ * `done` son tamamlanan karenin kutularını tutmaya devam ediyor. Araç o yüzden gerçek hatayı
+ * çalıştırdı ve "çiziyor" dedi. Ölçülmesi gereken şey TAMAMLANAN KARE SAYISININ ARTMASI.
  */
-const frames = () => evaluate('(window.ShadowTower.spy.on = true, window.ShadowTower.spy.boxes.length)');
+const frames = () => evaluate('window.ShadowTower.spy.frames');
 
 async function visit(tab) {
   await evaluate(`(() => { window.ShadowTower.meta.tab = '${tab}'; return true; })()`);
   await sleep(400);
   const was = bad;
-  const a = await evaluate('window.ShadowTower.spy.done.length');
-  await sleep(350);
-  const b = await evaluate('window.ShadowTower.spy.done.length');
-  const alive = a > 0 || b > 0;
+  const a = await frames();
+  await sleep(400);
+  const b = await frames();
+  const alive = b > a;
   await shot('sekme_' + tab);
-  console.log(`  sekme ${tab}: ${alive ? 'çiziyor' : 'DONDU'}${bad > was ? ' · YENİ HATA' : ''}`);
+  console.log(`  sekme ${tab}: ${alive ? `çiziyor (${b - a} kare)` : 'DONDU'}` +
+    `${bad > was ? ' · YENİ HATA' : ''}`);
   return alive && bad === was;
 }
 

@@ -81,7 +81,12 @@ const depth = (y) => 0.66 + ((y + Arena) / (Arena * 2)) * 0.62;
  *
  * Off by default and costs one `measureText` per label when on.
  */
-export const TextSpy = { on: false, boxes: [], done: [], layer: 0 };
+export const TextSpy = {
+  on: false, boxes: [], done: [], layer: 0,
+  // Kaç kare TAMAMLANDI. `done` donmuş bir döngüde de dolu kalıyor, yani "bir şey var mı" diye
+  // bakmak canlılığı ölçmez; ölçen şey bu sayının artıp artmadığı.
+  frames: 0,
+};
 
 function note(ctx, box) {
   // In canvas coordinates, not in whatever space the caller happens to be in. A scrolled board
@@ -132,7 +137,11 @@ export function spyLayer() { if (TextSpy.on) TextSpy.layer += 1; }
 
 /** Called by whatever owns a screen, so a reading is one frame rather than a pile of them. */
 export function spyOpen() { if (TextSpy.on) { TextSpy.boxes = []; TextSpy.layer = 0; } }
-export function spyShut() { if (TextSpy.on) TextSpy.done = TextSpy.boxes; }
+export function spyShut() {
+  if (!TextSpy.on) return;
+  TextSpy.done = TextSpy.boxes;
+  TextSpy.frames += 1;
+}
 
 export function write(ctx, text, x, y, size, weight = 600, align = 'left', colour = Black) {
   ctx.fillStyle = colour;

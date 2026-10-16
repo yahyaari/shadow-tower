@@ -34,7 +34,7 @@ import {
 import {
   Allow as AdAllow, Kinds as AdKinds, ready as adsReady,
   open as portalOpen, playing as portalPlaying, cheer as portalCheer,
-  progress as portalProgress, watchSettings, mutedByPortal, show as adShow,
+  progress as portalProgress, watchSettings, mutedByPortal, show as adShow, ready,
 } from '../src/ads.js';
 import { News } from '../src/news.js';
 import {
@@ -2284,6 +2284,35 @@ check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false)
   // Portalin sesi, oyunun sesinden ustun.
   globalThis.window.CrazyGames.SDK.game.settings.muteAudio = true;
   check('portal susturunca oyun da susuyor', mutedByPortal() === true);
+
+  delete globalThis.window;
+}
+
+// --- BASLATILMAMIS SDK -----------------------------------------------------------------------
+//
+// CrazyGames'in QA ortaminda oyuncunun reklam engelleyicisi portalin KENDI scriptlerini engelledi,
+// `init()` basarisiz oldu, ve o halde SDK'nin OZELLIKLERINE DOKUNMAK bile patliyor. `ready()`
+// icinde `sdk().ad` `portal.started`'dan once okunuyordu: oduller sekmesi karenin ortasinda oldu,
+// sekme seridi cizilmedi ve oyuncu o ekranda kapana kisildi.
+{
+  const boom = () => { throw { name: 'CrazySDK', message: 'CrazySDK is not initialized yet.' }; };
+  const sdk = { init: () => Promise.reject({ code: 'blocked' }) };
+  for (const name of ['ad', 'data', 'game', 'user', 'banner']) {
+    Object.defineProperty(sdk, name, { get: boom });
+  }
+  globalThis.window = { CrazyGames: { SDK: sdk } };
+
+  check('başlatılamayan portal açılışı sessizce düşüyor', (await portalOpen()) === false);
+  // Asil mesele: bundan SONRA cizim ve basma yollarinda cagrilan her sey patlamamali.
+  check("kırık SDK: reklam hazır değil", ready() === false);
+  check("kırık SDK: hiçbiri patlamıyor", (() => {
+    try {
+      portalPlaying(true); portalPlaying(false); portalCheer(); portalProgress(50);
+      watchSettings(() => {});
+      return mutedByPortal() === false;
+    } catch { return false; }
+  })(), 'tek bir patlama bütün kareyi düşürüyor');
+  check("kırık SDK: reklam ödemiyor", (await adShow()) === false);
 
   delete globalThis.window;
 }

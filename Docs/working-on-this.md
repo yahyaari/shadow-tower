@@ -549,6 +549,48 @@ donanımlı bir hesapla, geçilmiş bir bölümde, tırmanmış bir dalgada yap�
 fotoğraflanıyor (`*_kare1..5.png`). Bakılmamış bir video, gönderilmiş ama hiç açılmamış bir
 dosyadır.
 
+## Başlatılmamış bir SDK'ya dokunmak
+
+**Oyuncunun reklam engelleyicisi CrazyGames'in KENDİ scriptlerini engelledi**, `init()` başarısız
+oldu, ve o hâlde SDK'nın **özelliklerine dokunmak** bile hata fırlatıyor:
+
+```
+CrazySDK is not initialized yet.
+```
+
+`ready()` şöyleydi:
+
+```js
+return !!(sdk() && sdk().ad && portal.started && !portal.blocked);
+//               ^^^^^^^^^ patlıyor, portal.started'a hiç sıra gelmiyor
+```
+
+Sonuç: **ödüller sekmesi karenin ortasında öldü.** Çark çizildi, sekme şeridi çizilmedi, döngü
+durdu ve basışlar da aynı yerden patladığı için hiçbir tıklama işlemedi — oyuncu o ekranda kapana
+kısıldı. Harita sekmesi `adsReady()` çağırmadığı için çalışmaya devam ediyordu, o yüzden hata
+"sadece ödüllerde" gibi görünüyordu.
+
+Artık portalın hiçbir parçasına `portal.started` doğrulanmadan ve bir `try` olmadan dokunulmuyor
+(`part(name)`). Dokümanın kendi şartı da buydu: **oyun reklam engelleyici varken de çalışmalı.**
+
+## Aleti oyun sanmanın altıncısı
+
+`Tools/portal.mjs` bu yolları çalıştırdı ve **"çiziyor" dedi.** Çünkü canlılığı
+`spy.done.length > 0` ile ölçüyordum, ve donmuş bir döngüde `done` son tamamlanan karenin
+kutularını tutmaya devam ediyor. Yani alet hatayı tetikledi, sonucu gördü, ve yanlış okudu.
+
+Şimdi `spy.frames` sayıyor: **tamamlanan kare sayısı artıyor mu.** Hata geri konup doğrulandı —
+eski kodda `DONDU`, yenisinde `çiziyor (8 kare)`.
+
+```sh
+node Tools/portal.mjs <url> <klasör> <en> <boy>            # sahte SDK
+node Tools/portal.mjs <url> <klasör> <en> <boy> --kirik    # SDK var, init başarısız
+node Tools/portal.mjs <url> <klasör> <en> <boy> --gercek   # CrazyGames'in gerçek SDK'sı
+```
+
+`--kirik` en tehlikeli hâl ve varsayılan olması gereken hâl: reklam engelleyici olan her oyuncu
+orada.
+
 ## CrazyGames SDK — `src/ads.js`
 
 Portalı bilen **tek dosya**, ve SDK yoksa içindeki her çağrı sessizce boş geçiyor. `index.html`
@@ -931,6 +973,7 @@ Testte 400 rastgele seçimde tek bir sızıntı olmadığı doğrulanıyor.
 | `Tools/tune.mjs` | Seçilen bölümleri seçilen sayıda oynatıp tabloyu basar. Bir sayıyı denemek için. |
 | `Tools/cover-art.js` | Üç kapak görseli, oyunun kendi çizimiyle. `cover.mjs` çizdirip kaydeder. |
 | `Tools/promo.mjs` | Tanıtım videosu: oyunu kendisi oynatır, kaydeder, beş kare fotoğraflar. |
+| `Tools/portal.mjs` | Oyunu portal varmış gibi açar. Sahte, kırık ve gerçek SDK ile. |
 | `Tools/look.mjs` | Gerçek zamanlı oynatır. Dakikalar. |
 
 ```sh

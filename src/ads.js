@@ -29,9 +29,32 @@ const sdk = () => (typeof window !== 'undefined' && window.CrazyGames && window.
  */
 const portal = { started: false, blocked: false, playing: false };
 
+/**
+ * Başlatılmamış bir SDK'ya DOKUNMAK bile hata fırlatıyor.
+ *
+ * CrazyGames'in QA ortamında oyuncunun reklam engelleyicisi portalın kendi scriptlerini de
+ * engelledi, `init()` başarısız oldu, ve ondan sonra `SDK.ad` özelliğini OKUMAK
+ * "CrazySDK is not initialized yet" diye patlamaya başladı. `ready()` içinde `sdk().ad`
+ * `portal.started`'dan ÖNCE okunuyordu, yani kontrol hiçbir işe yaramıyordu: ödüller sekmesi
+ * karenin ortasında ölüyor, sekme şeridi çizilmiyor ve oyuncu o ekranda kapana kısılıyordu.
+ *
+ * Buradan sonra portalın hiçbir parçasına, `portal.started` doğrulanmadan ve bir `try` olmadan
+ * dokunulmuyor. Dokümanın kendi şartı da bu: oyun, reklam engelleyici varken de çalışmalı.
+ */
+function part(name) {
+  if (!portal.started) return null;
+  const s = sdk();
+  if (!s) return null;
+  try {
+    return s[name] || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a rewarded advert can actually be shown right now. */
 export function ready() {
-  return !!(sdk() && sdk().ad && portal.started && !portal.blocked);
+  return !!(part('ad') && !portal.blocked);
 }
 
 /**
@@ -44,8 +67,10 @@ export function ready() {
 export async function open() {
   const s = sdk();
   if (!s) return false;
+  // `loadingStart` dokümana göre init'ten önce gelir, ama bu SDK sürümü başlatılmadan önce
+  // kendisine dokunulmasına hata veriyor. Kendi `try`'ında: patlarsa init yine de denenecek.
+  try { if (s.game && s.game.loadingStart) s.game.loadingStart(); } catch { /* yoksa yok */ }
   try {
-    if (s.game && s.game.loadingStart) s.game.loadingStart();
     await s.init();
     portal.started = true;
     if (s.ad && s.ad.hasAdblock) {
@@ -74,12 +99,12 @@ export async function open() {
  * kind of thing that is easy to do and hard to see.
  */
 export function playing(on) {
-  const s = sdk();
-  if (!s || !portal.started || !s.game || portal.playing === !!on) return;
+  const g = part('game');
+  if (!g || portal.playing === !!on) return;
   portal.playing = !!on;
   try {
-    if (on) s.game.gameplayStart();
-    else s.game.gameplayStop();
+    if (on) g.gameplayStart();
+    else g.gameplayStop();
   } catch { /* portal susarsa oyun durmaz */ }
 }
 
@@ -90,17 +115,18 @@ export function playing(on) {
  * stage cleared for the FIRST time, which happens a dozen times in the life of an account.
  */
 export function cheer() {
-  const s = sdk();
-  if (!s || !portal.started || !s.game || !s.game.happytime) return;
-  try { s.game.happytime(); } catch { /* yoksa yok */ }
+  const g = part('game');
+  try { if (g && g.happytime) g.happytime(); } catch { /* yoksa yok */ }
 }
 
 /** How far through the game this account is, 0 to 100. Only ever moves forward. */
-export function progress(part) {
-  const s = sdk();
-  if (!s || !portal.started || !s.game || !s.game.reportGameCompletedPercentage) return;
-  try { s.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(part)))); }
-  catch { /* yoksa yok */ }
+export function progress(howFar) {
+  const g = part('game');
+  try {
+    if (g && g.reportGameCompletedPercentage) {
+      g.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(howFar))));
+    }
+  } catch { /* yoksa yok */ }
 }
 
 /**
@@ -110,12 +136,11 @@ export function progress(part) {
  * `onMute` is handed the portal's wish and the game obeys it.
  */
 export function watchSettings(onMute) {
-  const s = sdk();
-  if (!s || !portal.started || !s.game || !s.game.addSettingsChangeListener) return;
-  const tell = () => {
-    try { onMute(!!(s.game.settings && s.game.settings.muteAudio)); } catch { /* yoksa yok */ }
-  };
-  try { s.game.addSettingsChangeListener(tell); } catch { /* yoksa yok */ }
+  const g = part('game');
+  if (!g) return;
+  const tell = () => { try { onMute(mutedByPortal()); } catch { /* yoksa yok */ } };
+  try { if (g.addSettingsChangeListener) g.addSettingsChangeListener(tell); }
+  catch { /* yoksa yok */ }
   tell();
 }
 
@@ -130,13 +155,17 @@ export function watchSettings(onMute) {
  * Null off the portal, and `meta.js` uses localStorage directly then.
  */
 export function store() {
-  const s = sdk();
-  return (portal.started && s && s.data && typeof s.data.getItem === 'function') ? s.data : null;
+  const box = part('data');
+  return box && typeof box.getItem === 'function' ? box : null;
 }
 
 export const mutedByPortal = () => {
-  const s = sdk();
-  return !!(s && portal.started && s.game && s.game.settings && s.game.settings.muteAudio);
+  const g = part('game');
+  try {
+    return !!(g && g.settings && g.settings.muteAudio);
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -164,8 +193,10 @@ export function show(hush = null) {
       if (hush) { try { hush(false); } catch { /* yoksa yok */ } }
       done(won);
     };
+    const ad = part('ad');
+    if (!ad) { end(false); return; }
     try {
-      sdk().ad.requestAd('rewarded', {
+      ad.requestAd('rewarded', {
         adStarted: () => { if (hush) { try { hush(true); } catch { /* yoksa yok */ } } },
         adFinished: () => end(true),
         adError: () => end(false),
