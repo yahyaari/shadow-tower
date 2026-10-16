@@ -200,7 +200,11 @@ console.log('  çark çevrildikten sonra: ' + (after ? 'çiziyor' : 'DONDU'));
 
 // Bir kosu baslat ve bitir: `gameplayStart` / `gameplayStop` yalnizca burada gidiyor, ve
 // Basic Launch'in zorunlu sarti bu ikisi. Sekmeleri gezip "SDK calisiyor" demek yetmez.
-if (!broken) {
+//
+// Yalnizca SAHTE SDK ile: cagrilari kaydeden o. `--gercek` modunda CrazyGames'in kendi SDK'si
+// yukleniyor ve hicbir sey kaydetmiyor, yani liste bos cikip yedi satiri birden "eksik" diye
+// bagiriyordu - alet, olcemedigi seyi yok sanmisti.
+if (!broken && !real) {
   await evaluate(`(() => {
     const m = window.ShadowTower;
     m.start();

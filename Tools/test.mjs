@@ -34,7 +34,8 @@ import {
 } from '../src/missions.js';
 import {
   Allow as AdAllow, Kinds as AdKinds, ready as adsReady,
-  open as portalOpen, loaded as portalLoaded, playing as portalPlaying, cheer as portalCheer,
+  open as portalOpen, loaded as portalLoaded, Patience as portalPatience,
+  playing as portalPlaying, cheer as portalCheer,
   progress as portalProgress, watchSettings, mutedByPortal, show as adShow, ready,
 } from '../src/ads.js';
 import { News } from '../src/news.js';
@@ -2357,6 +2358,71 @@ check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false)
 
   check('başlatılamayan portal açılışı sessizce düşüyor', (await portalOpen()) === false);
   // Asil mesele: bundan SONRA cizim ve basma yollarinda cagrilan her sey patlamamali.
+// Portali BEKLEMEK, ama sonsuza kadar degil. Ikisi de gercek acik:
+//
+// - `index.html` SDK scriptini ekliyor ve `src/main.js` bir modul, yani ikisi YARIS halinde.
+//   Yavas bir baglantida modul once calisip `window.CrazyGames` bulamayinca butun oturum
+//   portalsiz geciyordu: hesaba kayit yok, CrazyGames'in algilanan-fonksiyonlar listesi bos.
+//   Yazildigi her makinede calisan cinsten bir yaris.
+// - `init()` agla konusuyor; yavas olabilir, bir eklenti engelleyebilir, hic cevap vermeyebilir.
+//   Ilk kare onu bekliyor, yani o sure boyunca oyuncu bos bir tuvale bakiyor.
+{
+  const wasScript = portalPatience.script;
+  const wasInit = portalPatience.init;
+
+  // (a) Script hic istenmemisse hic beklenmiyor - yoksa SDK'nin kasten yuklenmedigi her yerde
+  // (bu makine, GitHub Pages, tanitim araci) ilk kare dort saniye gecikirdi.
+  {
+    globalThis.window = {};
+    const t0 = Date.now();
+    const got = await portalOpen();
+    const took = Date.now() - t0;
+    check('portal scripti istenmemişse beklenmiyor', got === false && took < 80, `${took}ms`);
+    delete globalThis.window;
+  }
+
+  // (b) Gec gelen script yakalaniyor.
+  {
+    portalPatience.script = 800;
+    globalThis.window = { __portalScript: true };
+    setTimeout(() => {
+      globalThis.window.CrazyGames = {
+        SDK: {
+          init: async () => {},
+          ad: { hasAdblock: async () => false, requestAd: () => {} },
+          data: { getItem: () => null, setItem: () => {} },
+          game: {
+            settings: { muteAudio: false },
+            loadingStart: () => {}, loadingStop: () => {},
+            gameplayStart: () => {}, gameplayStop: () => {},
+            addSettingsChangeListener: () => {},
+          },
+        },
+      };
+    }, 150);
+    const got = await portalOpen();
+    check('geç gelen SDK scripti yakalanıyor', got === true);
+    delete globalThis.window;
+  }
+
+  // (c) Hic cevap vermeyen bir `init` oyunu kilitlemiyor.
+  {
+    portalPatience.init = 150;
+    globalThis.window = {
+      __portalScript: true,
+      CrazyGames: { SDK: { init: () => new Promise(() => {}) } },
+    };
+    const t0 = Date.now();
+    const got = await portalOpen();
+    const took = Date.now() - t0;
+    check('cevap vermeyen portal oyunu kilitlemiyor', got === false && took < 600, `${took}ms`);
+    delete globalThis.window;
+  }
+
+  portalPatience.script = wasScript;
+  portalPatience.init = wasInit;
+}
+
   check("kırık SDK: reklam hazır değil", ready() === false);
   check("kırık SDK: hiçbiri patlamıyor", (() => {
     try {

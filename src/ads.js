@@ -27,7 +27,7 @@ const sdk = () => (typeof window !== 'undefined' && window.CrazyGames && window.
  * SDK's own adblock check - the game must work with an adblocker, so this only decides whether to
  * offer buttons that cannot pay.
  */
-const portal = { started: false, blocked: false, playing: false, loaded: false };
+const portal = { started: false, blocked: false, playing: false, loaded: false, wanted: false };
 
 /**
  * Başlatılmamış bir SDK'ya DOKUNMAK bile hata fırlatıyor.
@@ -57,6 +57,34 @@ export function ready() {
   return !!(part('ad') && !portal.blocked);
 }
 
+/** How long the game will wait for the portal before opening without it, in milliseconds. */
+export const Patience = { script: 4000, init: 5000 };
+
+const naptime = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Waits for the SDK's own script tag to finish loading - but only where one was asked for, and
+ * not for ever.
+ *
+ * `index.html` appends the SDK script and `src/main.js` is a module, so the two are a RACE: on a
+ * slow connection the module can run first, find no `window.CrazyGames`, and give up - and then
+ * the whole session has no portal at all, no saves on the account and nothing in CrazyGames'
+ * detected-functions list. It is the kind of race that works on every machine it is written on.
+ *
+ * `__portalScript` is set by the same code that decides to append the tag, and without it this
+ * would hold the first frame for four seconds in every place the SDK is deliberately NOT loaded
+ * - on this machine, on GitHub Pages, in the promo tool. Waiting for something nobody sent for
+ * is not patience.
+ */
+async function waitForScript() {
+  if (sdk()) return sdk();
+  const w = typeof window !== 'undefined' ? window : null;
+  if (!w || !w.__portalScript) return null;
+  const until = Date.now() + Patience.script;
+  while (!sdk() && Date.now() < until) await naptime(60);
+  return sdk();
+}
+
 /**
  * Starts the portal, and says the game has begun loading.
  *
@@ -66,38 +94,54 @@ export function ready() {
  * silently and the only trace was in CrazyGames' own panel, which listed Loading Stop as
  * detected and Loading Start as not. A call the portal cannot receive is not a call.
  *
- * So: `init` first, then `loadingStart`, and `loadingStop` is `loaded()` below - called once
- * the game can actually draw, so there is a real loading window between the two rather than two
+ * So: `init` first, then `loadingStart`, and `loadingStop` is `loaded()` below - called once the
+ * game can actually draw, so there is a real loading window between the two rather than two
  * calls in the same millisecond.
  *
- * Resolves either way: a portal that is not there must not stop the game from opening, and this
- * is awaited on the path to the first frame.
+ * THE WAIT IS BOUNDED, and that is the other half. This is awaited on the path to the first
+ * frame, so for as long as `init()` takes the player is looking at nothing - and `init` talks to
+ * the network, which can be slow, blocked by an extension, or simply never answer. Five seconds
+ * and the game opens anyway; if the portal turns up after that it is wired in late and the calls
+ * it missed are sent then. A player staring at a blank canvas is a worse failure than a portal
+ * that was told about the loading a moment late.
  */
 export async function open() {
+  // Bu cagri simdi basliyor: eski bir oturumun "basladi"si burada tasinmamali. Oyun bunu bir kez
+  // cagiriyor, ama bir kontrol ikinci kez cagirdi ve ONCEKI portalin cevabini aldi.
+  portal.started = false;
+  if (!(await waitForScript())) return false;
   const s = sdk();
-  if (!s) return false;
-  try {
-    await s.init();
-    portal.started = true;
-    if (s.ad && s.ad.hasAdblock) {
-      try { portal.blocked = !!(await s.ad.hasAdblock()); } catch { portal.blocked = false; }
-    }
-  } catch {
-    // An SDK that will not start is an SDK that is not there.
-    portal.started = false;
-  }
-  const g = part('game');
-  try { if (g && g.loadingStart) g.loadingStart(); } catch { /* yoksa yok */ }
+
+  const going = s.init().then(
+    async () => {
+      portal.started = true;
+      const g = part('game');
+      try { if (g && g.loadingStart) g.loadingStart(); } catch { /* yoksa yok */ }
+      if (s.ad && s.ad.hasAdblock) {
+        try { portal.blocked = !!(await s.ad.hasAdblock()); } catch { portal.blocked = false; }
+      }
+      // The game may already be drawing, if init took longer than we were prepared to wait.
+      if (portal.wanted) stopLoading();
+    },
+    () => { portal.started = false; },   // an SDK that will not start is an SDK that is not there
+  );
+
+  await Promise.race([going, naptime(Patience.init)]);
   return portal.started;
 }
 
 /**
  * The game can draw now.
  *
- * The other half of `open()`. Idempotent, because the loop starts once but this is the kind of
- * call that gets added to a second place a year later.
+ * The other half of `open()`. It remembers that it was asked rather than only acting, because
+ * the portal may not have finished starting yet - and when it does, `open()` finishes this.
  */
 export function loaded() {
+  portal.wanted = true;
+  stopLoading();
+}
+
+function stopLoading() {
   if (portal.loaded) return;
   const g = part('game');
   if (!g) return;

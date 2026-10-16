@@ -6,6 +6,24 @@
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
 > `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
 >
+> ## Portalı beklemek, ama sınırsız beklememek — ve o 109 saniye
+>
+> QA panelinde yedi zorunlu çağrının hepsi yeşil (Happytime dahil). Ama panel **Load time:
+> 109.2 saniye** yazdı — 472 KB düz JavaScript'in yapamayacağı bir şey. Kodda iki gerçek açık
+> bulundu, ikisi de aynı şekle sahip:
+>
+> 1. **SDK scripti ile modül YARIŞ hâlindeydi.** `index.html` scripti ekliyor, `src/main.js` bir
+>    modül; yavaş bağlantıda modül önce çalışıp `window.CrazyGames`'i bulamayınca bütün oturum
+>    portalsiz geçiyordu — hesaba kayıt yok, algılanan fonksiyon yok. Artık bekliyor, ama
+>    **yalnızca scriptin gerçekten eklendiği yerde** (`window.__portalScript`): yoksa SDK'nın
+>    kasten yüklenmediği her yerde ilk kareyi dört saniye geciktirirdi.
+> 2. **`init()` sınırsız bekleniyordu.** İlk kare onu bekliyor, yani ağ yavaşsa oyuncu boş tuvale
+>    bakıyor. Artık 5 saniye; portal sonradan gelirse geç bağlanıyor ve kaçırdığı çağrılar o
+>    zaman gidiyor.
+>
+> Oyunun kendi açılışı ölçüldü: **234 ms**, ve bu sayı artık konsola yazılıyor (QA'in Log
+> sekmesinde görünür). Paneldeki 109 saniye bizim açılışımız değil.
+>
 > ## QA panelinden çıkan: Loading Start portala hiç gitmiyormuş
 >
 > Panelde `Loading Stop` yeşil, `Loading Start` gri. Sebep bizde: `ads.open()` içinde

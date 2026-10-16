@@ -34,6 +34,11 @@
     // tekrarlayabilmek için. `Tools/portal.mjs` bunu kullanıyor.
     var force = location.search.indexOf('sdk=1') >= 0;
     if (!force && (mine || location.search.indexOf('nosdk') >= 0)) return;
+    // Oyuna "portal scripti GELIYOR, bekle" demenin tek dogru yeri burasi: eklenip eklenmedigine
+    // karar veren kod bu. Bayrak olmadan `ads.js` beklemek ile beklememek arasinda tahmin
+    // yurutmek zorunda kalir ve SDK'nin hic yuklenmedigi yerlerde (yerel, GitHub Pages) oyunun
+    // ilk karesini bosuna geciktirir.
+    window.__portalScript = true;
     var tag = document.createElement('script');
     tag.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
     document.head.appendChild(tag);

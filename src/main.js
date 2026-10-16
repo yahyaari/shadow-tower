@@ -825,4 +825,12 @@ window.ShadowTower = {
   spy: TextSpy,
 };
 window.__cards = (w, h) => cards(w, h, dpr);
-console.log('[ShadowTower] ready');
+/**
+ * Kac milisaniyede acildigi, konsola.
+ *
+ * CrazyGames'in QA paneli "Load time" diye bir sayi gosteriyor ve bir kez 109 saniye yazdi -
+ * 472 KB duz JavaScript'in yapamayacagi bir sey. Panelin neyi olctugunu disaridan bilemiyoruz;
+ * oyunun kendi acilisini olcebiliriz, ve o sayi QA'in Log sekmesinde gorunur. Iki rakam
+ * birbirini tutmuyorsa, olculen sey oyunun acilisi degildir.
+ */
+console.log(`[ShadowTower] ready · ${Math.round(performance.now())}ms`);
