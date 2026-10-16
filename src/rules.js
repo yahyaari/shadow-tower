@@ -84,7 +84,20 @@ export const Base = { wall: 300, bullet: 420 };
  */
 export const MostEvos = 3;
 
-export const Heat = { perClick: 0.22, fade: 0.8, most: 1, lift: 0.9 };
+/**
+ * Tapping, and how fast it cools.
+ *
+ * `fade` was 0.8 a second, which with 0.22 a tap means the bar only fills at FOUR taps a second
+ * and stays there. Measured on stage three, that was a cliff and not a slope: two taps a second
+ * cleared 15 runs in a hundred, three cleared 15, and four cleared 85. Four taps a second for
+ * five minutes is twelve hundred taps a run, and this game is going on a portal people open for
+ * ten minutes - the reward for playing actively should not require that.
+ *
+ * At 0.38 the bar fills at under two taps a second, so a comfortable rate gets what the
+ * frantic rate got. Nothing above that changes, which is why none of the balance in this file
+ * moved: the bot plays at six a second and was already at the ceiling.
+ */
+export const Heat = { perClick: 0.22, fade: 0.38, most: 1, lift: 0.9 };
 
 /**
  * The creatures, and why they all walk slower than they used to.
@@ -156,9 +169,28 @@ export const Grace = 25;
  * by a fixed amount, rather than carrying on from where the last one stopped - a stage is played
  * from scratch, so stage five cannot start at five minutes' worth of wave with one spell in hand.
  */
-export const StageStep = 0.2;
+/**
+ * How much harder each stage is than the one before it - and why it is a curve rather than a step.
+ *
+ * It was a straight line, a fifth harder every stage, and measured against an account with
+ * everything bought the line ran into a cliff: stage nine cleared 95 times in a hundred and
+ * stage ten cleared 30. Not a wall, a trapdoor. The reason it is so sharp is that a run has a
+ * tipping point - while you kill them faster than they arrive the wall is never touched, and the
+ * moment you do not the crowd compounds and the run is already over - so a difficulty line that
+ * steps past that point in one stage shows up as a cliff however gentle the step looks.
+ *
+ * Bent, the first five stages are within a hair of what they were (1.25, 1.42, 1.57, 1.70 against
+ * 1.2, 1.4, 1.6, 1.8) and the deep end climbs far more slowly: stage sixteen is now what stage
+ * ten used to be. The wall is still there, because a game a finished account can play for ever
+ * has nowhere to arrive - it is just six stages further out, which is the whole set of twelve
+ * places seen comfortably and some of them twice.
+ */
+export const StageStep = 0.25;
+export const StageBend = 0.75;
+export const stageLift = (stage) =>
+  1 + Math.pow(Math.max(0, (stage || 1) - 1), StageBend) * StageStep;
 export const pressure = (s) =>
-  (1 + Math.max(0, s.t - Grace) / RampOver) * (1 + ((s.stage || 1) - 1) * StageStep);
+  (1 + Math.max(0, s.t - Grace) / RampOver) * stageLift(s.stage || 1);
 export const spawnEvery = (s) => Math.max(0.05, 0.92 / Math.pow(pressure(s), 1.3));
 
 /**
@@ -431,7 +463,10 @@ export function spawn(s, kindKey = null, angle = null) {
   const p = pressure(s);
   const key = kindKey || (p > 1.5 && r < 0.12 ? 'brute' : r < 0.2 + Math.min(0.25, p * 0.1) ? 'runner' : 'walker');
   const k = Kinds[key];
-  const tough = Math.pow(p, 1.4);
+  // Canin baskiyla buyume hizi. 1.4'ten indi: hasar pick sayisiyla kabaca DOGRUSAL artiyor,
+  // can ise usel - ikisinin makasi bir yerde kapanmak zorunda ve makasin kapandigi yer, yukarida
+  // anlatilan devrilme noktasini bir bolumde gecmeye yetiyordu.
+  const tough = Math.pow(p, 1.32);
   // Which family it belongs to, drawn from the stage's list. Bosses have none: they are single
   // creatures with their own identity, and a Warden that resisted fire because the stage happened
   // to be full of wurms would be a boss fight decided by the wallpaper.

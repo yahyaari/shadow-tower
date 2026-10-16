@@ -2941,7 +2941,10 @@ console.log('  bölüm   yeni hesap   tam donanım   yer                   ailel
     return Math.round(runs.filter(Boolean).length / runs.length * 100);
   };
   const rows = [];
-  for (let n = 1; n <= 14; n++) {
+  // Yirmiye kadar, on dorde degil. Bolum egrisi bukuldugunde duvar 10'dan 16-18'e tasindi ve
+  // tablo on dortte bitince "tam donanimin da bir duvari var" kontrolu duvari GOREMEDI: tablonun
+  // son satiri hala %65'ti. Bir olcum, olctugu seyin bittigi yere kadar gitmek zorunda.
+  for (let n = 1; n <= 20; n++) {
     rows.push({ n, bare: pcAt(n, 0, 1), full: pcAt(n, HeroSteps, SpellSteps) });
     const r = rows[rows.length - 1];
     console.log(`  ${String(r.n).padStart(5)}   ${('%' + r.bare).padStart(9)}   ${('%' + r.full).padStart(11)}   ` +

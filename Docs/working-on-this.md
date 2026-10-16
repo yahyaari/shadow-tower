@@ -6,6 +6,24 @@
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
 > `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
 >
+> ## Üçüncü tur (duvar) — 16 Ekim gece
+>
+> Oyuncunun sorusu: *"tam donanımlı her şey olsa bile 10. bölümden ilerisini göremiyor muyuz?"*
+> Ölçüm doğruladı: 9. bölüm %95, 10. bölüm %30. Duvar değil, kapan.
+>
+> **Bölüm eğrisi büküldü.** Düz çizgiydi (`1 + (bölüm-1) × 0.2`), şimdi
+> `1 + (bölüm-1)^0.75 × 0.25`: ilk beş bölüm neredeyse aynı (1.25 / 1.42 / 1.57 / 1.71), derin
+> uç çok daha yavaş tırmanıyor — **16. bölüm artık eski 10. bölüm**. Can büyümesi de `baskı^1.4`
+> → `baskı^1.32`; hasar pick sayısıyla doğrusal, can üsseldi ve makas tek bölümde kapanıyordu.
+>
+> Sonuç — tam donanım: `9'a kadar %100 · 10:%75 · 12:%75 · 14:%75 · 16:%13 · 18:%25 · 20:%0`.
+> Duvar 10'dan **16-18**'e taşındı ve iniş kademeli. Yeni hesap 6. bölüme kadar.
+>
+> **Tıklama eşiği de düzeltildi.** Isı `fade` 0.8'di, yani çubuk ancak **saniyede dört tıklamayla**
+> doluyordu: 3. bölümde 3 tıklama/sn %15, 4 tıklama/sn %85. Beş dakika boyunca saniyede dört
+> tıklama, bir portal oyunu için fazla. `fade = 0.38` ile eşik **1.73 tıklama/sn**: iki tıklamayla
+> %92, hiç tıklamadan %4. Dengenin geri kalanı değişmedi, çünkü bot zaten 6/sn ile tavandaydı.
+>
 > ## İkinci tur (denge) — 16 Ekim gece
 >
 > | # | istenen | ne yapıldı |
