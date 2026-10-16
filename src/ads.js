@@ -27,7 +27,7 @@ const sdk = () => (typeof window !== 'undefined' && window.CrazyGames && window.
  * SDK's own adblock check - the game must work with an adblocker, so this only decides whether to
  * offer buttons that cannot pay.
  */
-const portal = { started: false, blocked: false, playing: false };
+const portal = { started: false, blocked: false, playing: false, loaded: false };
 
 /**
  * Başlatılmamış bir SDK'ya DOKUNMAK bile hata fırlatıyor.
@@ -58,18 +58,24 @@ export function ready() {
 }
 
 /**
- * Starts the portal, around whatever the game does to load.
+ * Starts the portal, and says the game has begun loading.
  *
- * `loadingStart` before anything, `init` awaited, `loadingStop` when the first frame can be
- * drawn. Resolves either way: a portal that is not there must not stop the game from opening,
- * and this is awaited on the path to the first frame.
+ * The docs put `loadingStart` BEFORE `init`, and that is what this did - and the portal never
+ * saw it. Reading `SDK.game` before `init` has resolved throws on this version, which is the
+ * same thing that once froze the rewards tab; the call was in its own `try`, so it failed
+ * silently and the only trace was in CrazyGames' own panel, which listed Loading Stop as
+ * detected and Loading Start as not. A call the portal cannot receive is not a call.
+ *
+ * So: `init` first, then `loadingStart`, and `loadingStop` is `loaded()` below - called once
+ * the game can actually draw, so there is a real loading window between the two rather than two
+ * calls in the same millisecond.
+ *
+ * Resolves either way: a portal that is not there must not stop the game from opening, and this
+ * is awaited on the path to the first frame.
  */
 export async function open() {
   const s = sdk();
   if (!s) return false;
-  // `loadingStart` dokümana göre init'ten önce gelir, ama bu SDK sürümü başlatılmadan önce
-  // kendisine dokunulmasına hata veriyor. Kendi `try`'ında: patlarsa init yine de denenecek.
-  try { if (s.game && s.game.loadingStart) s.game.loadingStart(); } catch { /* yoksa yok */ }
   try {
     await s.init();
     portal.started = true;
@@ -80,12 +86,23 @@ export async function open() {
     // An SDK that will not start is an SDK that is not there.
     portal.started = false;
   }
-  // Only if it started. Calling `loadingStop` on an SDK that failed to initialise is how you get
-  // a third console error for free.
-  if (portal.started) {
-    try { if (s.game && s.game.loadingStop) s.game.loadingStop(); } catch { /* yoksa yok */ }
-  }
+  const g = part('game');
+  try { if (g && g.loadingStart) g.loadingStart(); } catch { /* yoksa yok */ }
   return portal.started;
+}
+
+/**
+ * The game can draw now.
+ *
+ * The other half of `open()`. Idempotent, because the loop starts once but this is the kind of
+ * call that gets added to a second place a year later.
+ */
+export function loaded() {
+  if (portal.loaded) return;
+  const g = part('game');
+  if (!g) return;
+  portal.loaded = true;
+  try { if (g.loadingStop) g.loadingStop(); } catch { /* yoksa yok */ }
 }
 
 /**

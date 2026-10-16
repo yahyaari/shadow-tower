@@ -34,7 +34,7 @@ import {
 } from '../src/missions.js';
 import {
   Allow as AdAllow, Kinds as AdKinds, ready as adsReady,
-  open as portalOpen, playing as portalPlaying, cheer as portalCheer,
+  open as portalOpen, loaded as portalLoaded, playing as portalPlaying, cheer as portalCheer,
   progress as portalProgress, watchSettings, mutedByPortal, show as adShow, ready,
 } from '../src/ads.js';
 import { News } from '../src/news.js';
@@ -2274,8 +2274,22 @@ check('SDK yokken açılış yine de dönüyor', (await portalOpen()) === false)
 
   const started = await portalOpen();
   check('portal açılıyor', started === true);
-  check('yükleme sırası doğru', said.join() === 'loadingStart,init,loadingStop', said.join());
+  // `init` ONCE, `loadingStart` SONRA. Dokumanda tersi yaziyor ve kod da oyle yapiyordu, ama bu
+  // SDK surumunde `SDK.game`'e init cozulmeden dokunmak hata firlatiyor - cagri kendi `try`'inda
+  // sessizce dusuyor ve portal "Loading Stop var, Loading Start yok" diyordu. Portalin alamadigi
+  // bir cagri, yapilmamis cagridir. Bu kontrol o sirayi tutuyor.
+  check('yükleme başlangıcı init SONRASINDA gidiyor', said.join() === 'init,loadingStart',
+    said.join());
   check('açılınca reklam hazır', adsReady() === true);
+
+  // Ve bitis, oyun gercekten cizebildiginde - `open()` icinden degil. Oradan gitse baslangic ile
+  // bitis ayni milisaniyede olur ve arada bir yukleme penceresi olmaz.
+  portalLoaded();
+  check('yükleme bitişi oyun hazır olunca gidiyor',
+    said.join() === 'init,loadingStart,loadingStop', said.join());
+  portalLoaded();
+  check('yükleme bitişi iki kere gönderilmiyor',
+    said.join() === 'init,loadingStart,loadingStop', said.join());
 
   said.length = 0;
   portalPlaying(true);

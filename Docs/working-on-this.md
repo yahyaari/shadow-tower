@@ -6,6 +6,21 @@
 > Yayında: https://yahyaari.github.io/shadow-tower/ · depo `yahyaari/shadow-tower`
 > `node Tools/test.mjs --quick` → 569 · tam paket → **604 kontrol geçiyor**.
 >
+> ## QA panelinden çıkan: Loading Start portala hiç gitmiyormuş
+>
+> Panelde `Loading Stop` yeşil, `Loading Start` gri. Sebep bizde: `ads.open()` içinde
+> `loadingStart` **init'ten önce** çağrılıyordu ve bu SDK sürümünde `SDK.game`'e init çözülmeden
+> dokunmak hata fırlatıyor — çağrı kendi `try`'ı içinde sessizce düşüyordu. Artık sıra
+> `init → loadingStart`, ve `loadingStop` ayrı bir `ads.loaded()` ile ilk kare çizilmeden önce
+> gidiyor (ikisi aynı milisaniyede olmasın diye).
+>
+> **Asıl ders alet tarafında:** `portal.mjs` SDK'ya hangi çağrıların gittiğini hiç raporlamıyordu,
+> yani paneldeki listeyi yerelde göremiyorduk. Artık sahte SDK her çağrıyı kaydediyor, araç bir
+> koşu başlatıp bitiriyor ve Basic Launch'ın zorunlu gördüğü yedi çağrıdan eksik olanı **ismiyle**
+> basıyor. İlk çalıştırmada eksiği buldu.
+>
+> **Üst bant meselesi KAPANDI** — QA oynatıcısında görünüyor (sayfa kaydırmaymış).
+>
 > ## Üçüncü tur (duvar) — 16 Ekim gece
 >
 > Oyuncunun sorusu: *"tam donanımlı her şey olsa bile 10. bölümden ilerisini göremiyor muyuz?"*

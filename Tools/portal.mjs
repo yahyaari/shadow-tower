@@ -102,32 +102,47 @@ if (broken) await send('Page.addScriptToEvaluateOnNewDocument', {
   `,
 });
 
+// Sahte SDK, HER CAGRIYI KAYDEDIYOR.
+//
+// Kaydetmiyordu, ve bedeli CrazyGames'in QA panelinde goruldu: panel "Loading Stop algilandi,
+// Loading Start algilanmadi" diyordu. Sebep koddaydi - `loadingStart` init'ten once cagriliyor,
+// bu SDK surumu baslatilmadan once kendisine dokunulmasina hata firlatiyor, cagri kendi `try`'i
+// icinde sessizce dusuyordu. Yerelde gorulebilecek tek yer buydu ve burasi bakmiyordu.
 if (!real && !broken) await send('Page.addScriptToEvaluateOnNewDocument', {
   source: `
-    window.CrazyGames = {
-      SDK: {
-        init: () => Promise.resolve(),
-        ad: {
-          hasAdblock: () => Promise.resolve(false),
-          requestAd: (kind, cb) => setTimeout(() => cb.adError({ code: 'adsDisabledBasicLaunch' }), 30),
+    window.__portalSaid = [];
+    (function () {
+      var say = function (n) { window.__portalSaid.push(n); };
+      window.CrazyGames = {
+        SDK: {
+          init: () => { say('init'); return Promise.resolve(); },
+          ad: {
+            hasAdblock: () => Promise.resolve(false),
+            requestAd: (kind, cb) => {
+              say('Request ' + kind + ' Ad');
+              setTimeout(() => cb.adError({ code: 'adsDisabledBasicLaunch' }), 30);
+            },
+          },
+          data: {
+            getItem: (k) => { say('Get Item'); return window.localStorage.getItem('portal:' + k); },
+            setItem: (k, v) => { say('Set Item'); window.localStorage.setItem('portal:' + k, v); },
+            removeItem: (k) => { say('Remove Item'); window.localStorage.removeItem('portal:' + k); },
+            clear: () => say('Clear'),
+          },
+          game: {
+            settings: { muteAudio: false, disableChat: false },
+            loadingStart: () => say('Loading Start'),
+            loadingStop: () => say('Loading Stop'),
+            gameplayStart: () => say('Gameplay Start'),
+            gameplayStop: () => say('Gameplay Stop'),
+            happytime: () => say('Happytime'),
+            reportGameCompletedPercentage: () => say('Game completion reported'),
+            addSettingsChangeListener: () => say('Mute audio support'),
+            removeSettingsChangeListener: () => {},
+          },
         },
-        data: {
-          getItem: (k) => window.localStorage.getItem('portal:' + k),
-          setItem: (k, v) => window.localStorage.setItem('portal:' + k, v),
-          removeItem: (k) => window.localStorage.removeItem('portal:' + k),
-          clear: () => {},
-        },
-        game: {
-          settings: { muteAudio: false, disableChat: false },
-          loadingStart: () => {}, loadingStop: () => {},
-          gameplayStart: () => {}, gameplayStop: () => {},
-          happytime: () => {},
-          reportGameCompletedPercentage: () => {},
-          addSettingsChangeListener: () => {},
-          removeSettingsChangeListener: () => {},
-        },
-      },
-    };
+      };
+    })();
   `,
 });
 
@@ -182,6 +197,40 @@ await evaluate(`window.ShadowTower.menu({ what: 'spin' })`);
 await sleep(3600);
 const after = await visit('wheel');
 console.log('  çark çevrildikten sonra: ' + (after ? 'çiziyor' : 'DONDU'));
+
+// Bir kosu baslat ve bitir: `gameplayStart` / `gameplayStop` yalnizca burada gidiyor, ve
+// Basic Launch'in zorunlu sarti bu ikisi. Sekmeleri gezip "SDK calisiyor" demek yetmez.
+if (!broken) {
+  await evaluate(`(() => {
+    const m = window.ShadowTower;
+    m.start();
+    // Kosunun basindaki nefes 2.2 saniye ve o sure boyunca kurallar adimlanmiyor; beklemeden
+    // kosuyu bitirmeye calismak "Gameplay Stop gitmedi" diye okunuyordu - oysa kosu daha
+    // baslamamisti. Alet oyunu degil kendini olcuyordu.
+    m.show.ready = 0;
+    return true;
+  })()`);
+  await sleep(900);
+  await shot('kosu');
+  await evaluate(`(() => {
+    const m = window.ShadowTower;
+    m.state.wall = 0;
+    m.state.phase = 'lost';
+    return true;
+  })()`);
+  await sleep(600);
+
+  const said = await evaluate('JSON.stringify(window.__portalSaid || [])');
+  const list = said ? JSON.parse(said) : [];
+  const once = [...new Set(list)];
+  console.log('\nPORTALA GIDEN CAGRILAR (CrazyGames panelindeki liste):');
+  for (const name of once) console.log('  ✓ ' + name);
+  // Basic Launch'in zorunlu gordukleri. Panelde gri kalan her satir, burada eksik olur.
+  for (const must of ['Loading Start', 'Loading Stop', 'Gameplay Start', 'Gameplay Stop',
+    'Get Item', 'Set Item', 'Mute audio support']) {
+    if (!once.includes(must)) { console.log('  ✗ EKSIK: ' + must); bad += 1; }
+  }
+}
 
 if (bad) {
   console.log(`\nKONSOLDA ${bad} HATA:`);

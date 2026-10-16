@@ -375,6 +375,9 @@ function tick(now) {
   frame(ctx, canvas.width, canvas.height, state, show, dpr);
   requestAnimationFrame(tick);
 }
+// Yukleme bitti: ilk kare cizilmek uzere. `loadingStop` portala BURADAN gidiyor, `ads.open()`
+// icinden degil - oradan gitse baslangic ve bitis ayni milisaniyede olurdu.
+ads.loaded();
 requestAnimationFrame(tick);
 
 /**
